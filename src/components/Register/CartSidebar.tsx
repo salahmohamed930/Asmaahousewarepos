@@ -116,67 +116,26 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
       <div className="bg-stone-900 border border-stone-800 rounded-3xl flex flex-col h-[calc(100vh-6.5rem)] shadow-2xl overflow-hidden dir-rtl">
         
         {/* ======================================================== */}
-        {/* 1. HEADER OF INVOICE: SELLER CODE ONLY & CUSTOMER        */}
+        {/* 1. HEADER OF INVOICE: CUSTOMER LINK & DETAILS             */}
         {/* ======================================================== */}
         <div className="p-4 bg-stone-950/90 border-b border-stone-800 space-y-3">
           
-          {/* Top Bar: Seller Code ONLY (No image, no name) + Split Sales */}
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-900 border border-stone-800 p-3 rounded-2xl">
-            
-            {/* Seller Code Field ONLY */}
-            <div className="flex items-center space-x-2.5 space-x-reverse min-w-0">
-              <span className="text-xs font-bold text-stone-300 whitespace-nowrap">
-                كود البائع:
-              </span>
-              
-              <div className="relative flex items-center">
-                <input
-                  type="text"
-                  placeholder="أدخل كود البائع (مثلاً 101)..."
-                  value={sellerPinInput}
-                  onChange={(e) => {
-                    const pin = e.target.value;
-                    setSellerPinInput(pin);
-                    if (pin.trim()) {
-                      quickSwitchByPin(pin.trim());
-                    }
-                  }}
-                  className="bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-1.5 text-xs text-amber-400 font-mono font-bold w-48 focus:outline-none placeholder-stone-600"
-                />
-                {sellerPinInput ? (
-                  <button
-                    onClick={() => setSellerPinInput('')}
-                    className="absolute left-2 text-stone-500 hover:text-rose-400 p-0.5"
-                    title="تفريغ الكود"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                ) : null}
-              </div>
+          {/* Header Title Bar */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+              <FileText className="w-4 h-4" />
+              <span>محتويات الفاتورة ({cart.length} أصناف)</span>
+            </span>
 
-              {!sellerPinInput ? (
-                <span className="text-[10px] text-amber-500 font-bold bg-amber-950/60 border border-amber-900 px-2 py-0.5 rounded-lg whitespace-nowrap">
-                  (فارغ - يرجي إدخال الكود)
-                </span>
-              ) : (
-                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded-lg whitespace-nowrap">
-                  تم التحديد ✓
-                </span>
-              )}
-            </div>
-
-            {/* Co-seller split button */}
-            <button
-              onClick={() => setIsSplitModalOpen(true)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 space-x-reverse transition-all ${
-                splitAssociates.length > 0
-                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-700/80 shadow-sm'
-                  : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{splitAssociates.length > 0 ? 'مشاركة عمولة جارية' : 'توزيع العمولة'}</span>
-            </button>
+            {cart.length > 0 && (
+              <button
+                onClick={clearCart}
+                className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center space-x-1 space-x-reverse transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>إفراغ السلة</span>
+              </button>
+            )}
           </div>
 
           {/* Customer Name & Phone Number Field (With Database Search) */}

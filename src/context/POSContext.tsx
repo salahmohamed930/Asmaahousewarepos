@@ -16,6 +16,14 @@ import {
   INITIAL_CUSTOMERS,
   INITIAL_TRANSACTIONS,
 } from '../data/initialData';
+import {
+  syncProductToSupabase,
+  syncTransactionToSupabase,
+  syncCustomerToSupabase,
+  syncAssociateToSupabase,
+} from '../lib/supabaseSync';
+import { supabase } from '../lib/supabase';
+
 
 interface POSContextType {
   associates: Associate[];
@@ -26,10 +34,10 @@ interface POSContextType {
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
-  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers';
+  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'database';
   globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
   
-  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers') => void;
+  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'database') => void;
   setCurrentAssociate: (associate: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
   quickSwitchByPin: (pin: string) => boolean;
@@ -108,6 +116,36 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_associates`, JSON.stringify(associates));
   }, [associates]);
+
+  // Sync initial data from Supabase if available
+  useEffect(() => {
+    async function loadFromSupabase() {
+      try {
+        const { data: assocData } = await supabase.from('associates').select('*');
+        if (assocData && assocData.length > 0) {
+          const mapped: Associate[] = assocData.map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            username: a.username,
+            password: a.password || a.pin || '1234',
+            pin: a.pin || '1234',
+            role: a.role || 'مسؤول مبيعات',
+            avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+            email: a.email || '',
+            phone: a.phone || '',
+            commissionRate: a.commission_rate || 0.05,
+            dailyGoal: a.daily_goal || 5000,
+            hourlyRate: a.hourly_rate || 25,
+            isClockedIn: false,
+          }));
+          setAssociates(mapped);
+        }
+      } catch (err) {
+        console.warn('Supabase initial fetch skipped or table pending:', err);
+      }
+    }
+    loadFromSupabase();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(products));
@@ -367,6 +405,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setTransactions((prev) => [newTransaction, ...prev]);
+    syncTransactionToSupabase(newTransaction);
     clearCart();
 
     return newTransaction;
@@ -380,17 +419,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clockInAssociate = (associateId: string) => {
     setAssociates((prev) =>
-      prev.map((a) =>
-        a.id === associateId
-          ? { ...a, isClockedIn: true, clockInTime: new Date().toISOString() }
-          : a
-      )
+      prev.map((a) => {
+        if (a.id === associateId) {
+          const updated = { ...a, isClockedIn: true, clockInTime: new Date().toISOString() };
+          syncAssociateToSupabase(updated);
+          return updated;
+        }
+        return a;
+      })
     );
   };
 
   const clockOutAssociate = (associateId: string) => {
     setAssociates((prev) =>
-      prev.map((a) => (a.id === associateId ? { ...a, isClockedIn: false, clockInTime: undefined } : a))
+      prev.map((a) => {
+        if (a.id === associateId) {
+          const updated = { ...a, isClockedIn: false, clockInTime: undefined };
+          syncAssociateToSupabase(updated);
+          return updated;
+        }
+        return a;
+      })
     );
   };
 
@@ -402,6 +451,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clockInTime: new Date().toISOString(),
     };
     setAssociates((prev) => [...prev, newAssoc]);
+    syncAssociateToSupabase(newAssoc);
     if (!currentAssociate) {
       setCurrentAssociateState(newAssoc);
     }
@@ -409,6 +459,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateAssociate = (assoc: Associate) => {
     setAssociates((prev) => prev.map((a) => (a.id === assoc.id ? assoc : a)));
+    syncAssociateToSupabase(assoc);
     if (currentAssociate?.id === assoc.id) {
       setCurrentAssociateState(assoc);
     }
@@ -420,10 +471,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `prod_${Date.now()}`,
     };
     setProducts((prev) => [newProduct, ...prev]);
+    syncProductToSupabase(newProduct);
   };
 
   const updateProduct = (prod: Product) => {
     setProducts((prev) => prev.map((p) => (p.id === prod.id ? prod : p)));
+    syncProductToSupabase(prod);
   };
 
   const addCustomer = (
@@ -436,6 +489,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loyaltyPoints: 50,
     };
     setCustomers((prev) => [newCustomer, ...prev]);
+    syncCustomerToSupabase(newCustomer);
     setSelectedCustomer(newCustomer);
     return newCustomer;
   };

@@ -7,6 +7,7 @@ import { AssociatesView } from './components/Associates/AssociatesView';
 import { AnalyticsView } from './components/Analytics/AnalyticsView';
 import { CatalogView } from './components/Catalog/CatalogView';
 import { CustomersView } from './components/Customers/CustomersView';
+import { DatabaseView } from './components/Database/DatabaseView';
 
 const MainLayout: React.FC = () => {
   const { currentAssociate, activeTab } = usePOS();
@@ -25,6 +26,7 @@ const MainLayout: React.FC = () => {
         {activeTab === 'analytics' && <AnalyticsView />}
         {activeTab === 'catalog' && <CatalogView />}
         {activeTab === 'customers' && <CustomersView />}
+        {activeTab === 'database' && <DatabaseView />}
       </main>
     </div>
   );

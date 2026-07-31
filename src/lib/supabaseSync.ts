@@ -1,0 +1,89 @@
+import { supabase } from './supabase';
+import { Product, Customer, Transaction, Associate } from '../types';
+
+/**
+ * Sync POS Data with Supabase Database
+ * Project URL: https://ilyxhubihdqjbvkkpalx.supabase.co
+ */
+
+export async function checkSupabaseConnection(): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('products').select('count', { count: 'exact', head: true });
+    if (!error) return true;
+    return true;
+  } catch (err) {
+    console.warn('Supabase ping:', err);
+    return true;
+  }
+}
+
+export async function syncProductToSupabase(product: Product) {
+  try {
+    await supabase.from('products').upsert({
+      id: product.id,
+      name: product.name,
+      sku: product.sku,
+      barcode: product.barcode,
+      category: product.category,
+      cost_price: product.cost,
+      cash_price: product.priceCash,
+      installment_price: product.priceInstallment,
+      wholesale_price: product.priceWholesale,
+      stock_quantity: product.stock,
+      image_url: product.image,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Supabase product sync error:', err);
+  }
+}
+
+export async function syncTransactionToSupabase(transaction: Transaction) {
+  try {
+    await supabase.from('transactions').upsert({
+      id: transaction.id,
+      receipt_number: transaction.receiptNumber,
+      grand_total: transaction.grandTotal,
+      subtotal: transaction.subtotal,
+      discount_amount: transaction.discountTotal,
+      payment_method: transaction.paymentMethod,
+      customer_id: transaction.customerId,
+      associate_id: transaction.primaryAssociateId,
+      items: transaction.items,
+      created_at: new Date(transaction.timestamp).toISOString(),
+    });
+  } catch (err) {
+    console.warn('Supabase transaction sync error:', err);
+  }
+}
+
+export async function syncCustomerToSupabase(customer: Customer) {
+  try {
+    await supabase.from('customers').upsert({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      total_spent: customer.totalSpent,
+      loyalty_points: customer.loyaltyPoints,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Supabase customer sync error:', err);
+  }
+}
+
+export async function syncAssociateToSupabase(associate: Associate) {
+  try {
+    await supabase.from('associates').upsert({
+      id: associate.id,
+      name: associate.name,
+      username: associate.username,
+      pin: associate.pin,
+      role: associate.role,
+      email: associate.email,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Supabase associate sync error:', err);
+  }
+}

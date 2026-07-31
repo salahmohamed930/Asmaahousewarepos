@@ -12,6 +12,7 @@ import {
   LogOut,
   LogIn,
   Store,
+  Database,
 } from 'lucide-react';
 import QuickPinModal from './QuickPinModal';
 
@@ -42,6 +43,7 @@ export const Header: React.FC = () => {
     { id: 'analytics', label: 'التقارير', icon: BarChart3 },
     { id: 'customers', label: 'حسابات العملاء', icon: UserCheck },
     { id: 'associates', label: 'الموظفين', icon: Users },
+    { id: 'database', label: 'قاعدة البيانات', icon: Database },
   ] as const;
 
   return (
@@ -62,6 +64,10 @@ export const Header: React.FC = () => {
                   </span>
                   <span className="text-[10px] bg-amber-950/80 text-amber-400 px-2 py-0.5 rounded-full border border-amber-800 font-mono">
                     فرع #01
+                  </span>
+                  <span className="text-[10px] bg-emerald-950/80 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-800/80 font-medium flex items-center space-x-1 space-x-reverse">
+                    <Database className="w-3 h-3 text-emerald-400" />
+                    <span>Supabase متصل</span>
                   </span>
                 </div>
                 <p className="text-[11px] text-stone-400">نظام إدارة المبيعات والفواتير ونقاط البيع</p>

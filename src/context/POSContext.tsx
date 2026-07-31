@@ -121,6 +121,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     async function loadFromSupabase() {
       try {
+        // 1. Fetch products from Supabase
+        const { data: prodData } = await supabase.from('products').select('*');
+        if (prodData && prodData.length > 0) {
+          const mappedProducts: Product[] = prodData.map((p: any) => ({
+            id: p.id || `prod_${Date.now()}_${Math.random()}`,
+            name: p.name || 'منتج',
+            sku: p.sku || 'SKU-000',
+            barcode: p.barcode || '000000',
+            category: p.category || 'عام',
+            priceCash: Number(p.cash_price ?? p.priceCash ?? p.price_cash ?? 0),
+            priceInstallment: Number(p.installment_price ?? p.priceInstallment ?? p.price_installment ?? 0),
+            priceWholesale: Number(p.wholesale_price ?? p.priceWholesale ?? p.price_wholesale ?? 0),
+            cost: Number(p.cost_price ?? p.cost ?? 0),
+            stock: Number(p.stock_quantity ?? p.stock ?? 0),
+            image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
+            description: p.description || '',
+          }));
+          setProducts(mappedProducts);
+        }
+
+        // 2. Fetch associates from Supabase
         const { data: assocData } = await supabase.from('associates').select('*');
         if (assocData && assocData.length > 0) {
           const mapped: Associate[] = assocData.map((a: any) => ({
@@ -139,6 +160,22 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             isClockedIn: false,
           }));
           setAssociates(mapped);
+        }
+
+        // 3. Fetch customers from Supabase
+        const { data: custData } = await supabase.from('customers').select('*');
+        if (custData && custData.length > 0) {
+          const mappedCustomers: Customer[] = custData.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone || '',
+            email: c.email || '',
+            address: c.address || '',
+            totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
+            loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
+            tier: c.tier || 'عادي',
+          }));
+          setCustomers(mappedCustomers);
         }
       } catch (err) {
         console.warn('Supabase initial fetch skipped or table pending:', err);
@@ -382,7 +419,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((p) => {
         const cartItem = cart.find((ci) => ci.product.id === p.id);
         if (cartItem) {
-          return { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
+          const updatedProd = { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
+          syncProductToSupabase(updatedProd);
+          return updatedProd;
         }
         return p;
       })

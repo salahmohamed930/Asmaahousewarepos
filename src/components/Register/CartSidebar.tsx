@@ -1,0 +1,507 @@
+import React, { useState } from 'react';
+import { usePOS } from '../../context/POSContext';
+import {
+  FileText,
+  Trash2,
+  Users,
+  UserPlus,
+  ChevronDown,
+  X,
+  UserCheck,
+  Plus,
+  Minus,
+  Search,
+  CreditCard,
+} from 'lucide-react';
+import SplitAssociateModal from './SplitAssociateModal';
+
+interface CartSidebarProps {
+  onOpenCheckout: () => void;
+}
+
+export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
+  const {
+    cart,
+    currentAssociate,
+    associates,
+    customers,
+    selectedCustomer,
+    setSelectedCustomer,
+    addCustomer,
+    splitAssociates,
+    taxRate,
+    globalPriceTier,
+    updateCartQuantity,
+    updateCartItemDiscount,
+    updateCartItemAssociate,
+    removeFromCart,
+    clearCart,
+  } = usePOS();
+
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [showAddCustomerForm, setShowAddCustomerForm] = useState(false);
+
+  // New quick customer state
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+
+  // Totals calculations
+  let subtotal = 0;
+  let discountTotal = 0;
+
+  cart.forEach((item) => {
+    // Determine active unit price based on global price tier
+    const unitPrice =
+      globalPriceTier === 'cash'
+        ? item.product.priceCash
+        : globalPriceTier === 'installment'
+        ? item.product.priceInstallment
+        : item.product.priceWholesale;
+
+    const originalLinePrice = unitPrice * item.quantity;
+    const itemDiscount = (originalLinePrice * item.discountPercent) / 100;
+    subtotal += originalLinePrice;
+    discountTotal += itemDiscount;
+  });
+
+  const netSubtotal = subtotal - discountTotal;
+  const taxTotal = Math.round(netSubtotal * taxRate * 100) / 100;
+  const grandTotal = Math.round((netSubtotal + taxTotal) * 100) / 100;
+
+  // Filtered customer search (by name or phone)
+  const filteredCustomers = customers.filter((c) => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.phone.includes(q)
+    );
+  });
+
+  const handleCreateCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustName.trim() || !newCustPhone.trim()) {
+      alert('يرجى إدخال اسم العميل ورقم التليفون');
+      return;
+    }
+    const created = addCustomer({
+      name: newCustName.trim(),
+      phone: newCustPhone.trim(),
+      email: `${newCustPhone.trim()}@asmaa.eg`,
+      notes: 'تمت الإضافة من شاشة الفواتير',
+    });
+    setSelectedCustomer(created);
+    setNewCustName('');
+    setNewCustPhone('');
+    setShowAddCustomerForm(false);
+    setIsCustomerDropdownOpen(false);
+  };
+
+  if (!currentAssociate) {
+    return (
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 text-center text-stone-400 dir-rtl">
+        يرجى اختيار الكاشير أو البائع المسؤول لفتح شاشة الفواتير.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl flex flex-col h-[calc(100vh-6.5rem)] shadow-2xl overflow-hidden dir-rtl">
+        
+        {/* ======================================================== */}
+        {/* 1. HEADER OF INVOICE: CASHIER, SELLER CODE, & CUSTOMER   */}
+        {/* ======================================================== */}
+        <div className="p-4 bg-stone-950/90 border-b border-stone-800 space-y-3">
+          
+          {/* Top Bar: Cashier & Seller Code + Split Sales */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-900 border border-stone-800 p-3 rounded-2xl">
+            
+            {/* Cashier Name & Seller Code */}
+            <div className="flex items-center space-x-3 space-x-reverse min-w-0">
+              <img
+                src={currentAssociate.avatar}
+                alt={currentAssociate.name}
+                className="w-10 h-10 rounded-xl object-cover ring-2 ring-amber-500/50"
+              />
+              <div className="min-w-0">
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <span className="text-xs font-extrabold text-white truncate">
+                    الكاشير: {currentAssociate.name}
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-400 bg-amber-950 border border-amber-800 px-2 py-0.5 rounded font-bold">
+                    كود البائع: {currentAssociate.pin}
+                  </span>
+                </div>
+                <p className="text-[10px] text-stone-400 mt-0.5">
+                  العمولة: {(currentAssociate.commissionRate * 100).toFixed(0)}% • الوظيفة: {currentAssociate.role}
+                </p>
+              </div>
+            </div>
+
+            {/* Co-seller split button */}
+            <button
+              onClick={() => setIsSplitModalOpen(true)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 space-x-reverse transition-all ${
+                splitAssociates.length > 0
+                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-700/80 shadow-sm'
+                  : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{splitAssociates.length > 0 ? 'مشاركة عمولة جارية' : 'توزيع العمولة'}</span>
+            </button>
+          </div>
+
+          {/* Customer Name & Phone Number Field (With Database Search) */}
+          <div className="relative">
+            {selectedCustomer ? (
+              <div className="flex items-center justify-between bg-amber-950/30 border border-amber-800/60 p-2.5 rounded-2xl">
+                <div className="flex items-center space-x-2.5 space-x-reverse">
+                  <div className="w-8 h-8 bg-amber-950 text-amber-400 border border-amber-800 rounded-xl flex items-center justify-center">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2 space-x-reverse">
+                      <span className="text-xs font-bold text-stone-100">
+                        العميل: {selectedCustomer.name}
+                      </span>
+                      <span className="text-[10px] text-amber-400 font-mono bg-stone-900 px-1.5 py-0.5 rounded border border-stone-800">
+                        📞 {selectedCustomer.phone}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                      نقاط الولاء: {selectedCustomer.loyaltyPoints} | إجمالي المشتريات: {selectedCustomer.totalSpent.toLocaleString()} ج.م
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedCustomer(null)}
+                  className="p-1.5 text-stone-400 hover:text-white rounded-xl hover:bg-stone-800 transition-colors"
+                  title="إلغاء ربط الفاتورة بالعميل"
+                >
+                  <X className="w-4 h-4 text-rose-400" />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-stone-400 absolute right-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="ابحث عن اسم العميل أو رقم التليفون لربط الفاتورة بالحساب..."
+                    value={customerSearch}
+                    onFocus={() => setIsCustomerDropdownOpen(true)}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setIsCustomerDropdownOpen(true);
+                    }}
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-9 pl-10 py-2.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={() => setShowAddCustomerForm(!showAddCustomerForm)}
+                    className="absolute left-2 top-2 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[10px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
+                    title="إضافة عميل جديد"
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    <span>جديد</span>
+                  </button>
+                </div>
+
+                {/* Quick Add Customer Modal / Inline Form */}
+                {showAddCustomerForm && (
+                  <form onSubmit={handleCreateCustomer} className="mt-2 p-3 bg-stone-950 border border-stone-800 rounded-2xl space-y-2">
+                    <p className="text-xs font-bold text-amber-400">إضافة عميل جديد لقاعدة البيانات:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        placeholder="اسم العميل الكامل"
+                        value={newCustName}
+                        onChange={(e) => setNewCustName(e.target.value)}
+                        className="bg-stone-900 border border-stone-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                        required
+                      />
+                      <input
+                        type="tel"
+                        placeholder="رقم التليفون"
+                        value={newCustPhone}
+                        onChange={(e) => setNewCustPhone(e.target.value)}
+                        className="bg-stone-900 border border-stone-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                        required
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2 space-x-reverse">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCustomerForm(false)}
+                        className="px-2.5 py-1 text-xs text-stone-400 hover:text-white"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl"
+                      >
+                        حفظ وربط بالفاتورة
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Customer Search Dropdown */}
+                {isCustomerDropdownOpen && !showAddCustomerForm && (
+                  <div className="absolute left-0 right-0 top-12 bg-stone-900 border border-stone-800 rounded-2xl shadow-2xl p-2 z-40 max-h-56 overflow-y-auto">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-stone-400 p-1 border-b border-stone-800 mb-1">
+                      <span>اختر عميلاً من قاعدة البيانات ({filteredCustomers.length}):</span>
+                      <button
+                        onClick={() => setIsCustomerDropdownOpen(false)}
+                        className="text-stone-500 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {filteredCustomers.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-stone-500">
+                        لم يتم العثور على عميل بهذا الاسم أو الرقم.
+                        <button
+                          onClick={() => setShowAddCustomerForm(true)}
+                          className="block mx-auto mt-1 text-amber-400 font-bold underline"
+                        >
+                          + اضغط هنا لإضافة عميل جديد
+                        </button>
+                      </div>
+                    ) : (
+                      filteredCustomers.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setSelectedCustomer(c);
+                            setIsCustomerDropdownOpen(false);
+                            setCustomerSearch('');
+                          }}
+                          className="w-full text-right p-2 rounded-xl hover:bg-stone-800 flex items-center justify-between text-xs text-stone-200 transition-colors"
+                        >
+                          <div>
+                            <span className="font-bold text-stone-100">{c.name}</span>
+                            <span className="block text-[10px] font-mono text-amber-400">
+                              📞 {c.phone}
+                            </span>
+                          </div>
+                          <div className="text-left font-mono text-[10px] text-stone-400">
+                            <span>{c.loyaltyPoints} نقطة</span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* ======================================================== */}
+        {/* 2. INVOICE ITEMS SINGLE-ROW TABLE                        */}
+        {/* ======================================================== */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {cart.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center text-stone-500 py-12">
+              <FileText className="w-14 h-14 stroke-[1.25] text-stone-700 mb-3" />
+              <p className="text-sm font-bold text-stone-300">الفاتورة فارغة حالياً</p>
+              <p className="text-xs text-stone-500 max-w-[240px] mt-1">
+                قم بالضغط على منتجات الكتالوج أو استخدم ماسح الباركود لإضافة الأصناف للفاتورة
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="text-[11px] font-extrabold text-stone-400 uppercase tracking-wider border-b border-stone-800 bg-stone-950/40">
+                    <th className="py-2.5 px-3">اسم الصنف</th>
+                    <th className="py-2.5 px-2 text-center">الكمية</th>
+                    <th className="py-2.5 px-2 text-center">السعر</th>
+                    <th className="py-2.5 px-2 text-center">إجمالي الصنف</th>
+                    <th className="py-2.5 px-2 text-center">البائع</th>
+                    <th className="py-2.5 px-1 text-center">حذف</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-800/60">
+                  {cart.map((item) => {
+                    // Active price based on current selected price tier
+                    const unitPrice =
+                      globalPriceTier === 'cash'
+                        ? item.product.priceCash
+                        : globalPriceTier === 'installment'
+                        ? item.product.priceInstallment
+                        : item.product.priceWholesale;
+
+                    const lineTotal = (unitPrice * item.quantity * (100 - item.discountPercent)) / 100;
+                    
+                    const itemAssociate = item.assignedAssociateId
+                      ? associates.find((a) => a.id === item.assignedAssociateId)
+                      : currentAssociate;
+
+                    return (
+                      <tr
+                        key={item.product.id}
+                        className="hover:bg-stone-950/80 transition-colors text-xs text-stone-200"
+                      >
+                        {/* 1. اسم الصنف */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center space-x-2.5 space-x-reverse min-w-[160px]">
+                            <img
+                              src={item.product.image}
+                              alt={item.product.name}
+                              className="w-9 h-9 rounded-lg object-cover bg-stone-950 border border-stone-800"
+                            />
+                            <div className="min-w-0">
+                              <span className="font-bold text-stone-100 block truncate">
+                                {item.product.name}
+                              </span>
+                              <span className="text-[10px] font-mono text-stone-500 block">
+                                {item.product.sku}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. الكمية */}
+                        <td className="py-3 px-2 text-center">
+                          <div className="inline-flex items-center space-x-1 space-x-reverse bg-stone-950 border border-stone-800 rounded-xl p-1">
+                            <button
+                              onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
+                              className="p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="w-7 text-center font-mono text-xs font-bold text-amber-400">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
+                              className="p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* 3. السعر */}
+                        <td className="py-3 px-2 text-center font-mono font-bold text-stone-300 whitespace-nowrap">
+                          {unitPrice.toLocaleString()} ج.م
+                          {item.discountPercent > 0 && (
+                            <span className="block text-[9px] text-emerald-400 font-sans">
+                              خصم {item.discountPercent}%
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 4. إجمالي الصنف */}
+                        <td className="py-3 px-2 text-center font-mono font-extrabold text-amber-400 whitespace-nowrap">
+                          {lineTotal.toLocaleString()} ج.م
+                        </td>
+
+                        {/* 5. البائع */}
+                        <td className="py-3 px-2 text-center">
+                          <select
+                            value={item.assignedAssociateId || currentAssociate.id}
+                            onChange={(e) =>
+                              updateCartItemAssociate(item.product.id, e.target.value)
+                            }
+                            className="bg-stone-950 border border-stone-800 text-[10px] font-bold text-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500"
+                          >
+                            {associates.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name.split(' ')[0]} ({a.pin})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* حذف الصنف */}
+                        <td className="py-3 px-1 text-center">
+                          <button
+                            onClick={() => removeFromCart(item.product.id)}
+                            className="p-1.5 text-stone-500 hover:text-rose-400 hover:bg-stone-800 rounded-lg transition-colors"
+                            title="حذف من الفاتورة"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ======================================================== */}
+        {/* 3. FOOTER TOTALS & SUBMIT INVOICE BUTTON                  */}
+        {/* ======================================================== */}
+        <div className="p-4 bg-stone-950 border-t border-stone-800 space-y-3">
+          
+          <div className="space-y-1.5 text-xs text-stone-400">
+            <div className="flex justify-between">
+              <span>المجموع الفرعي (عدد الأصناف: {cart.reduce((a, c) => a + c.quantity, 0)})</span>
+              <span className="font-mono text-stone-200 font-bold">{subtotal.toLocaleString()} ج.م</span>
+            </div>
+
+            {discountTotal > 0 && (
+              <div className="flex justify-between text-emerald-400 font-bold">
+                <span>إجمالي الخصم</span>
+                <span className="font-mono">-{discountTotal.toLocaleString()} ج.م</span>
+              </div>
+            )}
+
+            <div className="flex justify-between text-stone-400">
+              <span>ضريبة المبيعات والقيمة المضافة ({(taxRate * 100).toFixed(0)}%)</span>
+              <span className="font-mono text-stone-200">{taxTotal.toLocaleString()} ج.م</span>
+            </div>
+
+            <div className="flex justify-between text-lg font-extrabold text-white pt-2 border-t border-stone-800">
+              <span>إجمالي الفاتورة النهائي</span>
+              <span className="font-mono text-amber-400">{grandTotal.toLocaleString()} ج.م</span>
+            </div>
+          </div>
+
+          <div className="flex space-x-2 space-x-reverse pt-1">
+            {cart.length > 0 && (
+              <button
+                onClick={clearCart}
+                className="px-3 py-3 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 rounded-2xl border border-stone-800 transition-colors"
+                title="تفريغ الفاتورة بالكامل"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+              </button>
+            )}
+
+            <button
+              onClick={onOpenCheckout}
+              disabled={cart.length === 0}
+              className="flex-1 py-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:hover:bg-amber-600 text-white rounded-2xl font-extrabold text-sm shadow-xl shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all active:scale-[0.99]"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>إتمام الفاتورة والدفع ({grandTotal.toLocaleString()} ج.م)</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Split Associate Modal */}
+      <SplitAssociateModal
+        isOpen={isSplitModalOpen}
+        onClose={() => setIsSplitModalOpen(false)}
+      />
+    </>
+  );
+};
+
+export default CartSidebar;

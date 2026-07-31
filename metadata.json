@@ -1,0 +1,6 @@
+{
+  "name": "Associate Sales POS",
+  "description": "Point of Sale system supporting sales associate attribution, commission tracking, split sales, shift management, catalog search, and sales reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -20,15 +20,16 @@ export async function checkSupabaseConnection(): Promise<boolean> {
 export async function syncProductToSupabase(product: Product) {
   try {
     await supabase.from('products').upsert({
-      id: product.id,
+      id: product.id || product.sku,
       name: product.name,
-      sku: product.sku,
+      sku: product.sku || product.id,
       barcode: product.barcode,
       category: product.category,
-      cost_price: product.cost,
+      price: product.priceCash,
       cash_price: product.priceCash,
-      installment_price: product.priceInstallment,
       wholesale_price: product.priceWholesale,
+      cost_price: product.cost,
+      installment_price: product.priceInstallment,
       stock_quantity: product.stock,
       image_url: product.image,
       updated_at: new Date().toISOString(),

@@ -53,13 +53,16 @@ export const RegisterView: React.FC = () => {
   const [completedTransaction, setCompletedTransaction] = useState<Transaction | null>(null);
   const [addedAnimationId, setAddedAnimationId] = useState<string | null>(null);
 
-  const categories = [
-    'الكل',
-    'أطقم طهي وحلل',
-    'أجهزة كهربائية صغيرة',
-    'أطقم سفرة وكاسات',
-    'ملاعق وأدوات مائدة',
-  ];
+  // Dynamically extract unique categories from products table
+  const dynamicCategories = Array.from(
+    new Set(
+      products
+        .map((p) => p.category?.trim())
+        .filter((cat): cat is string => Boolean(cat && cat !== 'الكل'))
+    )
+  );
+
+  const categories = ['الكل', ...dynamicCategories];
 
   const handleBarcodeScan = (e: React.FormEvent) => {
     e.preventDefault();

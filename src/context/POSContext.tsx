@@ -125,14 +125,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const { data: prodData } = await supabase.from('products').select('*');
         if (prodData && prodData.length > 0) {
           const mappedProducts: Product[] = prodData.map((p: any) => ({
-            id: p.id || `prod_${Date.now()}_${Math.random()}`,
+            id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
             name: p.name || 'منتج',
-            sku: p.sku || 'SKU-000',
-            barcode: p.barcode || '000000',
+            sku: String(p.sku ?? p.id ?? 'SKU-000'),
+            barcode: String(p.barcode || p.sku || p.id || '000000'),
             category: p.category || 'عام',
-            priceCash: Number(p.cash_price ?? p.priceCash ?? p.price_cash ?? 0),
+            priceCash: Number(p.price ?? p.cash_price ?? p.priceCash ?? p.price_cash ?? 0),
             priceInstallment: Number(p.installment_price ?? p.priceInstallment ?? p.price_installment ?? 0),
-            priceWholesale: Number(p.wholesale_price ?? p.priceWholesale ?? p.price_wholesale ?? 0),
+            priceWholesale: Number(p.wholesale_price ?? p.price_wholesale ?? p.priceWholesale ?? 0),
             cost: Number(p.cost_price ?? p.cost ?? 0),
             stock: Number(p.stock_quantity ?? p.stock ?? 0),
             image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
@@ -144,22 +144,30 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // 2. Fetch associates from Supabase
         const { data: assocData } = await supabase.from('associates').select('*');
         if (assocData && assocData.length > 0) {
-          const mapped: Associate[] = assocData.map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            username: a.username,
-            password: a.password || a.pin || '1234',
-            pin: a.pin || '1234',
+          const mappedFromDb: Associate[] = assocData.map((a: any) => ({
+            id: String(a.id),
+            name: a.name || 'موظف',
+            username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${a.id}`,
+            password: String(a.password || a.pin || a.pass || '1001'),
+            pin: String(a.pin || a.password || a.pass || '1001'),
             role: a.role || 'مسؤول مبيعات',
             avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
             email: a.email || '',
             phone: a.phone || '',
-            commissionRate: a.commission_rate || 0.05,
-            dailyGoal: a.daily_goal || 5000,
-            hourlyRate: a.hourly_rate || 25,
+            commissionRate: Number(a.commission_rate ?? a.commissionRate ?? 0.05),
+            dailyGoal: Number(a.daily_goal ?? a.dailyGoal ?? 5000),
+            hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
             isClockedIn: false,
           }));
-          setAssociates(mapped);
+
+          setAssociates((prev) => {
+            const map = new Map<string, Associate>();
+            // Always include built-in initial associates
+            INITIAL_ASSOCIATES.forEach((initAssoc) => map.set(initAssoc.id, initAssoc));
+            // Add/override with DB associates
+            mappedFromDb.forEach((dbAssoc) => map.set(dbAssoc.id, dbAssoc));
+            return Array.from(map.values());
+          });
         }
 
         // 3. Fetch customers from Supabase
@@ -507,7 +515,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addProduct = (prodData: Omit<Product, 'id'>) => {
     const newProduct: Product = {
       ...prodData,
-      id: `prod_${Date.now()}`,
+      id: prodData.sku || prodData.barcode || `prod_${Date.now()}`,
     };
     setProducts((prev) => [newProduct, ...prev]);
     syncProductToSupabase(newProduct);

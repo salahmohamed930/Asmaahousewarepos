@@ -36,13 +36,16 @@ export const CatalogView: React.FC = () => {
     description: '',
   });
 
-  const categories = [
-    'الكل',
-    'أطقم طهي وحلل',
-    'أجهزة كهربائية صغيرة',
-    'أطقم سفرة وكاسات',
-    'ملاعق وأدوات مائدة',
-  ];
+  // Dynamically extract unique categories from products table
+  const existingCategories = Array.from(
+    new Set(
+      products
+        .map((p) => p.category?.trim())
+        .filter((cat): cat is string => Boolean(cat && cat !== 'الكل'))
+    )
+  );
+
+  const categories = ['الكل', ...existingCategories];
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -304,16 +307,20 @@ export const CatalogView: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-stone-400 mb-1">القسم / التصنيف</label>
-                  <select
+                  <input
+                    type="text"
+                    list="category-options"
+                    required
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    placeholder="اختر أو اكتب قسماً جديداً..."
                     className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 focus:outline-none"
-                  >
-                    <option value="أطقم طهي وحلل">أطقم طهي وحلل</option>
-                    <option value="أجهزة كهربائية صغيرة">أجهزة كهربائية صغيرة</option>
-                    <option value="أطقم سفرة وكاسات">أطقم سفرة وكاسات</option>
-                    <option value="ملاعق وأدوات مائدة">ملاعق وأدوات مائدة</option>
-                  </select>
+                  />
+                  <datalist id="category-options">
+                    {existingCategories.map((cat) => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>

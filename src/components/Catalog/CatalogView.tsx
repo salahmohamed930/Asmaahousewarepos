@@ -169,83 +169,80 @@ export const CatalogView: React.FC = () => {
 
       </div>
 
-      {/* Products Catalog Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Products Catalog Grid - Compact Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
         {filteredProducts.map((p) => {
           const isLow = p.stock <= 5;
 
           return (
             <div
               key={p.id}
-              className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4"
+              className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-2xl p-3 shadow-md flex flex-col justify-between space-y-2.5 transition-all"
             >
               <div>
-                <div className="flex items-start space-x-4 space-x-reverse mb-3">
+                <div className="flex items-center space-x-2.5 space-x-reverse mb-2">
                   <img
                     src={p.image}
                     alt={p.name}
-                    className="w-16 h-16 rounded-2xl object-cover bg-stone-950 border border-stone-800"
+                    className="w-11 h-11 rounded-xl object-cover bg-stone-950 border border-stone-800 shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <span className="text-[10px] bg-stone-950 text-stone-400 border border-stone-800 px-2 py-0.5 rounded font-bold uppercase block w-fit mb-1">
+                    <span className="text-[9px] bg-stone-950 text-stone-400 border border-stone-800/80 px-1.5 py-0.5 rounded font-bold uppercase inline-block mb-0.5 truncate max-w-full">
                       {p.category}
                     </span>
-                    <h3 className="text-xs font-extrabold text-stone-100 line-clamp-2">{p.name}</h3>
-                    <p className="text-[10px] text-stone-500 font-mono mt-0.5">
+                    <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
+                    <p className="text-[9px] text-stone-500 font-mono">
                       كود: {p.sku} | باركود: {p.barcode}
                     </p>
                   </div>
                 </div>
 
-                {/* 3 Price Tiers Grid */}
-                <div className="bg-stone-950 border border-stone-800 rounded-2xl p-3 grid grid-cols-3 gap-2 text-center text-xs mb-3">
+                {/* 3 Price Tiers Grid - Compact */}
+                <div className="bg-stone-950 border border-stone-800/80 rounded-xl p-2 grid grid-cols-3 gap-1 text-center text-[10px] mb-2">
                   <div>
-                    <span className="text-[10px] text-emerald-400 font-bold block">سعر الكاش</span>
-                    <span className="font-mono font-extrabold text-stone-100">
-                      {p.priceCash.toLocaleString()}
+                    <span className="text-[9px] text-emerald-400 font-bold block">كاش</span>
+                    <span className="font-mono font-bold text-stone-100">
+                      {(p.priceCash || 0).toLocaleString()}
                     </span>
                   </div>
 
                   <div>
-                    <span className="text-[10px] text-amber-400 font-bold block">سعر التقسيط</span>
-                    <span className="font-mono font-extrabold text-stone-100">
-                      {p.priceInstallment.toLocaleString()}
+                    <span className="text-[9px] text-amber-400 font-bold block">تقسيط</span>
+                    <span className="font-mono font-bold text-stone-100">
+                      {(p.priceInstallment || 0).toLocaleString()}
                     </span>
                   </div>
 
                   <div>
-                    <span className="text-[10px] text-indigo-400 font-bold block">سعر الجملة</span>
-                    <span className="font-mono font-extrabold text-stone-100">
-                      {p.priceWholesale.toLocaleString()}
+                    <span className="text-[9px] text-indigo-400 font-bold block">جملة</span>
+                    <span className="font-mono font-bold text-stone-100">
+                      {(p.priceWholesale || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
 
-                {/* Profit Margin & Stock */}
-                <div className="flex justify-between items-center text-xs text-stone-400 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80">
-                  <div>
-                    <span className="text-[10px] text-stone-500 block">التكلفة والربح:</span>
-                    <span className="font-mono font-bold text-stone-300">
-                      تكلفة: {p.cost} ج.م | هامش: +{(p.priceCash - p.cost).toLocaleString()} ج.م
-                    </span>
-                  </div>
+                {/* Profit Margin & Stock - Compact */}
+                <div className="flex justify-between items-center text-[10px] text-stone-400 bg-stone-950/40 px-2 py-1.5 rounded-lg border border-stone-800/60">
+                  <span className="font-mono text-stone-400">
+                    تكلفة: <strong className="text-stone-300">{p.cost || 0}</strong> ج.م
+                  </span>
 
                   <span
-                    className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                    className={`px-1.5 py-0.5 rounded font-mono font-bold text-[10px] ${
                       isLow ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'text-emerald-400'
                     }`}
                   >
-                    المخزون: {p.stock}
+                    مخزون: {p.stock}
                   </span>
                 </div>
               </div>
 
               <button
                 onClick={() => handleOpenEdit(p)}
-                className="w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center space-x-2 space-x-reverse"
+                className="w-full py-1.5 bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse"
               >
-                <Edit className="w-4 h-4" />
-                <span>تعديل الأسعار والمخزون</span>
+                <Edit className="w-3.5 h-3.5" />
+                <span>تعديل الصنف</span>
               </button>
 
             </div>

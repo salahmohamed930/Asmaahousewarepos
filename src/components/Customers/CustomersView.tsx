@@ -105,11 +105,9 @@ export const CustomersView: React.FC = () => {
             >
               <div>
                 <div className="flex items-center space-x-3 space-x-reverse mb-3">
-                  <img
-                    src={cust.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80'}
-                    alt={cust.name}
-                    className="w-12 h-12 rounded-2xl object-cover ring-2 ring-stone-800"
-                  />
+                  <div className="w-11 h-11 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
                   <div>
                     <h3 className="text-sm font-extrabold text-stone-100">{cust.name}</h3>
                     <p className="text-xs text-amber-400 font-mono flex items-center space-x-1 space-x-reverse">
@@ -135,7 +133,7 @@ export const CustomersView: React.FC = () => {
                       إجمالي المشتريات
                     </span>
                     <span className="font-mono font-extrabold text-stone-100">
-                      {cust.totalSpent.toLocaleString()} ج.م
+                      {(cust.totalSpent || 0).toLocaleString()} ج.م
                     </span>
                   </div>
                 </div>

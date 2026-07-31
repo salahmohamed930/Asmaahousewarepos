@@ -4,6 +4,8 @@ export const INITIAL_ASSOCIATES: Associate[] = [
   {
     id: 'assoc_1',
     name: 'أسماء علي',
+    username: 'asmaa',
+    password: '1001',
     pin: '1001',
     role: 'مدير الفرع',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=250&q=80',
@@ -18,6 +20,8 @@ export const INITIAL_ASSOCIATES: Associate[] = [
   {
     id: 'assoc_2',
     name: 'أحمد محمود',
+    username: 'ahmed',
+    password: '1002',
     pin: '1002',
     role: 'بائع أول',
     avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=250&q=80',
@@ -32,6 +36,8 @@ export const INITIAL_ASSOCIATES: Associate[] = [
   {
     id: 'assoc_3',
     name: 'فاطمة حسن',
+    username: 'fatma',
+    password: '1003',
     pin: '1003',
     role: 'مشرف قسم',
     avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=250&q=80',
@@ -46,6 +52,8 @@ export const INITIAL_ASSOCIATES: Associate[] = [
   {
     id: 'assoc_4',
     name: 'محمد إبراهيم',
+    username: 'mohamed',
+    password: '1004',
     pin: '1004',
     role: 'مسؤول مبيعات',
     avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=250&q=80',

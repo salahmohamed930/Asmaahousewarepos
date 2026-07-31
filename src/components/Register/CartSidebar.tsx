@@ -24,6 +24,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     cart,
     currentAssociate,
     associates,
+    quickSwitchByPin,
     customers,
     selectedCustomer,
     setSelectedCustomer,
@@ -42,6 +43,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [showAddCustomerForm, setShowAddCustomerForm] = useState(false);
+
+  // Seller PIN state - starts EMPTY by default as requested!
+  const [sellerPinInput, setSellerPinInput] = useState('');
 
   // New quick customer state
   const [newCustName, setNewCustName] = useState('');
@@ -112,33 +116,53 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
       <div className="bg-stone-900 border border-stone-800 rounded-3xl flex flex-col h-[calc(100vh-6.5rem)] shadow-2xl overflow-hidden dir-rtl">
         
         {/* ======================================================== */}
-        {/* 1. HEADER OF INVOICE: CASHIER, SELLER CODE, & CUSTOMER   */}
+        {/* 1. HEADER OF INVOICE: SELLER CODE ONLY & CUSTOMER        */}
         {/* ======================================================== */}
         <div className="p-4 bg-stone-950/90 border-b border-stone-800 space-y-3">
           
-          {/* Top Bar: Cashier & Seller Code + Split Sales */}
+          {/* Top Bar: Seller Code ONLY (No image, no name) + Split Sales */}
           <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-900 border border-stone-800 p-3 rounded-2xl">
             
-            {/* Cashier Name & Seller Code */}
-            <div className="flex items-center space-x-3 space-x-reverse min-w-0">
-              <img
-                src={currentAssociate.avatar}
-                alt={currentAssociate.name}
-                className="w-10 h-10 rounded-xl object-cover ring-2 ring-amber-500/50"
-              />
-              <div className="min-w-0">
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  <span className="text-xs font-extrabold text-white truncate">
-                    الكاشير: {currentAssociate.name}
-                  </span>
-                  <span className="text-[10px] font-mono text-amber-400 bg-amber-950 border border-amber-800 px-2 py-0.5 rounded font-bold">
-                    كود البائع: {currentAssociate.pin}
-                  </span>
-                </div>
-                <p className="text-[10px] text-stone-400 mt-0.5">
-                  العمولة: {(currentAssociate.commissionRate * 100).toFixed(0)}% • الوظيفة: {currentAssociate.role}
-                </p>
+            {/* Seller Code Field ONLY */}
+            <div className="flex items-center space-x-2.5 space-x-reverse min-w-0">
+              <span className="text-xs font-bold text-stone-300 whitespace-nowrap">
+                كود البائع:
+              </span>
+              
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  placeholder="أدخل كود البائع (مثلاً 101)..."
+                  value={sellerPinInput}
+                  onChange={(e) => {
+                    const pin = e.target.value;
+                    setSellerPinInput(pin);
+                    if (pin.trim()) {
+                      quickSwitchByPin(pin.trim());
+                    }
+                  }}
+                  className="bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-1.5 text-xs text-amber-400 font-mono font-bold w-48 focus:outline-none placeholder-stone-600"
+                />
+                {sellerPinInput ? (
+                  <button
+                    onClick={() => setSellerPinInput('')}
+                    className="absolute left-2 text-stone-500 hover:text-rose-400 p-0.5"
+                    title="تفريغ الكود"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : null}
               </div>
+
+              {!sellerPinInput ? (
+                <span className="text-[10px] text-amber-500 font-bold bg-amber-950/60 border border-amber-900 px-2 py-0.5 rounded-lg whitespace-nowrap">
+                  (فارغ - يرجي إدخال الكود)
+                </span>
+              ) : (
+                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded-lg whitespace-nowrap">
+                  تم التحديد ✓
+                </span>
+              )}
             </div>
 
             {/* Co-seller split button */}
@@ -416,7 +440,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                           >
                             {associates.map((a) => (
                               <option key={a.id} value={a.id}>
-                                {a.name.split(' ')[0]} ({a.pin})
+                                كود: {a.pin}
                               </option>
                             ))}
                           </select>

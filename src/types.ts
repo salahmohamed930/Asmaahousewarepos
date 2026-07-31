@@ -5,6 +5,8 @@ export type Role = 'مسؤول مبيعات' | 'بائع أول' | 'مشرف ق�
 export interface Associate {
   id: string;
   name: string;
+  username: string;
+  password?: string;
   pin: string;
   role: Role;
   avatar: string;

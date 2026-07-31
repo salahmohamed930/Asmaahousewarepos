@@ -95,9 +95,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
   });
 
-  const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(() => {
-    return associates.find((a) => a.isClockedIn) || associates[0] || null;
-  });
+  const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);

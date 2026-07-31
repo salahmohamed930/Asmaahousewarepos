@@ -1,6 +1,7 @@
 import React from 'react';
 import { Transaction } from '../../types';
-import { Printer, CheckCircle, Mail, X, ShoppingBag, Sparkles, User } from 'lucide-react';
+import { Printer, X, ShoppingBag, Sparkles, User, Hash } from 'lucide-react';
+import { usePOS } from '../../context/POSContext';
 
 interface ReceiptModalProps {
   transaction: Transaction | null;
@@ -8,20 +9,30 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose }) => {
+  const { associates } = usePOS();
   if (!transaction) return null;
 
   const handlePrint = () => {
     window.print();
   };
 
+  const primaryAssoc = associates.find(
+    (a) => a.id === transaction.primaryAssociateId || a.id === (transaction as any).associateId
+  );
+  const sellerPinCode = primaryAssoc ? primaryAssoc.pin : '101';
+
+  const subtotal = transaction.subtotal || 0;
+  const discountTotal = transaction.discountTotal || 0;
+  const grandTotal = transaction.grandTotal || subtotal - discountTotal;
+
   return (
-    <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto dir-rtl">
       <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-stone-100 my-8">
         
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
+          className="absolute top-4 left-4 text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -30,60 +41,76 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
         <div id="printable-receipt" className="bg-stone-50 text-stone-900 rounded-2xl p-6 font-sans text-xs shadow-inner">
           
           {/* Receipt Header */}
-          <div className="text-center pb-4 border-b border-dashed border-stone-300">
-            <div className="w-10 h-10 bg-stone-900 text-stone-100 rounded-full flex items-center justify-center mx-auto mb-2">
+          <div className="text-center pb-4 border-b border-dashed border-stone-300 space-y-1">
+            <div className="w-10 h-10 bg-amber-600 text-white rounded-full flex items-center justify-center mx-auto mb-1 shadow-sm">
               <ShoppingBag className="w-5 h-5" />
             </div>
-            <h1 className="text-base font-extrabold tracking-tight uppercase">Apex Retail</h1>
-            <p className="text-[10px] text-stone-500">5th Avenue Flagship Store • Terminal #01</p>
-            <p className="text-[10px] text-stone-500 font-mono mt-1">{transaction.receiptNumber}</p>
-            <p className="text-[10px] text-stone-400">
-              {new Date(transaction.timestamp).toLocaleString()}
+            <h1 className="text-base font-extrabold tracking-tight text-stone-900">
+              أسماء للأدوات المنزلية
+            </h1>
+            <p className="text-[10px] text-stone-500 font-bold">فاتورة مبيعات رقمية ورقية</p>
+            <p className="text-[11px] text-amber-700 font-mono font-extrabold mt-1">
+              رقم الفاتورة: #{transaction.receiptNumber}
+            </p>
+            <p className="text-[10px] text-stone-500 font-mono">
+              {new Date(transaction.timestamp).toLocaleString('ar-EG')}
             </p>
           </div>
 
-          {/* Customer & Associate Meta */}
-          <div className="py-3 border-b border-dashed border-stone-300 space-y-1 text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-stone-500">Sales Associate:</span>
-              <span className="font-bold text-stone-800">{transaction.primaryAssociateName}</span>
+          {/* Customer & Seller PIN Meta */}
+          <div className="py-3 border-b border-dashed border-stone-300 space-y-1.5 text-[11px]">
+            <div className="flex justify-between items-center">
+              <span className="text-stone-500 font-bold">كود البائع:</span>
+              <span className="font-mono font-extrabold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
+                كود: {sellerPinCode}
+              </span>
             </div>
+
             {transaction.customerName && (
-              <div className="flex justify-between">
-                <span className="text-stone-500">Customer:</span>
-                <span className="font-medium text-stone-800">{transaction.customerName}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-stone-500 font-bold">العميل:</span>
+                <span className="font-bold text-stone-800">
+                  {transaction.customerName}
+                </span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-stone-500">Payment Method:</span>
-              <span className="font-medium text-stone-800">{transaction.paymentMethod}</span>
+
+            <div className="flex justify-between items-center">
+              <span className="text-stone-500 font-bold">طريقة الدفع:</span>
+              <span className="font-bold text-stone-800">
+                {transaction.paymentMethod === 'cash' || transaction.paymentMethod === 'كاش'
+                  ? 'كاش 💵'
+                  : transaction.paymentMethod === 'installment' || transaction.paymentMethod === 'تقسيط شهري'
+                  ? 'تقسيط 📅'
+                  : 'بطاقة / جملة 💳'}
+              </span>
             </div>
           </div>
 
           {/* Line Items */}
           <div className="py-3 border-b border-dashed border-stone-300">
-            <table className="w-full text-left">
+            <table className="w-full text-right">
               <thead>
-                <tr className="text-[10px] uppercase text-stone-400 border-b border-stone-200">
-                  <th className="pb-1">Item</th>
-                  <th className="pb-1 text-center">Qty</th>
-                  <th className="pb-1 text-right">Price</th>
-                  <th className="pb-1 text-right">Total</th>
+                <tr className="text-[10px] uppercase text-stone-500 border-b border-stone-200">
+                  <th className="pb-1">الصنف</th>
+                  <th className="pb-1 text-center">الكمية</th>
+                  <th className="pb-1 text-center">السعر</th>
+                  <th className="pb-1 text-left">الإجمالي</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {transaction.items.map((item, idx) => (
                   <tr key={idx} className="text-[11px]">
-                    <td className="py-1.5 pr-1 font-medium text-stone-800 leading-tight">
+                    <td className="py-1.5 pl-1 font-bold text-stone-800 leading-tight">
                       {item.productName}
                       <span className="block text-[9px] text-stone-400 font-mono">{item.sku}</span>
                     </td>
-                    <td className="py-1.5 text-center font-mono text-stone-600">{item.quantity}</td>
-                    <td className="py-1.5 text-right font-mono text-stone-600">
-                      ${item.unitPrice.toFixed(2)}
+                    <td className="py-1.5 text-center font-mono text-stone-700">{item.quantity}</td>
+                    <td className="py-1.5 text-center font-mono text-stone-700">
+                      {(item.unitPrice || 0).toLocaleString()}
                     </td>
-                    <td className="py-1.5 text-right font-mono font-bold text-stone-800">
-                      ${item.totalPrice.toFixed(2)}
+                    <td className="py-1.5 text-left font-mono font-bold text-stone-900">
+                      {(item.totalPrice || 0).toLocaleString()} ج.م
                     </td>
                   </tr>
                 ))}
@@ -92,90 +119,42 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
           </div>
 
           {/* Financial Totals */}
-          <div className="py-3 border-b border-dashed border-stone-300 space-y-1.5 text-xs">
+          <div className="py-3 space-y-1.5 text-xs">
             <div className="flex justify-between text-stone-600">
-              <span>Subtotal</span>
-              <span className="font-mono">${transaction.subtotal.toFixed(2)}</span>
+              <span>المجموع الفرعي:</span>
+              <span className="font-mono font-bold">{subtotal.toLocaleString()} ج.م</span>
             </div>
 
-            {transaction.discountTotal > 0 && (
-              <div className="flex justify-between text-emerald-600">
-                <span>Discounts</span>
-                <span className="font-mono">-${transaction.discountTotal.toFixed(2)}</span>
+            {discountTotal > 0 && (
+              <div className="flex justify-between text-emerald-700 font-bold">
+                <span>إجمالي الخصم:</span>
+                <span className="font-mono">-{discountTotal.toLocaleString()} ج.م</span>
               </div>
             )}
 
-            <div className="flex justify-between text-stone-600">
-              <span>Sales Tax</span>
-              <span className="font-mono">${transaction.taxTotal.toFixed(2)}</span>
-            </div>
-
-            {transaction.tipTotal > 0 && (
-              <div className="flex justify-between text-indigo-600">
-                <span>Associate Tip</span>
-                <span className="font-mono">+${transaction.tipTotal.toFixed(2)}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between text-sm font-extrabold text-stone-900 pt-1 border-t border-stone-200">
-              <span>Grand Total</span>
-              <span className="font-mono">${transaction.grandTotal.toFixed(2)}</span>
-            </div>
-          </div>
-
-          {/* Associate Commission Attribution Summary */}
-          <div className="pt-3 bg-emerald-50 -mx-6 -mb-6 p-4 rounded-b-2xl border-t border-emerald-100">
-            <div className="flex items-center space-x-1 text-[11px] font-bold text-emerald-900 uppercase tracking-wider mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Associate Sales Attribution</span>
-            </div>
-
-            <div className="space-y-1 text-[11px]">
-              {transaction.commissions.map((comm, idx) => (
-                <div key={idx} className="flex justify-between items-center text-emerald-950">
-                  <span>
-                    {comm.associateName}{' '}
-                    <span className="text-[9px] text-emerald-700">({comm.sharePercentage}%)</span>
-                  </span>
-                  <div className="text-right font-mono font-semibold">
-                    ${comm.saleAmount.toFixed(2)}{' '}
-                    <span className="text-[10px] text-emerald-600">
-                      (+${comm.commissionAmount.toFixed(2)} comm)
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex justify-between text-sm font-extrabold text-stone-950 pt-1.5 border-t border-stone-300">
+              <span>الإجمالي النهائي:</span>
+              <span className="font-mono text-amber-800">{grandTotal.toLocaleString()} ج.م</span>
             </div>
           </div>
 
         </div>
 
         {/* Action Controls */}
-        <div className="mt-6 flex items-center space-x-2">
+        <div className="mt-5 flex items-center space-x-2 space-x-reverse">
           <button
             onClick={handlePrint}
-            className="flex-1 py-3 bg-stone-800 hover:bg-stone-700 text-stone-100 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 border border-stone-700 transition-colors"
+            className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse transition-colors shadow-lg"
           >
-            <Printer className="w-4 h-4 text-stone-300" />
-            <span>Print Receipt</span>
-          </button>
-
-          <button
-            onClick={() => {
-              alert(`Receipt sent to ${transaction.customerName || 'Customer email'}`);
-            }}
-            className="p-3 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-xl border border-stone-700 transition-colors"
-            title="Email Receipt"
-          >
-            <Mail className="w-4 h-4" />
+            <Printer className="w-4 h-4" />
+            <span>طباعة الفاتورة</span>
           </button>
 
           <button
             onClick={onClose}
-            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950 transition-all flex items-center justify-center space-x-1.5"
+            className="py-3 px-5 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-2xl text-xs font-bold transition-colors"
           >
-            <CheckCircle className="w-4 h-4" />
-            <span>Done / Next Sale</span>
+            إغلاق
           </button>
         </div>
 

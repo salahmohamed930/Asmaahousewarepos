@@ -106,14 +106,14 @@ export const Header: React.FC = () => {
                 <RotateCcw className="w-4 h-4" />
               </button>
 
-              {/* PIN Quick Switch Button */}
+              {/* Login & PIN Quick Switch Button */}
               <button
                 onClick={() => setIsPinModalOpen(true)}
-                className="flex items-center space-x-1.5 space-x-reverse bg-stone-800 hover:bg-stone-700 text-stone-200 px-3 py-1.5 rounded-xl border border-stone-700 text-xs font-bold transition-all"
-                title="أدخل كود/رمز البائع للتبديل السريع"
+                className="flex items-center space-x-1.5 space-x-reverse bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-md transition-all active:scale-95"
+                title="تسجيل الدخول أو تبديل رمز البائع الكاشير"
               >
-                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">تبديل الرمز (PIN)</span>
+                <LogIn className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>تسجيل الدخول</span>
               </button>
 
               {/* Active Associate Selector Pill */}
@@ -193,35 +193,49 @@ export const Header: React.FC = () => {
                       ))}
                     </div>
 
-                    <div className="border-t border-stone-800 pt-2 px-2 flex justify-between items-center text-xs">
+                    <div className="border-t border-stone-800 pt-2 px-2 space-y-1 text-xs">
                       {currentAssociate && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (currentAssociate.isClockedIn) {
-                              clockOutAssociate(currentAssociate.id);
-                            } else {
-                              clockInAssociate(currentAssociate.id);
-                            }
-                          }}
-                          className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-colors ${
-                            currentAssociate.isClockedIn
-                              ? 'bg-amber-950/60 text-amber-300 hover:bg-amber-900/80 border border-amber-800/50'
-                              : 'bg-emerald-900/60 text-emerald-200 hover:bg-emerald-800/80 border border-emerald-800/50'
-                          }`}
-                        >
-                          {currentAssociate.isClockedIn ? (
-                            <>
-                              <LogOut className="w-3.5 h-3.5" />
-                              <span>تسجيل انصراف {currentAssociate.name.split(' ')[0]}</span>
-                            </>
-                          ) : (
-                            <>
-                              <LogIn className="w-3.5 h-3.5" />
-                              <span>تسجيل حضور {currentAssociate.name.split(' ')[0]}</span>
-                            </>
-                          )}
-                        </button>
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (currentAssociate.isClockedIn) {
+                                clockOutAssociate(currentAssociate.id);
+                              } else {
+                                clockInAssociate(currentAssociate.id);
+                              }
+                            }}
+                            className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-colors ${
+                              currentAssociate.isClockedIn
+                                ? 'bg-amber-950/60 text-amber-300 hover:bg-amber-900/80 border border-amber-800/50'
+                                : 'bg-emerald-900/60 text-emerald-200 hover:bg-emerald-800/80 border border-emerald-800/50'
+                            }`}
+                          >
+                            {currentAssociate.isClockedIn ? (
+                              <>
+                                <LogOut className="w-3.5 h-3.5" />
+                                <span>تسجيل انصراف {currentAssociate.name.split(' ')[0]}</span>
+                              </>
+                            ) : (
+                              <>
+                                <LogIn className="w-3.5 h-3.5" />
+                                <span>تسجيل حضور {currentAssociate.name.split(' ')[0]}</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentAssociate(null);
+                              setIsAssociateDropdownOpen(false);
+                            }}
+                            className="w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-colors bg-rose-950/60 text-rose-300 hover:bg-rose-900/80 border border-rose-900/50"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>تسجيل الخروج (صفحة الدخول)</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

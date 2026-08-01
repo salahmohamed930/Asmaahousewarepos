@@ -444,20 +444,6 @@ export const RegisterView: React.FC = () => {
                                 <Printer className="w-3.5 h-3.5" />
                                 <span>طباعة</span>
                               </button>
-
-                              {!isVoided && (
-                                <button
-                                  onClick={() => {
-                                    if (confirm(`هل أنت تأكد من إلغاء الفاتورة #${tx.receiptNumber}؟`)) {
-                                      voidTransaction(tx.id);
-                                    }
-                                  }}
-                                  className="p-1.5 text-stone-500 hover:text-rose-400 hover:bg-stone-800 rounded-xl transition-colors"
-                                  title="إلغاء الفاتورة"
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5" />
-                                </button>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -472,115 +458,131 @@ export const RegisterView: React.FC = () => {
         </div>
       ) : (
         /* ======================================================== */
-        /* 2. CREATE NEW INVOICE VIEW (CASHIER & CART SIDEBAR)       */
+        /* 2. CREATE NEW INVOICE VIEW (COMPACT CATALOG & CART)       */
         /* ======================================================== */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
-          {/* Dominant Product Selector Catalog (8 Cols - Dominant Share) */}
-          <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+          {/* Compact Product Selector Catalog (5 Cols) */}
+          <div className="lg:col-span-5 xl:col-span-5 space-y-3">
             
             {/* Header Controls inside Catalog */}
-            <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 shadow-xl space-y-3">
+            <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-xl space-y-2.5">
               
               {/* Row 1: Back to Invoices List button (Top of Catalog ONLY) & Title */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-800/80 pb-3">
+              <div className="flex items-center justify-between gap-2 border-b border-stone-800/80 pb-2">
                 <button
                   onClick={() => setViewMode('history')}
-                  className="px-3.5 py-2 bg-stone-800 hover:bg-amber-600 text-stone-200 hover:text-white rounded-2xl text-xs font-bold flex items-center space-x-2 space-x-reverse transition-all active:scale-95 shadow-sm"
+                  className="px-2.5 py-1.5 bg-stone-800 hover:bg-amber-600 text-stone-200 hover:text-white rounded-xl text-[11px] font-bold flex items-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-sm"
                 >
-                  <ArrowRight className="w-4 h-4 text-amber-400" />
-                  <span>العودة لقائمة الفواتير</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+                  <span>العودة للفواتير</span>
                 </button>
 
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  <span className="text-xs font-extrabold text-amber-400 bg-amber-950 border border-amber-800 px-3 py-1 rounded-xl flex items-center gap-1.5">
-                    <Package className="w-4 h-4" />
-                    <span>قائمة الأصناف ({filteredProducts.length} صنف)</span>
+                <div className="flex items-center space-x-1.5 space-x-reverse">
+                  <span className="text-[11px] font-extrabold text-amber-400 bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+                    <Package className="w-3.5 h-3.5" />
+                    <span>كتالوج الاصناف ({filteredProducts.length})</span>
                   </span>
                 </div>
               </div>
 
-              {/* Row 2: Seller Code Input ("كود البائع") - Moved into Catalog */}
-              <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center space-x-2.5 space-x-reverse flex-1 min-w-[220px]">
-                  <span className="text-xs font-bold text-stone-200 whitespace-nowrap">
-                    كود البائع:
-                  </span>
-                  
-                  <div className="relative flex-1 max-w-xs flex items-center">
-                    <input
-                      type="text"
-                      placeholder="أدخل كود البائع (مثلاً 101)..."
-                      value={sellerPinInput}
-                      onChange={(e) => {
-                        const pin = e.target.value;
-                        setSellerPinInput(pin);
-                        if (pin.trim()) {
-                          quickSwitchByPin(pin.trim());
-                        }
-                      }}
-                      className="w-full bg-stone-900 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-1.5 text-xs text-amber-400 font-mono font-bold focus:outline-none placeholder-stone-600"
-                    />
-                    {sellerPinInput ? (
-                      <button
-                        onClick={() => {
-                          setSellerPinInput('');
-                        }}
-                        className="absolute left-2 text-stone-500 hover:text-rose-400 p-0.5"
-                        title="تفريغ الكود"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {currentAssociate ? (
-                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-800 px-2.5 py-1 rounded-lg whitespace-nowrap">
-                      كود: {currentAssociate.pin} ✓
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-amber-500 font-bold bg-amber-950/80 border border-amber-900 px-2 py-1 rounded-lg whitespace-nowrap">
-                      (يرجى إدخال كود البائع)
-                    </span>
-                  )}
+              {/* Row 2: Seller Code Input ("كود البائع") */}
+              <div className="bg-stone-950 border border-stone-800 p-2 rounded-xl flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-stone-200 whitespace-nowrap">
+                  كود البائع:
+                </span>
+                
+                <div className="relative flex-1 flex items-center">
+                  <input
+                    type="text"
+                    placeholder="كود البائع..."
+                    value={sellerPinInput}
+                    onChange={(e) => {
+                      const pin = e.target.value;
+                      setSellerPinInput(pin);
+                      if (pin.trim()) {
+                        quickSwitchByPin(pin.trim());
+                      }
+                    }}
+                    className="w-full bg-stone-900 border border-stone-800 focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs text-amber-400 font-mono font-bold focus:outline-none placeholder-stone-600"
+                  />
+                  {sellerPinInput ? (
+                    <button
+                      onClick={() => setSellerPinInput('')}
+                      className="absolute left-1.5 text-stone-500 hover:text-rose-400 p-0.5"
+                      title="تفريغ الكود"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  ) : null}
                 </div>
+
+                {currentAssociate ? (
+                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded whitespace-nowrap">
+                    كود: {currentAssociate.pin} ✓
+                  </span>
+                ) : (
+                  <span className="text-[9px] text-amber-500 font-bold bg-amber-950/80 border border-amber-900 px-1.5 py-0.5 rounded whitespace-nowrap">
+                    (أدخل كود)
+                  </span>
+                )}
               </div>
 
-              {/* Row 3: Product Search & Barcode Fast Scanner */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {/* Row 3: Product Search & Barcode Scanner */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {/* Product Search */}
                 <div className="relative">
-                  <Search className="w-4 h-4 text-stone-400 absolute right-3.5 top-3.5" />
+                  <Search className="w-3.5 h-3.5 text-stone-400 absolute right-2.5 top-2.5" />
                   <input
                     type="text"
-                    placeholder="بحث باسم المنتج، الكود، أو الباركود..."
+                    placeholder="بحث منتج أو كود..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-10 pl-4 py-2 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-8 pl-7 py-1.5 text-[11px] text-stone-100 placeholder-stone-500 focus:outline-none"
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute left-2 top-2 text-stone-400 hover:text-stone-200 p-0.5 rounded-md hover:bg-stone-800 transition-colors"
+                      title="مسح البحث"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
 
-                {/* Barcode Fast Scanner Input */}
+                {/* Barcode Scanner Input */}
                 <form onSubmit={handleBarcodeScan} className="relative">
-                  <Barcode className="w-4 h-4 text-amber-400 absolute right-3.5 top-3.5" />
+                  <Barcode className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2.5" />
                   <input
                     type="text"
-                    placeholder="ماسح الباركود (اضغط Enter)"
+                    placeholder="باركود + Enter"
                     value={barcodeInput}
                     onChange={(e) => setBarcodeInput(e.target.value)}
-                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-10 pl-4 py-2 text-xs font-mono text-stone-100 placeholder-stone-500 focus:outline-none"
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-8 pl-7 py-1.5 text-[11px] font-mono text-stone-100 placeholder-stone-500 focus:outline-none"
                   />
+                  {barcodeInput && (
+                    <button
+                      type="button"
+                      onClick={() => setBarcodeInput('')}
+                      className="absolute left-2 top-2 text-stone-400 hover:text-stone-200 p-0.5 rounded-md hover:bg-stone-800 transition-colors"
+                      title="مسح"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </form>
               </div>
 
               {/* Price Tier Selection */}
-              <div className="bg-stone-950 border border-stone-800 p-2 rounded-2xl flex items-center justify-between text-xs gap-2">
+              <div className="bg-stone-950 border border-stone-800 p-1.5 rounded-xl flex items-center justify-between text-[11px] gap-1.5">
                 <span className="font-bold text-stone-300 flex items-center space-x-1 space-x-reverse shrink-0">
-                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  <Tag className="w-3 h-3 text-amber-400" />
                   <span>التسعير:</span>
                 </span>
 
-                <div className="grid grid-cols-3 gap-1.5 flex-1">
+                <div className="grid grid-cols-3 gap-1 flex-1">
                   {[
                     { id: 'cash', label: 'كاش 💵' },
                     { id: 'installment', label: 'تقسيط 📅' },
@@ -589,7 +591,7 @@ export const RegisterView: React.FC = () => {
                     <button
                       key={tier.id}
                       onClick={() => setGlobalPriceTier(tier.id as PriceTier)}
-                      className={`py-1 rounded-xl font-bold text-[11px] transition-all text-center ${
+                      className={`py-0.5 rounded-lg font-bold text-[10px] transition-all text-center ${
                         globalPriceTier === tier.id
                           ? 'bg-amber-600 text-white shadow-sm'
                           : 'bg-stone-900 text-stone-400 hover:text-stone-200'
@@ -601,12 +603,10 @@ export const RegisterView: React.FC = () => {
                 </div>
               </div>
 
-              {/* CATEGORIES / SECTIONS ARE HIDDEN FOR DOMINANT ITEMS DISPLAY AS REQUESTED */}
-
             </div>
 
-            {/* Dominant Product Grid (Large multi-column view for max items display) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[calc(100vh-18rem)] overflow-y-auto pr-1">
+            {/* Compact Product List - Rendered as Rows */}
+            <div className="flex flex-col space-y-1.5 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
               {filteredProducts.map((product) => {
                 const isLowStock = product.stock <= 5;
                 const isOutOfStock = product.stock === 0;
@@ -623,48 +623,54 @@ export const RegisterView: React.FC = () => {
                   <div
                     key={product.id}
                     onClick={() => !isOutOfStock && triggerAddToCart(product)}
-                    className={`bg-stone-900 border border-stone-800 hover:border-amber-500/50 rounded-2xl p-2.5 flex flex-col justify-between transition-all group cursor-pointer relative shadow-sm hover:shadow-md ${
-                      isJustAdded ? 'scale-[0.98] border-amber-500 ring-2 ring-amber-500/40' : ''
+                    className={`bg-stone-900 border border-stone-800 hover:border-amber-500/60 rounded-xl p-2 flex items-center justify-between transition-all group cursor-pointer relative shadow-sm space-x-2 space-x-reverse ${
+                      isJustAdded ? 'scale-[0.99] border-amber-500 ring-1 ring-amber-500/50' : ''
                     }`}
                   >
-                    <div>
-                      {/* Item Image Card */}
-                      <div className="relative aspect-video rounded-xl overflow-hidden bg-stone-950 mb-2 border border-stone-800">
+                    {/* Left/Right Product Image & Main Info */}
+                    <div className="flex items-center space-x-2.5 space-x-reverse min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-stone-950 border border-stone-800 shrink-0 relative">
                         <img
                           src={product.image}
                           alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                         />
-
-                        {/* Stock Badge */}
-                        <span
-                          className={`absolute bottom-1 left-1 text-[8px] font-mono px-1 py-0.5 rounded font-bold ${
-                            isOutOfStock
-                              ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                              : isLowStock
-                              ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                              : 'bg-stone-950/80 text-stone-400 border border-stone-800'
-                          }`}
-                        >
-                          {isOutOfStock ? 'نفد' : `متبقي: ${product.stock}`}
-                        </span>
                       </div>
 
-                      {/* Title & SKU */}
-                      <h3 className="text-xs font-bold text-stone-100 line-clamp-1 group-hover:text-amber-400 transition-colors">
-                        {product.name}
-                      </h3>
-                      <p className="text-[9px] text-stone-500 font-mono">{product.sku}</p>
-
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-1.5 space-x-reverse">
+                          <h3 className="text-xs font-bold text-stone-100 truncate group-hover:text-amber-400 transition-colors">
+                            {product.name}
+                          </h3>
+                          <span className="text-[9px] bg-stone-950 text-stone-400 border border-stone-800 px-1.5 py-0.2 rounded font-mono shrink-0">
+                            {product.category}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2 space-x-reverse text-[9px] text-stone-500 font-mono mt-0.5">
+                          <span>كود: {product.sku}</span>
+                          <span>•</span>
+                          <span>باركود: {product.barcode}</span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Active Selected Price & Add Trigger */}
-                    <div className="flex items-center justify-between pt-2 mt-2 border-t border-stone-800/80">
-                      <div>
-                        <span className="text-[10px] font-mono font-extrabold text-amber-400 block">
-                          {activePrice.toLocaleString()} ج.م
-                        </span>
-                      </div>
+                    {/* Stock, Active Price & Quick Add Button */}
+                    <div className="flex items-center space-x-3 space-x-reverse shrink-0">
+                      <span
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                          isOutOfStock
+                            ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                            : isLowStock
+                            ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                            : 'bg-stone-950 text-emerald-400 border border-stone-800'
+                        }`}
+                      >
+                        {isOutOfStock ? 'نفد المخزون' : `مخزون: ${product.stock}`}
+                      </span>
+
+                      <span className="text-xs font-mono font-extrabold text-amber-400 min-w-[70px] text-left">
+                        {activePrice.toLocaleString()} ج.م
+                      </span>
 
                       <button
                         disabled={isOutOfStock}
@@ -672,16 +678,26 @@ export const RegisterView: React.FC = () => {
                           e.stopPropagation();
                           if (!isOutOfStock) triggerAddToCart(product);
                         }}
-                        className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center justify-center space-x-1 space-x-reverse transition-all ${
+                        className={`py-1 px-2.5 rounded-lg text-xs font-bold flex items-center space-x-1 space-x-reverse transition-all ${
                           isJustAdded
                             ? 'bg-amber-500 text-white'
                             : isOutOfStock
-                            ? 'bg-stone-800 text-stone-600'
+                            ? 'bg-stone-800 text-stone-600 cursor-not-allowed'
                             : 'bg-amber-600 hover:bg-amber-500 text-white shadow-sm'
                         }`}
+                        title="إضافة للفاتورة"
                       >
-                        {isJustAdded ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                        <span className="text-[10px]">إضافة</span>
+                        {isJustAdded ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>تمت الإضافة</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>إضافة</span>
+                          </>
+                        )}
                       </button>
                     </div>
 
@@ -692,8 +708,8 @@ export const RegisterView: React.FC = () => {
 
           </div>
 
-          {/* Cart Sidebar Panel (4 Cols) */}
-          <div className="lg:col-span-5 xl:col-span-4 sticky top-20">
+          {/* Cart Sidebar Panel (7 Cols - High Visibility) */}
+          <div className="lg:col-span-7 xl:col-span-7 sticky top-20">
             <CartSidebar onOpenCheckout={() => setIsPaymentOpen(true)} />
           </div>
 

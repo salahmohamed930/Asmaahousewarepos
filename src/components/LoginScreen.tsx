@@ -252,7 +252,7 @@ export const LoginScreen: React.FC = () => {
                   setUsername(e.target.value);
                   setErrorMsg('');
                 }}
-                placeholder="أدخل اسم المستخدم (مثال: asmaa)"
+                placeholder="أدخل اسم المستخدم"
                 className="w-full bg-stone-950 border border-stone-800 rounded-2xl py-3 pr-10 pl-4 text-xs font-medium text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all dir-ltr text-right disabled:opacity-40"
               />
             </div>
@@ -305,12 +305,6 @@ export const LoginScreen: React.FC = () => {
             )}
           </button>
         </form>
-
-        {/* Quick Hint Banner */}
-        <div className="mt-4 p-2.5 bg-stone-950/80 border border-stone-800 rounded-xl text-[11px] text-stone-400 flex items-center justify-center gap-1.5 text-center dir-rtl">
-          <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span>اسم المستخدم الافتراضي: <strong className="text-stone-200">asmaa</strong> (أو <strong className="text-stone-200">admin</strong>) | كلمة المرور: <strong className="text-amber-400 font-mono">1001</strong></span>
-        </div>
 
         {/* Footer info */}
         <p className="text-[10px] text-center text-stone-600 mt-5">

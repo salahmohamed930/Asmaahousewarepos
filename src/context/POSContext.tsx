@@ -34,10 +34,11 @@ interface POSContextType {
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
-  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'database';
+  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers';
   globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
+  taxRate: number;
   
-  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'database') => void;
+  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers') => void;
   setCurrentAssociate: (associate: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
   quickSwitchByPin: (pin: string) => boolean;
@@ -60,7 +61,9 @@ interface POSContextType {
     paymentMethod: PaymentMethod,
     discountTotalOverride?: number,
     paymentDetails?: string,
-    notes?: string
+    notes?: string,
+    amountPaid?: number,
+    amountDeferred?: number
   ) => Transaction;
   voidTransaction: (transactionId: string) => void;
   
@@ -74,6 +77,8 @@ interface POSContextType {
   addProduct: (prod: Omit<Product, 'id'>) => void;
   updateProduct: (prod: Product) => void;
   addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Customer;
+  updateCustomer: (cust: Customer) => void;
+  payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => void;
   
   resetDemoData: () => void;
 }
@@ -109,6 +114,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [splitAssociates, setSplitAssociates] = useState<SplitAssociate[]>([]);
   const [globalPriceTier, setGlobalPriceTierState] = useState<PriceTier>('cash');
+  const [taxRate] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
     'register' | 'associates' | 'catalog' | 'analytics' | 'customers'
   >('register');
@@ -182,6 +188,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
             loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
             tier: c.tier || 'عادي',
+            isCreditEligible: c.is_credit_eligible ?? c.isCreditEligible ?? (c.id === 'cust_1' || c.id === 'cust_3'),
+            creditLimit: Number(c.credit_limit ?? c.creditLimit ?? (c.id === 'cust_1' ? 10000 : c.id === 'cust_3' ? 150000 : 0)),
+            currentDebt: Number(c.current_debt ?? c.currentDebt ?? (c.id === 'cust_3' ? 25000 : 0)),
           }));
           setCustomers(mappedCustomers);
         }
@@ -297,18 +306,21 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getItemUnitPrice = (item: CartItem): number => {
-    if (item.overridePrice !== undefined) return item.overridePrice;
-    if (item.selectedPriceTier === 'cash') return item.product.priceCash;
-    if (item.selectedPriceTier === 'installment') return item.product.priceInstallment;
-    if (item.selectedPriceTier === 'wholesale') return item.product.priceWholesale;
-    return item.product.priceCash;
+    if (item.overridePrice !== undefined && item.overridePrice > 0) return item.overridePrice;
+    const tier = item.selectedPriceTier || globalPriceTier;
+    if (tier === 'cash') return item.product.priceCash || 0;
+    if (tier === 'installment') return item.product.priceInstallment || 0;
+    if (tier === 'wholesale') return item.product.priceWholesale || 0;
+    return item.product.priceCash || 0;
   };
 
   const completeTransaction = (
     paymentMethod: PaymentMethod,
     discountTotalOverride = 0,
     paymentDetails = '',
-    notes = ''
+    notes = '',
+    amountPaid?: number,
+    amountDeferred?: number
   ): Transaction => {
     if (!currentAssociate) {
       throw new Error('رجاءً اختر البائع المسؤول قبل إتمام البيع.');
@@ -319,12 +331,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let subtotal = 0;
-    let discountTotal = discountTotalOverride;
+    let discountTotal = 0;
 
     const transactionItems = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
-      const lineDiscount = (lineOriginalTotal * item.discountPercent) / 100;
+      const lineDiscount = (lineOriginalTotal * (item.discountPercent || 0)) / 100;
       const lineNetTotal = lineOriginalTotal - lineDiscount;
 
       subtotal += lineOriginalTotal;
@@ -335,12 +347,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         productName: item.product.name,
         sku: item.product.sku,
         quantity: item.quantity,
-        priceTier: item.selectedPriceTier,
+        priceTier: item.selectedPriceTier || globalPriceTier,
         unitPrice,
         totalPrice: lineNetTotal,
         assignedAssociateId: item.assignedAssociateId,
       };
     });
+
+    if (discountTotalOverride > 0) {
+      discountTotal += discountTotalOverride;
+    }
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
 
@@ -361,14 +377,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
+    const primaryAssocId = currentAssociate?.id || 'system';
+    const primaryAssocName = currentAssociate?.name || 'النظام';
+
     if (generalNetSubtotal > 0) {
       if (splitAssociates.length > 0) {
         const totalSplitPercent = splitAssociates.reduce((acc, s) => acc + s.sharePercentage, 0);
         const primarySharePercent = Math.max(0, 100 - totalSplitPercent);
 
         if (primarySharePercent > 0) {
-          associateSalesMap[currentAssociate.id] =
-            (associateSalesMap[currentAssociate.id] || 0) +
+          associateSalesMap[primaryAssocId] =
+            (associateSalesMap[primaryAssocId] || 0) +
             (generalNetSubtotal * primarySharePercent) / 100;
         }
 
@@ -378,8 +397,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             (generalNetSubtotal * split.sharePercentage) / 100;
         });
       } else {
-        associateSalesMap[currentAssociate.id] =
-          (associateSalesMap[currentAssociate.id] || 0) + generalNetSubtotal;
+        associateSalesMap[primaryAssocId] =
+          (associateSalesMap[primaryAssocId] || 0) + generalNetSubtotal;
       }
     }
 
@@ -415,12 +434,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentDetails,
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
-      primaryAssociateId: currentAssociate.id,
-      primaryAssociateName: currentAssociate.name,
+      primaryAssociateId: primaryAssocId,
+      primaryAssociateName: primaryAssocName,
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       commissions,
       notes,
       status: 'مكتملة',
+      amountPaid: amountPaid !== undefined ? amountPaid : grandTotal,
+      amountDeferred: amountDeferred !== undefined ? amountDeferred : 0,
     };
 
     setProducts((prev) =>
@@ -440,11 +461,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev.map((c) => {
           if (c.id === selectedCustomer.id) {
             const addedPoints = Math.floor(grandTotal / 10);
-            return {
+            const currentDebtVal = c.currentDebt || 0;
+            const newDebt = currentDebtVal + (amountDeferred || 0);
+            const updated = {
               ...c,
               totalSpent: c.totalSpent + grandTotal,
               loyaltyPoints: c.loyaltyPoints + addedPoints,
+              currentDebt: newDebt,
             };
+            syncCustomerToSupabase(updated);
+            return updated;
           }
           return c;
         })
@@ -541,6 +567,71 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newCustomer;
   };
 
+  const updateCustomer = (cust: Customer) => {
+    setCustomers((prev) => prev.map((c) => (c.id === cust.id ? cust : c)));
+    syncCustomerToSupabase(cust);
+    if (selectedCustomer?.id === cust.id) {
+      setSelectedCustomer(cust);
+    }
+  };
+
+  const payCustomerDebt = (
+    customerId: string,
+    amount: number,
+    paymentMethod: PaymentMethod,
+    notes?: string
+  ) => {
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id === customerId) {
+          const updated = {
+            ...c,
+            currentDebt: Math.max(0, (c.currentDebt || 0) - amount),
+          };
+          syncCustomerToSupabase(updated);
+          return updated;
+        }
+        return c;
+      })
+    );
+
+    const receiptNumber = `PAY-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
+    const newTransaction: Transaction = {
+      id: `pay_${Date.now()}`,
+      receiptNumber,
+      timestamp: new Date().toISOString(),
+      items: [
+        {
+          productId: 'debt_payment',
+          productName: 'دفعة سداد مديونية (آجل)',
+          sku: 'DEBT_PAY',
+          quantity: 1,
+          priceTier: 'cash',
+          unitPrice: -amount,
+          totalPrice: -amount,
+        }
+      ],
+      subtotal: -amount,
+      discountTotal: 0,
+      taxTotal: 0,
+      grandTotal: -amount,
+      paymentMethod,
+      paymentDetails: `سداد جزء من مديونية الآجل: ${amount.toLocaleString()} ج.م`,
+      customerId,
+      customerName: customers.find((c) => c.id === customerId)?.name || 'عميل',
+      primaryAssociateId: currentAssociate?.id || 'system',
+      primaryAssociateName: currentAssociate?.name || 'النظام',
+      commissions: [],
+      notes: notes || 'سداد مديونية',
+      status: 'مكتملة',
+      amountPaid: amount,
+      amountDeferred: -amount,
+    };
+
+    setTransactions((prev) => [newTransaction, ...prev]);
+    syncTransactionToSupabase(newTransaction);
+  };
+
   const resetDemoData = () => {
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_associates`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_products`);
@@ -568,6 +659,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         splitAssociates,
         activeTab,
         globalPriceTier,
+        taxRate,
         setActiveTab,
         setCurrentAssociate,
         setGlobalPriceTier,
@@ -590,6 +682,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addProduct,
         updateProduct,
         addCustomer,
+        updateCustomer,
+        payCustomerDebt,
         resetDemoData,
       }}
     >

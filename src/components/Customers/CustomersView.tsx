@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Customer } from '../../types';
-import { UserCheck, UserPlus, Search, ShoppingBag, Heart, X, Phone, Mail } from 'lucide-react';
+import { UserCheck, UserPlus, Search, ShoppingBag, Heart, X, Phone, Mail, FileText } from 'lucide-react';
+import { CustomerAccountModal } from './CustomerAccountModal';
 
 export const CustomersView: React.FC = () => {
   const {
@@ -14,6 +15,7 @@ export const CustomersView: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedAccountCust, setSelectedAccountCust] = useState<Customer | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -21,6 +23,8 @@ export const CustomersView: React.FC = () => {
     phone: '',
     preferredAssociateId: '',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+    isCreditEligible: false,
+    creditLimit: 0,
   });
 
   const handleOpenAdd = () => {
@@ -30,6 +34,8 @@ export const CustomersView: React.FC = () => {
       phone: '',
       preferredAssociateId: '',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+      isCreditEligible: false,
+      creditLimit: 0,
     });
     setIsAddModalOpen(true);
   };
@@ -86,8 +92,18 @@ export const CustomersView: React.FC = () => {
             placeholder="بحث باسم العميل، رقم الهاتف، أو البريد الإلكتروني..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-stone-950 border border-stone-800 text-xs text-stone-200 rounded-xl pr-10 pl-4 py-2.5 focus:outline-none focus:border-amber-500"
+            className="w-full bg-stone-950 border border-stone-800 text-xs text-stone-200 rounded-xl pr-10 pl-8 py-2.5 focus:outline-none focus:border-amber-500"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute left-2.5 top-2.5 text-stone-400 hover:text-stone-200 p-1 rounded-md hover:bg-stone-800 transition-colors"
+              title="مسح البحث"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -98,48 +114,77 @@ export const CustomersView: React.FC = () => {
             ? associates.find((a) => a.id === cust.preferredAssociateId)
             : null;
 
+          const currentDebt = cust.currentDebt || 0;
+
           return (
             <div
               key={cust.id}
-              className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-xl space-y-4 flex flex-col justify-between"
+              className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-xl space-y-4 flex flex-col justify-between hover:border-stone-700 transition-all"
             >
-              <div>
-                <div className="flex items-center space-x-3 space-x-reverse mb-3">
-                  <div className="w-11 h-11 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
-                    <UserCheck className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-stone-100">{cust.name}</h3>
-                    <p className="text-xs text-amber-400 font-mono flex items-center space-x-1 space-x-reverse">
-                      <Phone className="w-3 h-3 text-stone-500" />
-                      <span>{cust.phone}</span>
-                    </p>
-                    <p className="text-[10px] text-stone-500">{cust.email}</p>
+              <div 
+                onClick={() => setSelectedAccountCust(cust)}
+                className="cursor-pointer group space-y-3"
+                title="اضغط لفتح كشف حساب العميل والمديونيات والمدفوعات"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center space-x-3 space-x-reverse">
+                    <div className="w-11 h-11 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
+                      <UserCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-stone-100 group-hover:text-amber-400 transition-colors flex items-center gap-1.5 flex-wrap">
+                        <span>{cust.name}</span>
+                        {cust.isCreditEligible && (
+                          <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-bold shrink-0">
+                            مؤهل للآجل
+                          </span>
+                        )}
+                        {currentDebt > 0 && (
+                          <span className="text-[9px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded font-mono font-bold shrink-0">
+                            مستحق {currentDebt.toLocaleString()} ج.م
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-amber-400 font-mono flex items-center space-x-1 space-x-reverse mt-0.5">
+                        <Phone className="w-3 h-3 text-stone-500" />
+                        <span>{cust.phone}</span>
+                      </p>
+                      <p className="text-[10px] text-stone-500">{cust.email}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 bg-stone-950 border border-stone-800 rounded-2xl p-3 text-xs mb-3">
+                <div className="grid grid-cols-3 gap-1.5 bg-stone-950 border border-stone-800 rounded-2xl p-2.5 text-center text-[10px]">
                   <div>
-                    <span className="text-[10px] text-stone-500 uppercase block font-bold">
+                    <span className="text-[9px] text-stone-500 uppercase block font-bold mb-0.5">
                       نقاط الولاء
                     </span>
                     <span className="font-mono font-extrabold text-amber-400">
-                      {cust.loyaltyPoints} نقطة
+                      {cust.loyaltyPoints} ن
                     </span>
                   </div>
 
                   <div>
-                    <span className="text-[10px] text-stone-500 uppercase block font-bold">
-                      إجمالي المشتريات
+                    <span className="text-[9px] text-stone-500 uppercase block font-bold mb-0.5">
+                      المبيعات
                     </span>
                     <span className="font-mono font-extrabold text-stone-100">
-                      {(cust.totalSpent || 0).toLocaleString()} ج.م
+                      {(cust.totalSpent || 0).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[9px] text-stone-500 uppercase block font-bold mb-0.5">
+                      المديونية
+                    </span>
+                    <span className={`font-mono font-extrabold block ${currentDebt > 0 ? 'text-rose-400' : 'text-stone-500'}`}>
+                      {currentDebt > 0 ? `${currentDebt.toLocaleString()} ج.م` : '0'}
                     </span>
                   </div>
                 </div>
 
                 {prefAssoc && (
-                  <div className="flex items-center space-x-2 space-x-reverse text-xs text-stone-400 bg-stone-950/60 border border-stone-800/80 p-2 rounded-xl">
+                  <div className="flex items-center space-x-2 space-x-reverse text-[11px] text-stone-400 bg-stone-950/60 border border-stone-800/80 p-2 rounded-xl">
                     <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400/20" />
                     <span>البائع المفضل:</span>
                     <span className="font-semibold text-stone-200">{prefAssoc.name}</span>
@@ -147,16 +192,26 @@ export const CustomersView: React.FC = () => {
                 )}
               </div>
 
-              <button
-                onClick={() => {
-                  setSelectedCustomer(cust);
-                  setActiveTab('register');
-                }}
-                className="w-full py-2.5 bg-stone-800 hover:bg-amber-600 text-stone-200 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 space-x-reverse"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>ربط بالفاتورة وفتح الكاشير</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2 border-t border-stone-850 pt-3">
+                <button
+                  onClick={() => setSelectedAccountCust(cust)}
+                  className="py-2 bg-stone-800 hover:bg-stone-750 text-stone-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse"
+                >
+                  <FileText className="w-3.5 h-3.5 text-stone-400" />
+                  <span>كشف الحساب</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSelectedCustomer(cust);
+                    setActiveTab('register');
+                  }}
+                  className="py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse"
+                >
+                  <ShoppingBag className="w-3.5 h-3.5" />
+                  <span>فتح الكاشير</span>
+                </button>
+              </div>
 
             </div>
           );
@@ -227,6 +282,39 @@ export const CustomersView: React.FC = () => {
                 </select>
               </div>
 
+              <div className="bg-stone-950/60 p-3.5 rounded-2xl border border-stone-800 space-y-3">
+                <label className="flex items-center space-x-2 space-x-reverse cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isCreditEligible}
+                    onChange={(e) =>
+                      setFormData({ 
+                        ...formData, 
+                        isCreditEligible: e.target.checked,
+                        creditLimit: e.target.checked ? 10000 : 0 
+                      })
+                    }
+                    className="rounded border-stone-800 bg-stone-950 text-amber-600 focus:ring-amber-500 focus:ring-opacity-25"
+                  />
+                  <span className="text-stone-300 font-bold">تأهيل العميل للشراء الآجل والجملة</span>
+                </label>
+
+                {formData.isCreditEligible && (
+                  <div>
+                    <label className="block text-stone-400 mb-1">الحد الائتماني الكلي (سقف المديونية ج.م)</label>
+                    <input
+                      type="number"
+                      value={formData.creditLimit || ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })
+                      }
+                      placeholder="10000"
+                      className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 focus:outline-none font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
                 className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white font-extrabold rounded-xl shadow-lg mt-4"
@@ -236,6 +324,15 @@ export const CustomersView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Customer Account Modal */}
+      {selectedAccountCust && (
+        <CustomerAccountModal
+          customer={customers.find(c => c.id === selectedAccountCust.id) || selectedAccountCust}
+          isOpen={true}
+          onClose={() => setSelectedAccountCust(null)}
+        />
       )}
 
     </div>

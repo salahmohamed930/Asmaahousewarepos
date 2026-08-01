@@ -136,6 +136,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               <span>الإجمالي النهائي:</span>
               <span className="font-mono text-amber-800">{grandTotal.toLocaleString()} ج.م</span>
             </div>
+
+            {transaction.amountPaid !== undefined && transaction.amountPaid !== grandTotal && (
+              <>
+                <div className="flex justify-between text-stone-600 font-bold text-[11px] pt-1">
+                  <span>المبلغ المدفوع الآن:</span>
+                  <span className="font-mono text-emerald-700">{(transaction.amountPaid || 0).toLocaleString()} ج.م</span>
+                </div>
+                <div className="flex justify-between text-rose-700 font-bold text-[11px]">
+                  <span>المتبقي مديونية (آجل):</span>
+                  <span className="font-mono">{(transaction.amountDeferred || 0).toLocaleString()} ج.م</span>
+                </div>
+              </>
+            )}
           </div>
 
         </div>

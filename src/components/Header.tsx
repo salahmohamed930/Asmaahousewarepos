@@ -43,7 +43,6 @@ export const Header: React.FC = () => {
     { id: 'analytics', label: 'التقارير', icon: BarChart3 },
     { id: 'customers', label: 'حسابات العملاء', icon: UserCheck },
     { id: 'associates', label: 'الموظفين', icon: Users },
-    { id: 'database', label: 'قاعدة البيانات', icon: Database },
   ] as const;
 
   return (

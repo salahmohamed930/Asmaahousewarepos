@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   DollarSign,
   Check,
+  List,
+  LayoutGrid,
 } from 'lucide-react';
 
 export const CatalogView: React.FC = () => {
@@ -19,6 +21,7 @@ export const CatalogView: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
+  const [layoutMode, setLayoutMode] = useState<'rows' | 'grid'>('rows');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -149,109 +152,231 @@ export const CatalogView: React.FC = () => {
             placeholder="بحث بالكود، الباركود، أو اسم المنتج..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-stone-950 border border-stone-800 text-xs text-stone-200 rounded-xl pr-10 pl-4 py-2.5 focus:outline-none focus:border-amber-500"
+            className="w-full bg-stone-950 border border-stone-800 text-xs text-stone-200 rounded-xl pr-10 pl-8 py-2.5 focus:outline-none focus:border-amber-500"
           />
-        </div>
-
-        {/* Categories Pills */}
-        <div className="flex overflow-x-auto space-x-2 space-x-reverse no-scrollbar">
-          {categories.map((c) => (
+          {search && (
             <button
-              key={c}
-              onClick={() => setSelectedCategory(c)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                selectedCategory === c
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'bg-stone-950 text-stone-400 hover:text-stone-200 border border-stone-800'
-              }`}
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute left-2.5 top-2.5 text-stone-400 hover:text-stone-200 p-1 rounded-md hover:bg-stone-800 transition-colors"
+              title="مسح البحث"
             >
-              {c}
+              <X className="w-4 h-4" />
             </button>
-          ))}
+          )}
+        </div>
+
+        {/* Categories Pills & Layout View Switcher */}
+        <div className="flex items-center space-x-3 space-x-reverse justify-between md:justify-end">
+          <div className="flex overflow-x-auto space-x-2 space-x-reverse no-scrollbar">
+            {categories.map((c) => (
+              <button
+                key={c}
+                onClick={() => setSelectedCategory(c)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  selectedCategory === c
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-stone-950 text-stone-400 hover:text-stone-200 border border-stone-800'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          {/* View Mode Switcher */}
+          <div className="bg-stone-950 border border-stone-800 p-1 rounded-xl flex items-center space-x-1 space-x-reverse shrink-0">
+            <button
+              onClick={() => setLayoutMode('rows')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 space-x-reverse ${
+                layoutMode === 'rows'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+              title="عرض كصفوف"
+            >
+              <List className="w-4 h-4" />
+              <span className="text-[11px] font-bold hidden sm:inline">صفوف</span>
+            </button>
+            <button
+              onClick={() => setLayoutMode('grid')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 space-x-reverse ${
+                layoutMode === 'grid'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+              title="عرض كشبكة كروت"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="text-[11px] font-bold hidden sm:inline">شبكة</span>
+            </button>
+          </div>
         </div>
 
       </div>
 
-      {/* Products Catalog Grid - Compact Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
-        {filteredProducts.map((p) => {
-          const isLow = p.stock <= 5;
+      {/* Products Catalog Display */}
+      {layoutMode === 'rows' ? (
+        /* Rows Layout Table */
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl shadow-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right border-collapse">
+              <thead>
+                <tr className="bg-stone-950 text-[11px] font-extrabold text-stone-400 uppercase tracking-wider border-b border-stone-800">
+                  <th className="py-3.5 px-4">الصنف والمعلومات</th>
+                  <th className="py-3.5 px-4">القسم</th>
+                  <th className="py-3.5 px-4 text-center">سعر الكاش</th>
+                  <th className="py-3.5 px-4 text-center">سعر التقسيط</th>
+                  <th className="py-3.5 px-4 text-center">سعر الجملة</th>
+                  <th className="py-3.5 px-4 text-center">التكلفة</th>
+                  <th className="py-3.5 px-4 text-center">المخزون</th>
+                  <th className="py-3.5 px-4 text-center">خيارات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-800/80 text-xs text-stone-200">
+                {filteredProducts.map((p) => {
+                  const isLow = p.stock <= 5;
+                  return (
+                    <tr key={p.id} className="hover:bg-stone-950/50 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center space-x-3 space-x-reverse">
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="w-10 h-10 rounded-xl object-cover bg-stone-950 border border-stone-800 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
+                            <p className="text-[10px] text-stone-500 font-mono mt-0.5">
+                              كود: {p.sku} | باركود: {p.barcode}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="text-[10px] bg-stone-950 text-stone-300 border border-stone-800 px-2 py-0.5 rounded-md font-bold">
+                          {p.category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-emerald-400 whitespace-nowrap">
+                        {(p.priceCash || 0).toLocaleString()} ج.م
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-amber-400 whitespace-nowrap">
+                        {(p.priceInstallment || 0).toLocaleString()} ج.م
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono font-bold text-indigo-400 whitespace-nowrap">
+                        {(p.priceWholesale || 0).toLocaleString()} ج.م
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono text-stone-400 whitespace-nowrap">
+                        {p.cost || 0} ج.م
+                      </td>
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <span
+                          className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${
+                            isLow ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-emerald-950 text-emerald-400 border border-emerald-900'
+                          }`}
+                        >
+                          {p.stock} قطعة
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => handleOpenEdit(p)}
+                          className="px-3 py-1 bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>تعديل</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Grid Layout Cards */
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+          {filteredProducts.map((p) => {
+            const isLow = p.stock <= 5;
 
-          return (
-            <div
-              key={p.id}
-              className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-2xl p-3 shadow-md flex flex-col justify-between space-y-2.5 transition-all"
-            >
-              <div>
-                <div className="flex items-center space-x-2.5 space-x-reverse mb-2">
-                  <img
-                    src={p.image}
-                    alt={p.name}
-                    className="w-11 h-11 rounded-xl object-cover bg-stone-950 border border-stone-800 shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[9px] bg-stone-950 text-stone-400 border border-stone-800/80 px-1.5 py-0.5 rounded font-bold uppercase inline-block mb-0.5 truncate max-w-full">
-                      {p.category}
-                    </span>
-                    <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
-                    <p className="text-[9px] text-stone-500 font-mono">
-                      كود: {p.sku} | باركود: {p.barcode}
-                    </p>
-                  </div>
-                </div>
-
-                {/* 3 Price Tiers Grid - Compact */}
-                <div className="bg-stone-950 border border-stone-800/80 rounded-xl p-2 grid grid-cols-3 gap-1 text-center text-[10px] mb-2">
-                  <div>
-                    <span className="text-[9px] text-emerald-400 font-bold block">كاش</span>
-                    <span className="font-mono font-bold text-stone-100">
-                      {(p.priceCash || 0).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[9px] text-amber-400 font-bold block">تقسيط</span>
-                    <span className="font-mono font-bold text-stone-100">
-                      {(p.priceInstallment || 0).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[9px] text-indigo-400 font-bold block">جملة</span>
-                    <span className="font-mono font-bold text-stone-100">
-                      {(p.priceWholesale || 0).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Profit Margin & Stock - Compact */}
-                <div className="flex justify-between items-center text-[10px] text-stone-400 bg-stone-950/40 px-2 py-1.5 rounded-lg border border-stone-800/60">
-                  <span className="font-mono text-stone-400">
-                    تكلفة: <strong className="text-stone-300">{p.cost || 0}</strong> ج.م
-                  </span>
-
-                  <span
-                    className={`px-1.5 py-0.5 rounded font-mono font-bold text-[10px] ${
-                      isLow ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'text-emerald-400'
-                    }`}
-                  >
-                    مخزون: {p.stock}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleOpenEdit(p)}
-                className="w-full py-1.5 bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse"
+            return (
+              <div
+                key={p.id}
+                className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-2xl p-3 shadow-md flex flex-col justify-between space-y-2.5 transition-all"
               >
-                <Edit className="w-3.5 h-3.5" />
-                <span>تعديل الصنف</span>
-              </button>
+                <div>
+                  <div className="flex items-center space-x-2.5 space-x-reverse mb-2">
+                    <img
+                      src={p.image}
+                      alt={p.name}
+                      className="w-11 h-11 rounded-xl object-cover bg-stone-950 border border-stone-800 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[9px] bg-stone-950 text-stone-400 border border-stone-800/80 px-1.5 py-0.5 rounded font-bold uppercase inline-block mb-0.5 truncate max-w-full">
+                        {p.category}
+                      </span>
+                      <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
+                      <p className="text-[9px] text-stone-500 font-mono">
+                        كود: {p.sku} | باركود: {p.barcode}
+                      </p>
+                    </div>
+                  </div>
 
-            </div>
-          );
-        })}
-      </div>
+                  {/* 3 Price Tiers Grid - Compact */}
+                  <div className="bg-stone-950 border border-stone-800/80 rounded-xl p-2 grid grid-cols-3 gap-1 text-center text-[10px] mb-2">
+                    <div>
+                      <span className="text-[9px] text-emerald-400 font-bold block">كاش</span>
+                      <span className="font-mono font-bold text-stone-100">
+                        {(p.priceCash || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[9px] text-amber-400 font-bold block">تقسيط</span>
+                      <span className="font-mono font-bold text-stone-100">
+                        {(p.priceInstallment || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[9px] text-indigo-400 font-bold block">جملة</span>
+                      <span className="font-mono font-bold text-stone-100">
+                        {(p.priceWholesale || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Profit Margin & Stock - Compact */}
+                  <div className="flex justify-between items-center text-[10px] text-stone-400 bg-stone-950/40 px-2 py-1.5 rounded-lg border border-stone-800/60">
+                    <span className="font-mono text-stone-400">
+                      تكلفة: <strong className="text-stone-300">{p.cost || 0}</strong> ج.م
+                    </span>
+
+                    <span
+                      className={`px-1.5 py-0.5 rounded font-mono font-bold text-[10px] ${
+                        isLow ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'text-emerald-400'
+                      }`}
+                    >
+                      مخزون: {p.stock}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleOpenEdit(p)}
+                  className="w-full py-1.5 bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>تعديل الصنف</span>
+                </button>
+
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add/Edit Product Modal */}
       {isModalOpen && (

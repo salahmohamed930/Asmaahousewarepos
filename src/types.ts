@@ -2,6 +2,15 @@ export type PriceTier = 'cash' | 'installment' | 'wholesale';
 
 export type Role = 'مسؤول مبيعات' | 'بائع أول' | 'مشرف قسم' | 'مدير الفرع';
 
+export type Permission =
+  | 'create_invoice'      // إنشاء فواتير
+  | 'view_analytics'      // التقارير والإحصائيات
+  | 'manage_catalog'      // كتالوج الأصناف والأسعار
+  | 'manage_customers'    // حسابات العملاء
+  | 'manage_associates'   // إدارة الموظفين والصلاحيات
+  | 'apply_discount'      // تطبيق الخصم
+  | 'void_invoice';       // إلغاء الفواتير
+
 export interface Associate {
   id: string;
   name: string;
@@ -9,6 +18,7 @@ export interface Associate {
   password?: string;
   pin: string;
   role: Role;
+  permissions?: Permission[];
   avatar: string;
   email: string;
   phone: string;
@@ -58,6 +68,9 @@ export interface Customer {
   loyaltyPoints: number;
   totalSpent: number;
   avatar?: string;
+  isCreditEligible?: boolean; // مؤهل للشراء الآجل
+  creditLimit?: number;       // حد الائتمان / سقف المديونية
+  currentDebt?: number;       // المديونية الحالية
 }
 
 export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية';
@@ -100,6 +113,8 @@ export interface Transaction {
   commissions: TransactionCommission[];
   notes?: string;
   status: 'مكتملة' | 'ملغاة' | 'مسترجعة';
+  amountPaid?: number;        // المبلغ المدفوع كاش أو إلكترونياً
+  amountDeferred?: number;    // المبلغ المرحل لمديونية الآجل
 }
 
 export interface ShiftRecord {

@@ -174,23 +174,36 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                   <Search className="w-4 h-4 text-stone-400 absolute right-3 top-3" />
                   <input
                     type="text"
-                    placeholder="ابحث عن اسم العميل أو رقم التليفون لربط الفاتورة بالحساب..."
+                    placeholder="بحث باسم العميل أو التليفون..."
                     value={customerSearch}
                     onFocus={() => setIsCustomerDropdownOpen(true)}
                     onChange={(e) => {
                       setCustomerSearch(e.target.value);
                       setIsCustomerDropdownOpen(true);
                     }}
-                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-9 pl-10 py-2.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-9 pl-16 py-2.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
                   />
-                  <button
-                    onClick={() => setShowAddCustomerForm(!showAddCustomerForm)}
-                    className="absolute left-2 top-2 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[10px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
-                    title="إضافة عميل جديد"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    <span>جديد</span>
-                  </button>
+                  <div className="absolute left-2 top-2 flex items-center space-x-1 space-x-reverse">
+                    {customerSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomerSearch('')}
+                        className="p-1 text-stone-400 hover:text-stone-200 rounded-lg hover:bg-stone-800 transition-colors"
+                        title="مسح البحث"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustomerForm(!showAddCustomerForm)}
+                      className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[10px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
+                      title="إضافة عميل جديد"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      <span>جديد</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Quick Add Customer Modal / Inline Form */}
@@ -293,11 +306,8 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-stone-500 py-12">
-              <FileText className="w-14 h-14 stroke-[1.25] text-stone-700 mb-3" />
-              <p className="text-sm font-bold text-stone-300">الفاتورة فارغة حالياً</p>
-              <p className="text-xs text-stone-500 max-w-[240px] mt-1">
-                قم بالضغط على منتجات الكتالوج أو استخدم ماسح الباركود لإضافة الأصناف للفاتورة
-              </p>
+              <FileText className="w-12 h-12 stroke-[1.25] text-stone-700 mb-2" />
+              <p className="text-xs font-bold text-stone-400">الفاتورة فارغة</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -391,7 +401,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         {/* 5. البائع */}
                         <td className="py-3 px-2 text-center">
                           <select
-                            value={item.assignedAssociateId || currentAssociate.id}
+                            value={item.assignedAssociateId || currentAssociate?.id || ''}
                             onChange={(e) =>
                               updateCartItemAssociate(item.product.id, e.target.value)
                             }

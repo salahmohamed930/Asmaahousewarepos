@@ -80,6 +80,7 @@ interface POSContextType {
   updateCustomer: (cust: Customer) => void;
   payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => void;
   
+  refreshDataFromSupabase: () => Promise<void>;
   resetDemoData: () => void;
 }
 
@@ -124,80 +125,92 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [associates]);
 
   // Sync initial data from Supabase if available
-  useEffect(() => {
-    async function loadFromSupabase() {
-      try {
-        // 1. Fetch products from Supabase
-        const { data: prodData } = await supabase.from('products').select('*');
-        if (prodData && prodData.length > 0) {
-          const mappedProducts: Product[] = prodData.map((p: any) => ({
-            id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
-            name: p.name || 'منتج',
-            sku: String(p.sku ?? p.id ?? 'SKU-000'),
-            barcode: String(p.barcode || p.sku || p.id || '000000'),
-            category: p.category || 'عام',
-            priceCash: Number(p.price ?? p.cash_price ?? p.priceCash ?? p.price_cash ?? 0),
-            priceInstallment: Number(p.installment_price ?? p.priceInstallment ?? p.price_installment ?? 0),
-            priceWholesale: Number(p.wholesale_price ?? p.price_wholesale ?? p.priceWholesale ?? 0),
-            cost: Number(p.cost_price ?? p.cost ?? 0),
-            stock: Number(p.stock_quantity ?? p.stock ?? 0),
-            image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
-            description: p.description || '',
-          }));
-          setProducts(mappedProducts);
-        }
-
-        // 2. Fetch associates from Supabase
-        const { data: assocData } = await supabase.from('associates').select('*');
-        if (assocData && assocData.length > 0) {
-          const mappedFromDb: Associate[] = assocData.map((a: any) => ({
-            id: String(a.id),
-            name: a.name || 'موظف',
-            username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${a.id}`,
-            password: String(a.password || a.pin || a.pass || '1001'),
-            pin: String(a.pin || a.password || a.pass || '1001'),
-            role: a.role || 'مسؤول مبيعات',
-            avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-            email: a.email || '',
-            phone: a.phone || '',
-            commissionRate: Number(a.commission_rate ?? a.commissionRate ?? 0.05),
-            dailyGoal: Number(a.daily_goal ?? a.dailyGoal ?? 5000),
-            hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
-            isClockedIn: false,
-          }));
-
-          setAssociates((prev) => {
-            const map = new Map<string, Associate>();
-            // Always include built-in initial associates
-            INITIAL_ASSOCIATES.forEach((initAssoc) => map.set(initAssoc.id, initAssoc));
-            // Add/override with DB associates
-            mappedFromDb.forEach((dbAssoc) => map.set(dbAssoc.id, dbAssoc));
-            return Array.from(map.values());
-          });
-        }
-
-        // 3. Fetch customers from Supabase
-        const { data: custData } = await supabase.from('customers').select('*');
-        if (custData && custData.length > 0) {
-          const mappedCustomers: Customer[] = custData.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            phone: c.phone || '',
-            email: c.email || '',
-            address: c.address || '',
-            totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
-            loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
-            tier: c.tier || 'عادي',
-            isCreditEligible: c.is_credit_eligible ?? c.isCreditEligible ?? (c.id === 'cust_1' || c.id === 'cust_3'),
-            creditLimit: Number(c.credit_limit ?? c.creditLimit ?? (c.id === 'cust_1' ? 10000 : c.id === 'cust_3' ? 150000 : 0)),
-            currentDebt: Number(c.current_debt ?? c.currentDebt ?? (c.id === 'cust_3' ? 25000 : 0)),
-          }));
-          setCustomers(mappedCustomers);
-        }
-      } catch (err) {
-        console.warn('Supabase initial fetch skipped or table pending:', err);
+  const loadFromSupabase = async () => {
+    try {
+      // 1. Fetch products from Supabase
+      const { data: prodData } = await supabase.from('products').select('*');
+      if (prodData && prodData.length > 0) {
+        const mappedProducts: Product[] = prodData.map((p: any) => ({
+          id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
+          name: p.name || 'منتج',
+          sku: String(p.sku ?? p.id ?? 'SKU-000'),
+          barcode: String(p.barcode || p.sku || p.id || '000000'),
+          category: p.category || 'عام',
+          priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
+          priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
+          priceWholesale: Number(p.priceWholesale ?? p.wholesale_price ?? p.price_wholesale ?? p.wholesalePrice ?? 0),
+          cost: Number(p.cost ?? p.cost_price ?? p.cost_cash ?? p.purchase_price ?? p.buy_price ?? 0),
+          stock: Number(
+            p.stock_quantity ??
+            p.quantity ??
+            p.qty ??
+            p.stock ??
+            p.stock_qty ??
+            p.quantity_in_stock ??
+            p.inventory ??
+            p.count ??
+            p.amount ??
+            0
+          ),
+          image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
+          description: p.description || '',
+        }));
+        setProducts(mappedProducts);
       }
+
+      // 2. Fetch associates from Supabase
+      const { data: assocData } = await supabase.from('associates').select('*');
+      if (assocData && assocData.length > 0) {
+        const mappedFromDb: Associate[] = assocData.map((a: any) => ({
+          id: String(a.id),
+          name: a.name || 'موظف',
+          username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${a.id}`,
+          password: String(a.password || a.pin || a.pass || '1001'),
+          pin: String(a.pin || a.password || a.pass || '1001'),
+          role: a.role || 'مسؤول مبيعات',
+          avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+          email: a.email || '',
+          phone: a.phone || '',
+          commissionRate: Number(a.commission_rate ?? a.commissionRate ?? 0.05),
+          dailyGoal: Number(a.daily_goal ?? a.dailyGoal ?? 5000),
+          hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
+          isClockedIn: false,
+        }));
+
+        setAssociates((prev) => {
+          const map = new Map<string, Associate>();
+          // Always include built-in initial associates
+          INITIAL_ASSOCIATES.forEach((initAssoc) => map.set(initAssoc.id, initAssoc));
+          // Add/override with DB associates
+          mappedFromDb.forEach((dbAssoc) => map.set(dbAssoc.id, dbAssoc));
+          return Array.from(map.values());
+        });
+      }
+
+      // 3. Fetch customers from Supabase
+      const { data: custData } = await supabase.from('customers').select('*');
+      if (custData && custData.length > 0) {
+        const mappedCustomers: Customer[] = custData.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone || '',
+          email: c.email || '',
+          address: c.address || '',
+          totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
+          loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
+          tier: c.tier || 'عادي',
+          isCreditEligible: c.is_credit_eligible ?? c.isCreditEligible ?? (c.id === 'cust_1' || c.id === 'cust_3'),
+          creditLimit: Number(c.credit_limit ?? c.creditLimit ?? (c.id === 'cust_1' ? 10000 : c.id === 'cust_3' ? 150000 : 0)),
+          currentDebt: Number(c.current_debt ?? c.currentDebt ?? (c.id === 'cust_3' ? 25000 : 0)),
+        }));
+        setCustomers(mappedCustomers);
+      }
+    } catch (err) {
+      console.warn('Supabase initial fetch skipped or table pending:', err);
     }
+  };
+
+  useEffect(() => {
     loadFromSupabase();
   }, []);
 
@@ -684,6 +697,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomer,
         updateCustomer,
         payCustomerDebt,
+        refreshDataFromSupabase: loadFromSupabase,
         resetDemoData,
       }}
     >

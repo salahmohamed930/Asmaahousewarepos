@@ -19,7 +19,7 @@ export async function checkSupabaseConnection(): Promise<boolean> {
 
 export async function syncProductToSupabase(product: Product) {
   try {
-    await supabase.from('products').upsert({
+    const basePayload: any = {
       id: product.id || product.sku,
       name: product.name,
       sku: product.sku || product.id,
@@ -31,9 +31,22 @@ export async function syncProductToSupabase(product: Product) {
       cost_price: product.cost,
       installment_price: product.priceInstallment,
       stock_quantity: product.stock,
+      quantity: product.stock,
+      stock: product.stock,
       image_url: product.image,
       updated_at: new Date().toISOString(),
-    });
+    };
+
+    const { error } = await supabase.from('products').upsert(basePayload);
+    if (error) {
+      // Fallback attempt without extra schema variations if strict column matching fails
+      await supabase.from('products').upsert({
+        id: product.id || product.sku,
+        name: product.name,
+        price: product.priceCash,
+        stock_quantity: product.stock,
+      });
+    }
   } catch (err) {
     console.warn('Supabase product sync error:', err);
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Product } from '../../types';
+import { ProductLabelModal } from './ProductLabelModal';
 import {
   Package,
   Plus,
@@ -14,16 +15,20 @@ import {
   Check,
   List,
   LayoutGrid,
+  Printer,
+  RefreshCw,
 } from 'lucide-react';
 
 export const CatalogView: React.FC = () => {
-  const { products, addProduct, updateProduct } = usePOS();
+  const { products, addProduct, updateProduct, refreshDataFromSupabase } = usePOS();
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
   const [layoutMode, setLayoutMode] = useState<'rows' | 'grid'>('rows');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -132,13 +137,29 @@ export const CatalogView: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="py-3 px-5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إضافة صنف جديد</span>
-        </button>
+        <div className="flex items-center space-x-2 space-x-reverse">
+          <button
+            onClick={async () => {
+              setIsRefreshing(true);
+              await refreshDataFromSupabase();
+              setTimeout(() => setIsRefreshing(false), 600);
+            }}
+            disabled={isRefreshing}
+            className="py-3 px-4 bg-stone-950 hover:bg-stone-800 text-stone-300 border border-stone-800 rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse transition-all"
+            title="تحديث واستيراد كميات المخزون مباشرة من قاعدة البيانات"
+          >
+            <RefreshCw className={`w-4 h-4 text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'جاري المزامنة...' : 'مزامنة من قاعدة البيانات'}</span>
+          </button>
+
+          <button
+            onClick={handleOpenAdd}
+            className="py-3 px-5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة صنف جديد</span>
+          </button>
+        </div>
       </div>
 
       {/* Controls Bar */}
@@ -280,13 +301,23 @@ export const CatalogView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => handleOpenEdit(p)}
-                          className="px-3 py-1 bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>تعديل</span>
-                        </button>
+                        <div className="flex items-center justify-center space-x-1.5 space-x-reverse">
+                          <button
+                            onClick={() => setLabelProduct(p)}
+                            className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-[11px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                            title="طباعة ملصق السعر والباركود"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>ملصق السعر</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(p)}
+                            className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>تعديل</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -364,13 +395,23 @@ export const CatalogView: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleOpenEdit(p)}
-                  className="w-full py-1.5 bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse"
-                >
-                  <Edit className="w-3.5 h-3.5" />
-                  <span>تعديل الصنف</span>
-                </button>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => setLabelProduct(p)}
+                    className="py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                    title="طباعة ملصق السعر والباركود"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>ملصق السعر</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenEdit(p)}
+                    className="py-1.5 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-xl text-[11px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>تعديل</span>
+                  </button>
+                </div>
 
               </div>
             );
@@ -547,6 +588,15 @@ export const CatalogView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Product Price & Barcode Label Modal */}
+      {labelProduct && (
+        <ProductLabelModal
+          product={labelProduct}
+          isOpen={!!labelProduct}
+          onClose={() => setLabelProduct(null)}
+        />
       )}
 
     </div>

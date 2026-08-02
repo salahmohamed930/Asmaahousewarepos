@@ -154,6 +154,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ),
           image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
           description: p.description || '',
+          barcodes: Array.isArray(p.barcodes) 
+            ? p.barcodes.map(String) 
+            : typeof p.barcodes === 'string' 
+              ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+              : typeof p.alternative_barcodes === 'string'
+                ? p.alternative_barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+                : Array.isArray(p.alternative_barcodes)
+                  ? p.alternative_barcodes.map(String)
+                  : [],
         }));
         setProducts(mappedProducts);
       }

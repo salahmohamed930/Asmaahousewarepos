@@ -85,7 +85,8 @@ export const RegisterView: React.FC = () => {
     const matchedProduct = products.find(
       (p) =>
         p.barcode.toLowerCase() === barcodeInput.trim().toLowerCase() ||
-        p.sku.toLowerCase() === barcodeInput.trim().toLowerCase()
+        p.sku.toLowerCase() === barcodeInput.trim().toLowerCase() ||
+        (p.barcodes && p.barcodes.some((b) => b.toLowerCase() === barcodeInput.trim().toLowerCase()))
     );
 
     if (matchedProduct) {
@@ -108,7 +109,8 @@ export const RegisterView: React.FC = () => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.barcode.includes(searchQuery);
+      p.barcode.includes(searchQuery) ||
+      (p.barcodes && p.barcodes.some((b) => b.toLowerCase().includes(searchQuery.toLowerCase())));
 
     const matchesCategory = selectedCategory === 'الكل' || p.category === selectedCategory;
 

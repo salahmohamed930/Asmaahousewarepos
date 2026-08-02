@@ -42,6 +42,7 @@ export const CatalogView: React.FC = () => {
     stock: 10,
     image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
     description: '',
+    barcodes: [] as string[],
   });
 
   // Dynamically extract unique categories from products table
@@ -69,6 +70,7 @@ export const CatalogView: React.FC = () => {
       stock: 15,
       image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
       description: '',
+      barcodes: [],
     });
     setIsModalOpen(true);
   };
@@ -87,6 +89,7 @@ export const CatalogView: React.FC = () => {
       stock: p.stock,
       image: p.image,
       description: p.description || '',
+      barcodes: p.barcodes || [],
     });
     setIsModalOpen(true);
   };
@@ -268,8 +271,13 @@ export const CatalogView: React.FC = () => {
                           />
                           <div className="min-w-0">
                             <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
-                            <p className="text-[10px] text-stone-500 font-mono mt-0.5">
-                              كود: {p.sku} | باركود: {p.barcode}
+                            <p className="text-[10px] text-stone-500 font-mono mt-0.5 flex flex-wrap items-center gap-1">
+                              <span>كود: {p.sku} | باركود: {p.barcode}</span>
+                              {p.barcodes && p.barcodes.length > 0 && (
+                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[8px] font-sans font-extrabold px-1.5 py-0.2 rounded-md" title={p.barcodes.join(' - ')}>
+                                  +{p.barcodes.length} أكواد إضافية
+                                </span>
+                              )}
                             </p>
                           </div>
                         </div>
@@ -349,8 +357,13 @@ export const CatalogView: React.FC = () => {
                         {p.category}
                       </span>
                       <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
-                      <p className="text-[9px] text-stone-500 font-mono">
-                        كود: {p.sku} | باركود: {p.barcode}
+                      <p className="text-[9px] text-stone-500 font-mono flex flex-wrap items-center gap-1">
+                        <span>كود: {p.sku} | باركود: {p.barcode}</span>
+                        {p.barcodes && p.barcodes.length > 0 && (
+                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] font-sans font-black px-1 rounded-sm" title={p.barcodes.join(' - ')}>
+                            +{p.barcodes.length}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -468,6 +481,85 @@ export const CatalogView: React.FC = () => {
                     className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-stone-100 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Additional Barcodes Section */}
+              <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-amber-400">
+                    أكواد وباركودات إضافية بديلة للمنتج
+                  </span>
+                  <span className="text-[10px] text-stone-500">
+                    (تسمح بالبحث والبيع بأكثر من كود)
+                  </span>
+                </div>
+                
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="اكتب كود إضافي ثم اضغط إضافة أو Enter..."
+                    id="new-extra-barcode"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = e.currentTarget.value.trim();
+                        if (val && !formData.barcodes.includes(val)) {
+                          setFormData({
+                            ...formData,
+                            barcodes: [...formData.barcodes, val]
+                          });
+                          e.currentTarget.value = '';
+                        }
+                      }
+                    }}
+                    className="flex-1 bg-stone-900 border border-stone-800 rounded-xl px-3 py-1.5 font-mono text-stone-100 text-xs focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById('new-extra-barcode') as HTMLInputElement | null;
+                      const val = input?.value?.trim();
+                      if (val && input && !formData.barcodes.includes(val)) {
+                        setFormData({
+                          ...formData,
+                          barcodes: [...formData.barcodes, val]
+                        });
+                        input.value = '';
+                      }
+                    }}
+                    className="px-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition-all"
+                  >
+                    إضافة +
+                  </button>
+                </div>
+
+                {formData.barcodes.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {formData.barcodes.map((code) => (
+                      <span
+                        key={code}
+                        className="bg-stone-900 border border-stone-800 text-stone-300 font-mono text-[11px] px-2.5 py-1 rounded-lg flex items-center space-x-1.5 space-x-reverse"
+                      >
+                        <span>{code}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              barcodes: formData.barcodes.filter((b) => b !== code)
+                            });
+                          }}
+                          className="text-stone-500 hover:text-rose-400 font-extrabold text-xs cursor-pointer"
+                          title="حذف هذا الكود"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-stone-500">لا يوجد أكواد إضافية بديلة حالياً.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

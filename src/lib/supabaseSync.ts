@@ -34,6 +34,8 @@ export async function syncProductToSupabase(product: Product) {
       quantity: product.stock,
       stock: product.stock,
       image_url: product.image,
+      barcodes: product.barcodes || [],
+      alternative_barcodes: product.barcodes || [],
       updated_at: new Date().toISOString(),
     };
 

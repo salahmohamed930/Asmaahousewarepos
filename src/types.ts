@@ -42,6 +42,7 @@ export interface Product {
   stock: number;
   image: string;
   description?: string;
+  barcodes?: string[];      // أكواد / باركودات إضافية للمنتج
 }
 
 export interface SplitAssociate {

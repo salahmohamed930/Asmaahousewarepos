@@ -72,6 +72,8 @@ export interface Customer {
   isCreditEligible?: boolean; // مؤهل للشراء الآجل
   creditLimit?: number;       // حد الائتمان / سقف المديونية
   currentDebt?: number;       // المديونية الحالية
+  notes?: string;             // ملاحظات حول العميل
+  address?: string;           // عنوان العميل
 }
 
 export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية';
@@ -113,9 +115,10 @@ export interface Transaction {
   splitAssociates?: SplitAssociate[];
   commissions: TransactionCommission[];
   notes?: string;
-  status: 'مكتملة' | 'ملغاة' | 'مسترجعة';
+  status: 'مكتملة' | 'ملغاة' | 'مسترجعة' | 'معلقة';
   amountPaid?: number;        // المبلغ المدفوع كاش أو إلكترونياً
   amountDeferred?: number;    // المبلغ المرحل لمديونية الآجل
+  originalCart?: CartItem[];  // سلة المشتريات الأصلية المستعادة
 }
 
 export interface ShiftRecord {
@@ -126,4 +129,21 @@ export interface ShiftRecord {
   clockOut?: string;
   salesCount: number;
   totalSalesAmount: number;
+}
+
+export interface ClosedShift {
+  id: string;
+  associateId: string;
+  associateName: string;
+  startTime: string;
+  endTime: string;
+  expectedCash: number;
+  actualCash: number;
+  discrepancy: number; // actual - expected
+  salesCount: number;
+  totalSales: number;
+  totalCard: number;
+  totalInstallment: number;
+  totalDebtCollected: number;
+  notes?: string;
 }

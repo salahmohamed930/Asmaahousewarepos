@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Customer } from '../../types';
-import { UserCheck, UserPlus, Search, ShoppingBag, Heart, X, Phone, Mail, FileText } from 'lucide-react';
+import { UserCheck, UserPlus, Search, ShoppingBag, Heart, X, Phone, Mail, FileText, MapPin } from 'lucide-react';
 import { CustomerAccountModal } from './CustomerAccountModal';
 
 export const CustomersView: React.FC = () => {
@@ -25,6 +25,8 @@ export const CustomersView: React.FC = () => {
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
     isCreditEligible: false,
     creditLimit: 0,
+    notes: '',
+    address: '',
   });
 
   const handleOpenAdd = () => {
@@ -36,6 +38,8 @@ export const CustomersView: React.FC = () => {
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
       isCreditEligible: false,
       creditLimit: 0,
+      notes: '',
+      address: '',
     });
     setIsAddModalOpen(true);
   };
@@ -150,6 +154,12 @@ export const CustomersView: React.FC = () => {
                         <span>{cust.phone}</span>
                       </p>
                       <p className="text-[10px] text-stone-500">{cust.email}</p>
+                      {cust.address && (
+                        <p className="text-[10px] text-stone-400 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-amber-500" />
+                          <span>{cust.address}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -188,6 +198,15 @@ export const CustomersView: React.FC = () => {
                     <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400/20" />
                     <span>البائع المفضل:</span>
                     <span className="font-semibold text-stone-200">{prefAssoc.name}</span>
+                  </div>
+                )}
+
+                {cust.notes && (
+                  <div className="flex items-start space-x-2 space-x-reverse text-[11px] text-amber-400 bg-amber-500/5 border border-amber-500/10 p-2.5 rounded-xl">
+                    <FileText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-500" />
+                    <p className="line-clamp-2 text-stone-300 font-medium leading-relaxed">
+                      {cust.notes}
+                    </p>
                   </div>
                 )}
               </div>
@@ -313,6 +332,28 @@ export const CustomersView: React.FC = () => {
                     />
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-stone-400 mb-1">العنوان / السكن</label>
+                <input
+                  type="text"
+                  placeholder="مثال: القاهرة، مدينة نصر، شارع الطيران..."
+                  value={formData.address || ''}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-stone-400 mb-1">ملاحظات ومذكرة خاصة بالعميل (اختياري)</label>
+                <textarea
+                  placeholder="أضف ملاحظات خاصة بالعميل هنا..."
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={2}
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs"
+                />
               </div>
 
               <button

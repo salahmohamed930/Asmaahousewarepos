@@ -12,6 +12,7 @@ import {
   Minus,
   Search,
   CreditCard,
+  Clock,
 } from 'lucide-react';
 import SplitAssociateModal from './SplitAssociateModal';
 
@@ -37,6 +38,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     updateCartItemAssociate,
     removeFromCart,
     clearCart,
+    holdCart,
   } = usePOS();
 
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -158,6 +160,16 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                     <span className="text-[10px] text-stone-400 block mt-0.5">
                       نقاط الولاء: {selectedCustomer.loyaltyPoints} | إجمالي المشتريات: {selectedCustomer.totalSpent.toLocaleString()} ج.م
                     </span>
+                    {selectedCustomer.notes && (
+                      <span className="text-[10px] text-amber-400 bg-amber-500/5 border border-amber-500/15 px-2 py-1 rounded-lg block mt-1.5 font-medium max-w-[280px] truncate" title={selectedCustomer.notes}>
+                        📝 {selectedCustomer.notes}
+                      </span>
+                    )}
+                    {selectedCustomer.address && (
+                      <span className="text-[10px] text-stone-300 bg-stone-900/60 border border-stone-800 px-2 py-1 rounded-lg block mt-1 font-medium max-w-[280px] truncate" title={selectedCustomer.address}>
+                        📍 {selectedCustomer.address}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button
@@ -471,6 +483,33 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 title="تفريغ الفاتورة بالكامل"
               >
                 <Trash2 className="w-4 h-4 text-rose-400" />
+              </button>
+            )}
+
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedCustomer) {
+                    alert('⚠️ يجب اختيار أو إضافة عميل أولاً لتعليق الفاتورة!');
+                    return;
+                  }
+                  try {
+                    holdCart('فاتورة معلقة للعميل');
+                    alert('✅ تم تعليق الفاتورة وحفظها بنجاح في القائمة.');
+                  } catch (e: any) {
+                    alert(`خطأ: ${e.message}`);
+                  }
+                }}
+                className={`px-4 py-3 rounded-2xl border transition-all flex items-center justify-center space-x-1.5 space-x-reverse font-bold text-xs ${
+                  selectedCustomer
+                    ? 'bg-amber-950/70 hover:bg-amber-900 border-amber-800 text-amber-300'
+                    : 'bg-stone-900/40 border-stone-800 text-stone-600 cursor-not-allowed'
+                }`}
+                title={selectedCustomer ? "تعليق الفاتورة وحفظها" : "يجب اختيار عميل أولاً لتعليق الفاتورة"}
+              >
+                <Clock className="w-4 h-4" />
+                <span>تعليق</span>
               </button>
             )}
 

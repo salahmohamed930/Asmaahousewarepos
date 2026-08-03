@@ -14,7 +14,8 @@ import {
   Sparkles,
   Phone,
   Mail,
-  UserCheck
+  UserCheck,
+  MapPin
 } from 'lucide-react';
 
 interface CustomerAccountModalProps {
@@ -38,9 +39,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [creditLimitInput, setCreditLimitInput] = useState<string>(String(customer.creditLimit || 0));
   const [creditSuccess, setCreditSuccess] = useState<string>('');
 
+  // Customer notes state
+  const [customerNotes, setCustomerNotes] = useState<string>(customer.notes || '');
+  const [notesSavedMessage, setNotesSavedMessage] = useState<string>('');
+
+  // Customer address state
+  const [customerAddress, setCustomerAddress] = useState<string>(customer.address || '');
+  const [addressSavedMessage, setAddressSavedMessage] = useState<string>('');
+
   React.useEffect(() => {
     setIsCreditEligible(customer.isCreditEligible || false);
     setCreditLimitInput(String(customer.creditLimit || 0));
+    setCustomerNotes(customer.notes || '');
+    setCustomerAddress(customer.address || '');
   }, [customer]);
 
   // Payment states
@@ -242,6 +253,86 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     <div className="flex justify-between">
                       <span className="text-stone-500">دفعات السداد المكتملة:</span>
                       <span className="text-emerald-400 font-mono font-bold">{payments.length} عمليات</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Address / عنوان العميل */}
+                <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-stone-900 pb-2">
+                    <h4 className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>عنوان / سكن العميل</span>
+                    </h4>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <input
+                      type="text"
+                      placeholder="اكتب عنوان العميل هنا بالتفصيل..."
+                      value={customerAddress}
+                      onChange={(e) => setCustomerAddress(e.target.value)}
+                      className="w-full bg-stone-900 border border-stone-850 rounded-xl px-3 py-2 text-stone-200 placeholder-stone-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs"
+                    />
+                    <div className="flex justify-between items-center">
+                      {addressSavedMessage ? (
+                        <span className="text-[10px] text-emerald-400 font-bold animate-pulse">{addressSavedMessage}</span>
+                      ) : (
+                        <span className="text-[10px] text-stone-500">سيتم حفظ العنوان في قاعدة بيانات العميل</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateCustomer({
+                            ...customer,
+                            address: customerAddress
+                          });
+                          setAddressSavedMessage('تم حفظ العنوان بنجاح!');
+                          setTimeout(() => setAddressSavedMessage(''), 3000);
+                        }}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-[11px] rounded-xl transition-all"
+                      >
+                        حفظ العنوان
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Notes / ملاحظات العميل */}
+                <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-stone-900 pb-2">
+                    <h4 className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>ملاحظات ومذكرة خاصة بالعميل</span>
+                    </h4>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <textarea
+                      placeholder="اكتب أي ملاحظات خاصة بهذا العميل هنا (مثلاً: ملاحظات عن سداد الأقساط، شروط خاصة بالدفع، طريقة التعامل المفضلة)..."
+                      value={customerNotes}
+                      onChange={(e) => setCustomerNotes(e.target.value)}
+                      rows={3}
+                      className="w-full bg-stone-900 border border-stone-850 rounded-xl px-3 py-2 text-stone-200 placeholder-stone-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs"
+                    />
+                    <div className="flex justify-between items-center">
+                      {notesSavedMessage ? (
+                        <span className="text-[10px] text-emerald-400 font-bold animate-pulse">{notesSavedMessage}</span>
+                      ) : (
+                        <span className="text-[10px] text-stone-500">سيتم حفظ هذه الملاحظات بشكل دائم في حساب العميل</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateCustomer({
+                            ...customer,
+                            notes: customerNotes
+                          });
+                          setNotesSavedMessage('تم حفظ الملاحظات بنجاح!');
+                          setTimeout(() => setNotesSavedMessage(''), 3000);
+                        }}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-[11px] rounded-xl transition-all"
+                      >
+                        حفظ الملاحظات
+                      </button>
                     </div>
                   </div>
                 </div>

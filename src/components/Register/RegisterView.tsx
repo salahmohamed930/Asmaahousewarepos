@@ -35,6 +35,8 @@ export const RegisterView: React.FC = () => {
     setGlobalPriceTier,
     transactions,
     voidTransaction,
+    restoreHeldTransaction,
+    deleteTransaction,
     associates,
     currentAssociate,
     quickSwitchByPin,
@@ -167,8 +169,19 @@ export const RegisterView: React.FC = () => {
     return matchesSearch && matchesPayment && matchesDate && matchesSeller;
   });
 
+  // Sort: held ('معلقة') always comes first, followed by newest transactions
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
+    const aHeld = a.status === 'معلقة' ? 1 : 0;
+    const bHeld = b.status === 'معلقة' ? 1 : 0;
+    if (aHeld !== bHeld) {
+      return bHeld - aHeld;
+    }
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+  });
+
   // Calculate quick summary metrics for past invoices
-  const totalInvoicesCount = filteredTransactions.length;
+  const totalInvoicesCount = filteredTransactions.filter((tx) => tx.status !== 'معلقة').length;
+  const totalHeldCount = filteredTransactions.filter((tx) => tx.status === 'معلقة').length;
   const totalSalesSum = filteredTransactions
     .filter((tx) => tx.status === 'completed' || tx.status === 'مكتملة')
     .reduce((acc, tx) => acc + (tx.grandTotal || tx.subtotal || 0), 0);
@@ -190,11 +203,17 @@ export const RegisterView: React.FC = () => {
                 <FileText className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-xl font-extrabold tracking-tight text-stone-100 flex items-center space-x-2 space-x-reverse">
+                <h1 className="text-xl font-extrabold tracking-tight text-stone-100 flex flex-wrap items-center gap-2">
                   <span>إرشيف وقائمة الفواتير القديمة</span>
-                  <span className="text-xs font-mono bg-stone-950 border border-stone-800 px-2 py-0.5 rounded-full text-amber-400 font-bold">
-                    {totalInvoicesCount} فاتورة
+                  <span className="text-xs font-mono bg-stone-950 border border-stone-800 px-2 py-0.5 rounded-full text-stone-300 font-bold">
+                    {totalInvoicesCount} مكتملة
                   </span>
+                  {totalHeldCount > 0 && (
+                    <span className="text-xs font-mono bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-full text-amber-300 font-extrabold animate-pulse flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-amber-400" />
+                      <span>{totalHeldCount} معلقة</span>
+                    </span>
+                  )}
                 </h1>
                 <p className="text-xs text-stone-400 mt-0.5">
                   عرض الفواتير السابقة، البحث برقم الفاتورة أو كود البائع، وطباعة أي فاتورة
@@ -351,7 +370,7 @@ export const RegisterView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-800/80 text-xs text-stone-200">
-                    {filteredTransactions.map((tx) => {
+                    {sortedTransactions.map((tx) => {
                       const assocId = tx.primaryAssociateId || (tx as any).associateId;
                       const assoc = associates.find((a) => a.id === assocId);
                       const sellerPinCode = assoc ? assoc.pin : '101';
@@ -364,12 +383,17 @@ export const RegisterView: React.FC = () => {
                       });
 
                       const isVoided = tx.status === 'voided' || tx.status === 'ملغاة';
+                      const isHeld = tx.status === 'معلقة';
                       const txTotal = tx.grandTotal ?? tx.subtotal ?? 0;
 
                       return (
                         <tr
                           key={tx.id}
-                          className="hover:bg-stone-950/60 transition-colors"
+                          className={`transition-colors ${
+                            isHeld
+                              ? 'bg-amber-950/20 hover:bg-amber-950/30 border-r-4 border-amber-500'
+                              : 'hover:bg-stone-950/60'
+                          }`}
                         >
                           {/* رقم الفاتورة */}
                           <td className="py-4 px-4 font-mono font-bold text-amber-400 whitespace-nowrap">
@@ -400,21 +424,27 @@ export const RegisterView: React.FC = () => {
 
                           {/* طريقة الدفع */}
                           <td className="py-4 px-4 text-center">
-                            <span
-                              className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
-                                tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            {isHeld ? (
+                              <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
+                                معلقة ⏳
+                              </span>
+                            ) : (
+                              <span
+                                className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
+                                  tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
+                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                    : tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'
+                                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                                    : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                                }`}
+                              >
+                                {tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
+                                  ? 'كاش 💵'
                                   : tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'
-                                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                  : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-                              }`}
-                            >
-                              {tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
-                                ? 'كاش 💵'
-                                : tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'
-                                ? 'تقسيط 📅'
-                                : 'بطاقة / جملة 💳'}
-                            </span>
+                                  ? 'تقسيط 📅'
+                                  : 'بطاقة / جملة 💳'}
+                              </span>
+                            )}
                           </td>
 
                           {/* الإجمالي */}
@@ -424,7 +454,11 @@ export const RegisterView: React.FC = () => {
 
                           {/* الحالة */}
                           <td className="py-4 px-4 text-center">
-                            {isVoided ? (
+                            {isHeld ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 animate-pulse">
+                                معلقة ⏳
+                              </span>
+                            ) : isVoided ? (
                               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
                                 ملغاة
                               </span>
@@ -437,15 +471,44 @@ export const RegisterView: React.FC = () => {
 
                           {/* خيارات الفاتورة */}
                           <td className="py-4 px-4 text-center whitespace-nowrap">
-                            <div className="inline-flex items-center space-x-1.5 space-x-reverse">
-                              <button
-                                onClick={() => setCompletedTransaction(tx)}
-                                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-colors"
-                                title="عرض وطباعة الفاتورة"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>طباعة</span>
-                              </button>
+                            <div className="inline-flex items-center space-x-1.5 space-x-reverse justify-center">
+                              {isHeld ? (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`هل تريد استكمال الفاتورة المعلقة رقم ${tx.receiptNumber} للعميل ${tx.customerName || ''}؟`)) {
+                                        restoreHeldTransaction(tx.id);
+                                        setViewMode('create');
+                                      }
+                                    }}
+                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-[10px] flex items-center space-x-1 space-x-reverse transition-all active:scale-95 animate-pulse"
+                                    title="استكمال الفاتورة وتفريغها في السلة"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>استكمال الفاتورة</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (confirm('هل تريد حذف وإلغاء هذه الفاتورة المعلقة نهائياً؟')) {
+                                        deleteTransaction(tx.id);
+                                      }
+                                    }}
+                                    className="p-1.5 text-stone-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-xl transition-colors border border-stone-800"
+                                    title="حذف وتعليق نهائي"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => setCompletedTransaction(tx)}
+                                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-colors"
+                                  title="عرض وطباعة الفاتورة"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>طباعة</span>
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

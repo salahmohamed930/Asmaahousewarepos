@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Product, Customer, Transaction, Associate } from '../types';
+import { Product, Customer, Transaction, Associate, ClosedShift } from '../types';
 
 /**
  * Sync POS Data with Supabase Database
@@ -14,6 +14,30 @@ export async function checkSupabaseConnection(): Promise<boolean> {
   } catch (err) {
     console.warn('Supabase ping:', err);
     return true;
+  }
+}
+
+export async function syncClosedShiftToSupabase(shift: ClosedShift) {
+  try {
+    await supabase.from('closed_shifts').upsert({
+      id: shift.id,
+      associate_id: shift.associateId,
+      associate_name: shift.associateName,
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      expected_cash: shift.expectedCash,
+      actual_cash: shift.actualCash,
+      discrepancy: shift.discrepancy,
+      sales_count: shift.salesCount,
+      total_sales: shift.totalSales,
+      total_card: shift.totalCard,
+      total_installment: shift.totalInstallment,
+      total_debt_collected: shift.totalDebtCollected,
+      notes: shift.notes || '',
+      created_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Supabase closed shift sync error:', err);
   }
 }
 
@@ -81,6 +105,8 @@ export async function syncCustomerToSupabase(customer: Customer) {
       phone: customer.phone,
       total_spent: customer.totalSpent,
       loyalty_points: customer.loyaltyPoints,
+      notes: customer.notes || '',
+      address: customer.address || '',
       updated_at: new Date().toISOString(),
     });
   } catch (err) {

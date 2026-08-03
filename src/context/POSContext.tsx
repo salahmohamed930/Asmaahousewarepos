@@ -9,6 +9,7 @@ import {
   PaymentMethod,
   PriceTier,
   TransactionCommission,
+  ClosedShift,
 } from '../types';
 import {
   INITIAL_ASSOCIATES,
@@ -21,6 +22,7 @@ import {
   syncTransactionToSupabase,
   syncCustomerToSupabase,
   syncAssociateToSupabase,
+  syncClosedShiftToSupabase,
 } from '../lib/supabaseSync';
 import { supabase } from '../lib/supabase';
 
@@ -66,6 +68,9 @@ interface POSContextType {
     amountDeferred?: number
   ) => Transaction;
   voidTransaction: (transactionId: string) => void;
+  holdCart: (notes?: string) => void;
+  restoreHeldTransaction: (transactionId: string) => void;
+  deleteTransaction: (transactionId: string) => void;
   
   // Staff & Shift Management
   clockInAssociate: (associateId: string) => void;
@@ -79,6 +84,10 @@ interface POSContextType {
   addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Customer;
   updateCustomer: (cust: Customer) => void;
   payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => void;
+  
+  // Shift Closure Actions
+  closedShifts: ClosedShift[];
+  closeShift: (shift: Omit<ClosedShift, 'id'>) => void;
   
   refreshDataFromSupabase: () => Promise<void>;
   resetDemoData: () => void;
@@ -107,6 +116,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_transactions`);
     return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+  });
+
+  const [closedShifts, setClosedShifts] = useState<ClosedShift[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_closed_shifts`);
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
@@ -211,8 +225,35 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isCreditEligible: c.is_credit_eligible ?? c.isCreditEligible ?? (c.id === 'cust_1' || c.id === 'cust_3'),
           creditLimit: Number(c.credit_limit ?? c.creditLimit ?? (c.id === 'cust_1' ? 10000 : c.id === 'cust_3' ? 150000 : 0)),
           currentDebt: Number(c.current_debt ?? c.currentDebt ?? (c.id === 'cust_3' ? 25000 : 0)),
+          notes: c.notes || '',
         }));
         setCustomers(mappedCustomers);
+      }
+
+      // 4. Fetch closed shifts from Supabase
+      try {
+        const { data: shiftData } = await supabase.from('closed_shifts').select('*');
+        if (shiftData && shiftData.length > 0) {
+          const mappedShifts: ClosedShift[] = shiftData.map((s: any) => ({
+            id: s.id,
+            associateId: s.associate_id,
+            associateName: s.associate_name,
+            startTime: s.start_time,
+            endTime: s.end_time,
+            expectedCash: Number(s.expected_cash ?? 0),
+            actualCash: Number(s.actual_cash ?? 0),
+            discrepancy: Number(s.discrepancy ?? 0),
+            salesCount: Number(s.sales_count ?? 0),
+            totalSales: Number(s.total_sales ?? 0),
+            totalCard: Number(s.total_card ?? 0),
+            totalInstallment: Number(s.total_installment ?? 0),
+            totalDebtCollected: Number(s.total_debt_collected ?? 0),
+            notes: s.notes || '',
+          }));
+          setClosedShifts(mappedShifts);
+        }
+      } catch (shiftErr) {
+        console.warn('Closed shifts table might be missing or not created yet in Supabase:', shiftErr);
       }
     } catch (err) {
       console.warn('Supabase initial fetch skipped or table pending:', err);
@@ -234,6 +275,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_transactions`, JSON.stringify(transactions));
   }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_closed_shifts`, JSON.stringify(closedShifts));
+  }, [closedShifts]);
 
   const setCurrentAssociate = (assoc: Associate | null) => {
     setCurrentAssociateState(assoc);
@@ -512,6 +557,135 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const holdCart = (notes = '') => {
+    if (!selectedCustomer) {
+      throw new Error('يجب اختيار عميل أولاً لتعليق الفاتورة.');
+    }
+    if (cart.length === 0) {
+      throw new Error('سلة الشراء فارغة لا يمكن تعليقها.');
+    }
+    if (!currentAssociate) {
+      throw new Error('يجب اختيار البائع/الكاشير المسؤول قبل تعليق الفاتورة.');
+    }
+
+    let subtotal = 0;
+    let discountTotal = 0;
+
+    const transactionItems = cart.map((item) => {
+      const unitPrice = getItemUnitPrice(item);
+      const lineOriginalTotal = unitPrice * item.quantity;
+      const lineDiscount = (lineOriginalTotal * (item.discountPercent || 0)) / 100;
+      const lineNetTotal = lineOriginalTotal - lineDiscount;
+
+      subtotal += lineOriginalTotal;
+      discountTotal += lineDiscount;
+
+      return {
+        productId: item.product.id,
+        productName: item.product.name,
+        sku: item.product.sku,
+        quantity: item.quantity,
+        priceTier: item.selectedPriceTier || globalPriceTier,
+        unitPrice,
+        totalPrice: lineNetTotal,
+        assignedAssociateId: item.assignedAssociateId,
+      };
+    });
+
+    const grandTotal = Math.max(0, subtotal - discountTotal);
+    const primaryAssocId = currentAssociate.id;
+    const primaryAssocName = currentAssociate.name;
+
+    const receiptNumber = `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newHeldTransaction: Transaction = {
+      id: `tx_held_${Date.now()}`,
+      receiptNumber,
+      timestamp: new Date().toISOString(),
+      items: transactionItems,
+      subtotal,
+      discountTotal,
+      taxTotal: 0,
+      grandTotal,
+      paymentMethod: 'كاش',
+      customerId: selectedCustomer.id,
+      customerName: selectedCustomer.name,
+      primaryAssociateId: primaryAssocId,
+      primaryAssociateName: primaryAssocName,
+      splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
+      commissions: [],
+      notes: notes || 'فاتورة معلقة للعميل',
+      status: 'معلقة',
+      originalCart: JSON.parse(JSON.stringify(cart)), // deep copy to avoid reference sharing
+    };
+
+    setTransactions((prev) => [newHeldTransaction, ...prev]);
+    try {
+      syncTransactionToSupabase(newHeldTransaction);
+    } catch (e) {
+      console.error(e);
+    }
+
+    setCart([]);
+    setSelectedCustomer(null);
+    setSplitAssociates([]);
+  };
+
+  const restoreHeldTransaction = (transactionId: string) => {
+    const foundTx = transactions.find((t) => t.id === transactionId && t.status === 'معلقة');
+    if (!foundTx) {
+      throw new Error('لم يتم العثور على الفاتورة المعلقة المطلوبة.');
+    }
+
+    if (foundTx.originalCart && foundTx.originalCart.length > 0) {
+      setCart(foundTx.originalCart);
+    } else {
+      const reconstructed: CartItem[] = foundTx.items.map((item) => {
+        const prod = products.find((p) => p.id === item.productId) || {
+          id: item.productId,
+          name: item.productName,
+          sku: item.sku,
+          barcode: '',
+          category: 'عام',
+          priceCash: item.unitPrice,
+          priceInstallment: item.unitPrice,
+          priceWholesale: item.unitPrice,
+          cost: item.unitPrice,
+          stock: 99,
+          image: '',
+        };
+        return {
+          product: prod,
+          quantity: item.quantity,
+          selectedPriceTier: item.priceTier,
+          discountPercent: 0,
+          assignedAssociateId: item.assignedAssociateId,
+        };
+      });
+      setCart(reconstructed);
+    }
+
+    if (foundTx.customerId) {
+      const cust = customers.find((c) => c.id === foundTx.customerId);
+      if (cust) {
+        setSelectedCustomer(cust);
+      }
+    }
+
+    if (foundTx.splitAssociates) {
+      setSplitAssociates(foundTx.splitAssociates);
+    } else {
+      setSplitAssociates([]);
+    }
+
+    setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    setActiveTab('register');
+  };
+
+  const deleteTransaction = (transactionId: string) => {
+    setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+  };
+
   const clockInAssociate = (associateId: string) => {
     setAssociates((prev) =>
       prev.map((a) => {
@@ -668,6 +842,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearCart();
   };
 
+  const closeShift = (shiftData: Omit<ClosedShift, 'id'>) => {
+    const newShift: ClosedShift = {
+      ...shiftData,
+      id: `shift_${Date.now()}`,
+    };
+    setClosedShifts((prev) => [newShift, ...prev]);
+    syncClosedShiftToSupabase(newShift);
+  };
+
   return (
     <POSContext.Provider
       value={{
@@ -697,6 +880,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedCustomer,
         completeTransaction,
         voidTransaction,
+        holdCart,
+        restoreHeldTransaction,
+        deleteTransaction,
         clockInAssociate,
         clockOutAssociate,
         addAssociate,
@@ -706,6 +892,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomer,
         updateCustomer,
         payCustomerDebt,
+        closedShifts,
+        closeShift,
         refreshDataFromSupabase: loadFromSupabase,
         resetDemoData,
       }}

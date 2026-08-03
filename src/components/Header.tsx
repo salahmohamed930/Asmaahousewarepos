@@ -61,13 +61,6 @@ export const Header: React.FC = () => {
                   <span className="font-extrabold text-lg tracking-tight text-white">
                     أسماء للأدوات المنزلية
                   </span>
-                  <span className="text-[10px] bg-amber-950/80 text-amber-400 px-2 py-0.5 rounded-full border border-amber-800 font-mono">
-                    فرع #01
-                  </span>
-                  <span className="text-[10px] bg-emerald-950/80 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-800/80 font-medium flex items-center space-x-1 space-x-reverse">
-                    <Database className="w-3 h-3 text-emerald-400" />
-                    <span>Supabase متصل</span>
-                  </span>
                 </div>
                 <p className="text-[11px] text-stone-400">نظام إدارة المبيعات والفواتير ونقاط البيع</p>
               </div>

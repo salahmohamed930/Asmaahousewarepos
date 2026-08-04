@@ -7,12 +7,12 @@ import {
   BarChart3,
   UserCheck,
   KeyRound,
-  RotateCcw,
   ChevronDown,
   LogOut,
   LogIn,
   Store,
   Database,
+  Settings,
 } from 'lucide-react';
 import QuickPinModal from './QuickPinModal';
 
@@ -31,18 +31,14 @@ export const Header: React.FC = () => {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isAssociateDropdownOpen, setIsAssociateDropdownOpen] = useState(false);
 
-  // Exact 5 sections as explicitly requested:
-  // 1. الأصناف
-  // 2. الفواتير
-  // 3. التقارير
-  // 4. حسابات العملاء
-  // 5. الموظفين
+  // Exact sections + Settings as requested:
   const tabs = [
     { id: 'catalog', label: 'الأصناف', icon: Package },
     { id: 'register', label: 'الفواتير', icon: FileText },
     { id: 'analytics', label: 'التقارير', icon: BarChart3 },
     { id: 'customers', label: 'حسابات العملاء', icon: UserCheck },
     { id: 'associates', label: 'الموظفين', icon: Users },
+    { id: 'settings', label: 'الإعدادات', icon: Settings },
   ] as const;
 
   return (
@@ -91,19 +87,6 @@ export const Header: React.FC = () => {
             {/* Left Active Associate Switcher & Actions */}
             <div className="flex items-center space-x-3 space-x-reverse">
               
-              {/* Reset Demo Data Button */}
-              <button
-                onClick={() => {
-                  if (confirm('هل تريد إعادة ضبط بيانات النظام إلى الحالة الافتراضية؟')) {
-                    resetDemoData();
-                  }
-                }}
-                title="إعادة ضبط البيانات"
-                className="p-2 text-stone-400 hover:text-stone-200 hover:bg-stone-800 rounded-xl transition-colors border border-stone-800"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-
               {/* Login & PIN Quick Switch Button */}
               <button
                 onClick={() => setIsPinModalOpen(true)}
@@ -146,7 +129,7 @@ export const Header: React.FC = () => {
                 {/* Dropdown Menu */}
                 {isAssociateDropdownOpen && (
                   <div
-                    className="absolute left-0 mt-2 w-64 bg-stone-900 border border-stone-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-right"
+                    className="absolute left-0 rtl:left-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-stone-900 border border-stone-800 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-right"
                     onClick={() => setIsAssociateDropdownOpen(false)}
                   >
                     <div className="px-3 py-2 border-b border-stone-800 text-[11px] font-bold text-stone-400 uppercase">

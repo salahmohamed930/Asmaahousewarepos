@@ -40,10 +40,14 @@ export const RegisterView: React.FC = () => {
     associates,
     currentAssociate,
     quickSwitchByPin,
+    cart,
   } = usePOS();
 
   // Mode state: DEFAULT TO 'history' AS REQUESTED!
   const [viewMode, setViewMode] = useState<'history' | 'create'>('history');
+
+  // Mobile Sub Tab state inside creation view
+  const [mobileSubTab, setMobileSubTab] = useState<'catalog' | 'cart'>('catalog');
 
   // History search & filters state
   const [historySearch, setHistorySearch] = useState('');
@@ -187,105 +191,54 @@ export const RegisterView: React.FC = () => {
     .reduce((acc, tx) => acc + (tx.grandTotal || tx.subtotal || 0), 0);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 dir-rtl space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 dir-rtl space-y-3.5">
       
       {/* ======================================================== */}
       {/* 1. DEFAULT HISTORY VIEW: PAST INVOICES ARCHIVE            */}
       {/* ======================================================== */}
       {viewMode === 'history' ? (
-        <div className="space-y-6">
+        <div className="space-y-3.5">
           
-          {/* Top Header Banner with "+ New Invoice" Button */}
-          <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            
+          {/* Top minimal heading and action bar */}
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center space-x-3 space-x-reverse">
-              <div className="w-12 h-12 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center">
-                <FileText className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-xl font-extrabold tracking-tight text-stone-100 flex flex-wrap items-center gap-2">
-                  <span>إرشيف وقائمة الفواتير القديمة</span>
-                  <span className="text-xs font-mono bg-stone-950 border border-stone-800 px-2 py-0.5 rounded-full text-stone-300 font-bold">
-                    {totalInvoicesCount} مكتملة
+              <h1 className="text-base font-black text-stone-100 flex items-center gap-2">
+                <span>إرشيف الفواتير القديمة</span>
+                <span className="text-xs font-mono bg-stone-900 border border-stone-800 px-2 py-0.5 rounded-full text-stone-400 font-bold">
+                  {totalInvoicesCount} مكتملة
+                </span>
+                {totalHeldCount > 0 && (
+                  <span className="text-xs font-mono bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-full text-amber-300 font-extrabold animate-pulse flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-400" />
+                    <span>{totalHeldCount} معلقة</span>
                   </span>
-                  {totalHeldCount > 0 && (
-                    <span className="text-xs font-mono bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-full text-amber-300 font-extrabold animate-pulse flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-amber-400" />
-                      <span>{totalHeldCount} معلقة</span>
-                    </span>
-                  )}
-                </h1>
-                <p className="text-xs text-stone-400 mt-0.5">
-                  عرض الفواتير السابقة، البحث برقم الفاتورة أو كود البائع، وطباعة أي فاتورة
-                </p>
-              </div>
+                )}
+              </h1>
             </div>
-
-            {/* Prominent Action Button: + New Invoice */}
+            
             <button
               onClick={() => setViewMode('create')}
-              className="py-3.5 px-6 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-sm font-extrabold shadow-xl shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all active:scale-95"
+              className="py-1.5 px-3.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-sm"
             >
-              <Plus className="w-5 h-5 stroke-[2.5]" />
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>إضافة فاتورة جديدة</span>
             </button>
           </div>
 
-          {/* Quick Stats Chips */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-stone-900/90 border border-stone-800 rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-stone-400 font-bold block">إجمالي عدد الفواتير</span>
-                <span className="text-xl font-mono font-extrabold text-stone-100 mt-1 block">
-                  {totalInvoicesCount} فاتورة
-                </span>
-              </div>
-              <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl text-amber-400">
-                <Hash className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="bg-stone-900/90 border border-stone-800 rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-stone-400 font-bold block">إجمالي قيم المبيعات</span>
-                <span className="text-xl font-mono font-extrabold text-emerald-400 mt-1 block">
-                  {totalSalesSum.toLocaleString()} ج.م
-                </span>
-              </div>
-              <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl text-emerald-400">
-                <CreditCard className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="bg-stone-900/90 border border-stone-800 rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-stone-400 font-bold block">حالة تصفية البحث</span>
-                <span className="text-xs font-bold text-amber-400 mt-1 block">
-                  {historySearch || paymentFilter !== 'all' || dateFilter !== 'all' || sellerFilter !== 'all'
-                    ? 'نتائج مخصصة بحسب الفلاتر'
-                    : 'جميع الفواتير المسجلة بالنظام'}
-                </span>
-              </div>
-              <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl text-amber-400">
-                <Filter className="w-5 h-5" />
-              </div>
-            </div>
-          </div>
-
           {/* Controls & Search Filters Bar */}
-          <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 shadow-xl space-y-3">
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-md space-y-2.5">
             
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
               
               {/* Search Bar */}
               <div className="md:col-span-5 relative">
-                <Search className="w-4 h-4 text-stone-400 absolute right-3.5 top-3.5" />
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute right-3 top-2.5" />
                 <input
                   type="text"
                   placeholder="ابحث برقم الفاتورة (INV-#)، اسم العميل، رقم التليفون، كود البائع..."
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-10 pl-4 py-2.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-9 pl-4 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
                 />
               </div>
 
@@ -294,7 +247,7 @@ export const RegisterView: React.FC = () => {
                 <select
                   value={paymentFilter}
                   onChange={(e) => setPaymentFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl px-3 py-2.5 text-xs font-bold text-stone-200 focus:outline-none"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-stone-200 focus:outline-none"
                 >
                   <option value="all">طريقة الدفع: الكل</option>
                   <option value="cash">كاش 💵</option>
@@ -308,7 +261,7 @@ export const RegisterView: React.FC = () => {
                 <select
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl px-3 py-2.5 text-xs font-bold text-stone-200 focus:outline-none"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-stone-200 focus:outline-none"
                 >
                   <option value="all">التاريخ: جميع الأوقات</option>
                   <option value="today">فواتير اليوم 📅</option>
@@ -322,7 +275,7 @@ export const RegisterView: React.FC = () => {
                 <select
                   value={sellerFilter}
                   onChange={(e) => setSellerFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl px-3 py-2.5 text-xs font-bold text-amber-300 focus:outline-none"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-amber-300 focus:outline-none"
                 >
                   <option value="all">تصفية بكود البائع: الكل</option>
                   {associates.map((a) => (
@@ -338,19 +291,19 @@ export const RegisterView: React.FC = () => {
           </div>
 
           {/* Past Invoices Table */}
-          <div className="bg-stone-900 border border-stone-800 rounded-3xl shadow-2xl overflow-hidden">
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl shadow-md overflow-hidden">
             {filteredTransactions.length === 0 ? (
-              <div className="p-12 text-center text-stone-500">
-                <FileText className="w-14 h-14 stroke-[1.25] text-stone-600 mx-auto mb-3" />
-                <p className="text-sm font-bold text-stone-300">لم يتم العثور على فواتير سابقة مطابقة</p>
-                <p className="text-xs text-stone-500 mt-1">
+              <div className="p-8 text-center text-stone-500">
+                <FileText className="w-10 h-10 stroke-[1.25] text-stone-600 mx-auto mb-2" />
+                <p className="text-xs font-bold text-stone-300">لم يتم العثور على فواتير سابقة مطابقة</p>
+                <p className="text-[11px] text-stone-500 mt-1">
                   جرب تغيير كلمات البحث أو الفلاتر أعلاه، أو اضغط على زر إضافة فاتورة جديدة
                 </p>
                 <button
                   onClick={() => setViewMode('create')}
-                  className="mt-4 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse"
+                  className="mt-3 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   <span>إضافة فاتورة جديدة الآن</span>
                 </button>
               </div>
@@ -358,15 +311,15 @@ export const RegisterView: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-right border-collapse">
                   <thead>
-                    <tr className="bg-stone-950 text-[11px] font-extrabold text-stone-400 uppercase tracking-wider border-b border-stone-800">
-                      <th className="py-3.5 px-4">رقم الفاتورة</th>
-                      <th className="py-3.5 px-4">التاريخ والوقت</th>
-                      <th className="py-3.5 px-4">اسم العميل</th>
-                      <th className="py-3.5 px-4 text-center">كود البائع</th>
-                      <th className="py-3.5 px-4 text-center">طريقة الدفع</th>
-                      <th className="py-3.5 px-4 text-center">الإجمالي</th>
-                      <th className="py-3.5 px-4 text-center">الحالة</th>
-                      <th className="py-3.5 px-4 text-center">خيارات</th>
+                    <tr className="bg-stone-950 text-[10px] font-extrabold text-stone-400 uppercase tracking-wider border-b border-stone-800">
+                      <th className="py-2 px-3">رقم الفاتورة</th>
+                      <th className="py-2 px-3">التاريخ والوقت</th>
+                      <th className="py-2 px-3">اسم العميل</th>
+                      <th className="py-2 px-3 text-center">كود البائع</th>
+                      <th className="py-2 px-3 text-center">طريقة الدفع</th>
+                      <th className="py-2 px-3 text-center">الإجمالي</th>
+                      <th className="py-2 px-3 text-center">الحالة</th>
+                      <th className="py-2 px-3 text-center">خيارات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-800/80 text-xs text-stone-200">
@@ -396,41 +349,41 @@ export const RegisterView: React.FC = () => {
                           }`}
                         >
                           {/* رقم الفاتورة */}
-                          <td className="py-4 px-4 font-mono font-bold text-amber-400 whitespace-nowrap">
+                          <td className="py-1.5 px-3 font-mono font-bold text-amber-400 whitespace-nowrap">
                             #{tx.receiptNumber}
                           </td>
 
                           {/* التاريخ والوقت */}
-                          <td className="py-4 px-4 text-stone-400 whitespace-nowrap">
+                          <td className="py-1.5 px-3 text-stone-400 whitespace-nowrap">
                             <span className="flex items-center space-x-1.5 space-x-reverse">
-                              <Clock className="w-3.5 h-3.5 text-stone-500" />
-                              <span>{formattedDate}</span>
+                              <Clock className="w-3 h-3 text-stone-500" />
+                              <span className="text-[11px]">{formattedDate}</span>
                             </span>
                           </td>
 
                           {/* العميل */}
-                          <td className="py-4 px-4">
+                          <td className="py-1.5 px-3">
                             <span className="font-bold text-stone-100 block">
                               {tx.customerName || 'عميل نقدي'}
                             </span>
                           </td>
 
                           {/* كود البائع ONLY */}
-                          <td className="py-4 px-4 text-center">
-                            <span className="font-mono font-extrabold text-amber-400 bg-stone-950 border border-stone-800 px-2.5 py-1 rounded-xl text-xs inline-block">
+                          <td className="py-1.5 px-3 text-center">
+                            <span className="font-mono font-extrabold text-amber-400 bg-stone-950 border border-stone-800 px-2 py-0.2 rounded-lg text-[10px] inline-block">
                               كود: {sellerPinCode}
                             </span>
                           </td>
 
                           {/* طريقة الدفع */}
-                          <td className="py-4 px-4 text-center">
+                          <td className="py-1.5 px-3 text-center">
                             {isHeld ? (
-                              <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
+                              <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
                                 معلقة ⏳
                               </span>
                             ) : (
                               <span
-                                className={`px-2.5 py-1 rounded-xl text-[10px] font-bold ${
+                                className={`px-1.5 py-0.2 rounded-lg text-[9px] font-bold ${
                                   tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
                                     ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                                     : tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'
@@ -448,29 +401,29 @@ export const RegisterView: React.FC = () => {
                           </td>
 
                           {/* الإجمالي */}
-                          <td className="py-4 px-4 text-center font-mono font-extrabold text-white whitespace-nowrap">
+                          <td className="py-1.5 px-3 text-center font-mono font-extrabold text-white whitespace-nowrap text-[11px]">
                             {(txTotal || 0).toLocaleString()} ج.م
                           </td>
 
                           {/* الحالة */}
-                          <td className="py-4 px-4 text-center">
+                          <td className="py-1.5 px-3 text-center">
                             {isHeld ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 animate-pulse">
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800 animate-pulse">
                                 معلقة ⏳
                               </span>
                             ) : isVoided ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
                                 ملغاة
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
                                 مكتملة ✓
                               </span>
                             )}
                           </td>
 
                           {/* خيارات الفاتورة */}
-                          <td className="py-4 px-4 text-center whitespace-nowrap">
+                          <td className="py-1.5 px-3 text-center whitespace-nowrap">
                             <div className="inline-flex items-center space-x-1.5 space-x-reverse justify-center">
                               {isHeld ? (
                                 <>
@@ -481,11 +434,11 @@ export const RegisterView: React.FC = () => {
                                         setViewMode('create');
                                       }
                                     }}
-                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-[10px] flex items-center space-x-1 space-x-reverse transition-all active:scale-95 animate-pulse"
+                                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-lg text-[9px] flex items-center space-x-1 space-x-reverse transition-all active:scale-95 animate-pulse"
                                     title="استكمال الفاتورة وتفريغها في السلة"
                                   >
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>استكمال الفاتورة</span>
+                                    <Check className="w-3 h-3" />
+                                    <span>استكمال</span>
                                   </button>
                                   <button
                                     onClick={() => {
@@ -522,13 +475,45 @@ export const RegisterView: React.FC = () => {
 
         </div>
       ) : (
-        /* ======================================================== */
-        /* 2. CREATE NEW INVOICE VIEW (COMPACT CATALOG & CART)       */
-        /* ======================================================== */
+        <>
+          {/* ======================================================== */
+             /* 2. CREATE NEW INVOICE VIEW (COMPACT CATALOG & CART)       */
+             /* ======================================================== */}
+          {/* Mobile View Selector Tab (Only visible on screens < lg) */}
+          <div className="lg:hidden grid grid-cols-2 gap-2 bg-stone-900/60 p-1 rounded-xl border border-stone-800 mb-2">
+          <button
+            onClick={() => setMobileSubTab('catalog')}
+            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse ${
+              mobileSubTab === 'catalog'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>الأصناف والكتالوج ({filteredProducts.length})</span>
+          </button>
+          <button
+            onClick={() => setMobileSubTab('cart')}
+            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse relative ${
+              mobileSubTab === 'cart'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>الفاتورة والسلة ({cart.length})</span>
+            {cart.length > 0 && (
+              <span className="mr-1.5 bg-rose-500 text-white text-[9px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center">
+                {cart.length}
+              </span>
+            )}
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
           {/* Compact Product Selector Catalog (5 Cols) */}
-          <div className="lg:col-span-5 xl:col-span-5 space-y-3">
+          <div className={`lg:col-span-5 xl:col-span-5 space-y-3 ${mobileSubTab === 'catalog' ? 'block' : 'hidden lg:block'}`}>
             
             {/* Header Controls inside Catalog */}
             <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-xl space-y-2.5">
@@ -640,6 +625,23 @@ export const RegisterView: React.FC = () => {
                 </form>
               </div>
 
+              {/* Row 4: Horizontal Scrollable Category Filter */}
+              <div className="flex items-center space-x-1.5 space-x-reverse overflow-x-auto pb-1.5 scrollbar-none border-b border-stone-800/60">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all ${
+                      selectedCategory === cat
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-stone-950 text-stone-400 hover:text-stone-200 border border-stone-800/80'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
               {/* Price Tier Selection */}
               <div className="bg-stone-950 border border-stone-800 p-1.5 rounded-xl flex items-center justify-between text-[11px] gap-1.5">
                 <span className="font-bold text-stone-300 flex items-center space-x-1 space-x-reverse shrink-0">
@@ -671,7 +673,7 @@ export const RegisterView: React.FC = () => {
             </div>
 
             {/* Compact Product List - Rendered as Rows */}
-            <div className="flex flex-col space-y-1.5 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
+            <div className="flex flex-col space-y-1 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
               {filteredProducts.map((product) => {
                 const isLowStock = product.stock <= 5;
                 const isOutOfStock = product.stock === 0;
@@ -688,13 +690,13 @@ export const RegisterView: React.FC = () => {
                   <div
                     key={product.id}
                     onClick={() => !isOutOfStock && triggerAddToCart(product)}
-                    className={`bg-stone-900 border border-stone-800 hover:border-amber-500/60 rounded-xl p-2 flex items-center justify-between transition-all group cursor-pointer relative shadow-sm space-x-2 space-x-reverse ${
+                    className={`bg-stone-900 border border-stone-800 hover:border-amber-500/60 rounded-xl p-1.5 flex items-center justify-between transition-all group cursor-pointer relative shadow-sm space-x-1.5 space-x-reverse ${
                       isJustAdded ? 'scale-[0.99] border-amber-500 ring-1 ring-amber-500/50' : ''
                     }`}
                   >
                     {/* Left/Right Product Image & Main Info */}
-                    <div className="flex items-center space-x-2.5 space-x-reverse min-w-0 flex-1">
-                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-stone-950 border border-stone-800 shrink-0 relative">
+                    <div className="flex items-center space-x-2 space-x-reverse min-w-0 flex-1">
+                      <div className="w-8.5 h-8.5 rounded-lg overflow-hidden bg-stone-950 border border-stone-800 shrink-0 relative">
                         <img
                           src={product.image}
                           alt={product.name}
@@ -704,14 +706,14 @@ export const RegisterView: React.FC = () => {
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-1.5 space-x-reverse">
-                          <h3 className="text-xs font-bold text-stone-100 truncate group-hover:text-amber-400 transition-colors">
+                          <h3 className="text-[11px] font-bold text-stone-100 truncate group-hover:text-amber-400 transition-colors">
                             {product.name}
                           </h3>
-                          <span className="text-[9px] bg-stone-950 text-stone-400 border border-stone-800 px-1.5 py-0.2 rounded font-mono shrink-0">
+                          <span className="text-[8px] bg-stone-950 text-stone-400 border border-stone-800 px-1 py-0.2 rounded font-mono shrink-0">
                             {product.category}
                           </span>
                         </div>
-                        <div className="flex items-center space-x-2 space-x-reverse text-[9px] text-stone-500 font-mono mt-0.5">
+                        <div className="flex items-center space-x-1.5 space-x-reverse text-[8px] text-stone-500 font-mono mt-0.5">
                           <span>كود: {product.sku}</span>
                           <span>•</span>
                           <span>باركود: {product.barcode}</span>
@@ -720,9 +722,9 @@ export const RegisterView: React.FC = () => {
                     </div>
 
                     {/* Stock, Active Price & Quick Add Button */}
-                    <div className="flex items-center space-x-3 space-x-reverse shrink-0">
+                    <div className="flex items-center space-x-2 space-x-reverse shrink-0">
                       <span
-                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                        className={`text-[8px] font-mono px-1 py-0.2 rounded font-bold ${
                           isOutOfStock
                             ? 'bg-rose-950 text-rose-300 border border-rose-800'
                             : isLowStock
@@ -733,7 +735,7 @@ export const RegisterView: React.FC = () => {
                         {isOutOfStock ? 'نفد المخزون' : `مخزون: ${product.stock}`}
                       </span>
 
-                      <span className="text-xs font-mono font-extrabold text-amber-400 min-w-[70px] text-left">
+                      <span className="text-[11px] font-mono font-extrabold text-amber-400 min-w-[55px] text-left">
                         {activePrice.toLocaleString()} ج.م
                       </span>
 
@@ -743,7 +745,7 @@ export const RegisterView: React.FC = () => {
                           e.stopPropagation();
                           if (!isOutOfStock) triggerAddToCart(product);
                         }}
-                        className={`py-1 px-2.5 rounded-lg text-xs font-bold flex items-center space-x-1 space-x-reverse transition-all ${
+                        className={`py-0.5 px-2 rounded-lg text-[10px] font-bold flex items-center space-x-1 space-x-reverse transition-all ${
                           isJustAdded
                             ? 'bg-amber-500 text-white'
                             : isOutOfStock
@@ -754,12 +756,12 @@ export const RegisterView: React.FC = () => {
                       >
                         {isJustAdded ? (
                           <>
-                            <Check className="w-3.5 h-3.5" />
+                            <Check className="w-3 h-3" />
                             <span>تمت الإضافة</span>
                           </>
                         ) : (
                           <>
-                            <Plus className="w-3.5 h-3.5" />
+                            <Plus className="w-3 h-3" />
                             <span>إضافة</span>
                           </>
                         )}
@@ -774,12 +776,13 @@ export const RegisterView: React.FC = () => {
           </div>
 
           {/* Cart Sidebar Panel (7 Cols - High Visibility) */}
-          <div className="lg:col-span-7 xl:col-span-7 sticky top-20">
+          <div className={`lg:col-span-7 xl:col-span-7 sticky top-20 ${mobileSubTab === 'cart' ? 'block' : 'hidden lg:block'}`}>
             <CartSidebar onOpenCheckout={() => setIsPaymentOpen(true)} />
           </div>
 
         </div>
-      )}
+      </>
+    )}
 
       {/* Payment Checkout Modal */}
       <PaymentModal

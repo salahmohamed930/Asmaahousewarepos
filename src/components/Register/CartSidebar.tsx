@@ -107,7 +107,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
   if (!currentAssociate) {
     return (
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 text-center text-stone-400 dir-rtl">
+      <div className="bg-stone-900 border border-stone-800 rounded-xl p-4 text-center text-stone-400 dir-rtl">
         يرجى اختيار الكاشير أو البائع المسؤول لفتح شاشة الفواتير.
       </div>
     );
@@ -115,26 +115,26 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
   return (
     <>
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl flex flex-col h-[calc(100vh-6.5rem)] shadow-2xl overflow-hidden dir-rtl">
+      <div className="bg-stone-900 border border-stone-800 rounded-xl flex flex-col h-[calc(100vh-6.5rem)] shadow-md overflow-hidden dir-rtl">
         
         {/* ======================================================== */}
         {/* 1. HEADER OF INVOICE: CUSTOMER LINK & DETAILS             */}
         {/* ======================================================== */}
-        <div className="p-4 bg-stone-950/90 border-b border-stone-800 space-y-3">
+        <div className="p-3 bg-stone-950/90 border-b border-stone-800 space-y-2">
           
           {/* Header Title Bar */}
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
-              <FileText className="w-4 h-4" />
+              <FileText className="w-3.5 h-3.5" />
               <span>محتويات الفاتورة ({cart.length} أصناف)</span>
             </span>
 
             {cart.length > 0 && (
               <button
                 onClick={clearCart}
-                className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center space-x-1 space-x-reverse transition-colors"
+                className="text-[10px] font-bold text-rose-400 hover:text-rose-300 flex items-center space-x-1 space-x-reverse transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-3 h-3" />
                 <span>إفراغ السلة</span>
               </button>
             )}
@@ -143,30 +143,30 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
           {/* Customer Name & Phone Number Field (With Database Search) */}
           <div className="relative">
             {selectedCustomer ? (
-              <div className="flex items-center justify-between bg-amber-950/30 border border-amber-800/60 p-2.5 rounded-2xl">
-                <div className="flex items-center space-x-2.5 space-x-reverse">
-                  <div className="w-8 h-8 bg-amber-950 text-amber-400 border border-amber-800 rounded-xl flex items-center justify-center">
-                    <UserCheck className="w-4 h-4" />
+              <div className="flex items-center justify-between bg-amber-950/30 border border-amber-800/60 p-2 rounded-xl">
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <div className="w-7 h-7 bg-amber-950 text-amber-400 border border-amber-800 rounded-lg flex items-center justify-center">
+                    <UserCheck className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <div className="flex items-center space-x-2 space-x-reverse">
+                    <div className="flex items-center space-x-1.5 space-x-reverse">
                       <span className="text-xs font-bold text-stone-100">
                         العميل: {selectedCustomer.name}
                       </span>
-                      <span className="text-[10px] text-amber-400 font-mono bg-stone-900 px-1.5 py-0.5 rounded border border-stone-800">
+                      <span className="text-[9px] text-amber-400 font-mono bg-stone-900 px-1 py-0.2 rounded border border-stone-800">
                         📞 {selectedCustomer.phone}
                       </span>
                     </div>
-                    <span className="text-[10px] text-stone-400 block mt-0.5">
+                    <span className="text-[9px] text-stone-400 block mt-0.5">
                       نقاط الولاء: {selectedCustomer.loyaltyPoints} | إجمالي المشتريات: {selectedCustomer.totalSpent.toLocaleString()} ج.م
                     </span>
                     {selectedCustomer.notes && (
-                      <span className="text-[10px] text-amber-400 bg-amber-500/5 border border-amber-500/15 px-2 py-1 rounded-lg block mt-1.5 font-medium max-w-[280px] truncate" title={selectedCustomer.notes}>
+                      <span className="text-[9px] text-amber-400 bg-amber-500/5 border border-amber-500/15 px-1.5 py-0.5 rounded block mt-1 font-medium max-w-[280px] truncate" title={selectedCustomer.notes}>
                         📝 {selectedCustomer.notes}
                       </span>
                     )}
                     {selectedCustomer.address && (
-                      <span className="text-[10px] text-stone-300 bg-stone-900/60 border border-stone-800 px-2 py-1 rounded-lg block mt-1 font-medium max-w-[280px] truncate" title={selectedCustomer.address}>
+                      <span className="text-[9px] text-stone-300 bg-stone-900/60 border border-stone-800 px-1.5 py-0.5 rounded block mt-0.5 font-medium max-w-[280px] truncate" title={selectedCustomer.address}>
                         📍 {selectedCustomer.address}
                       </span>
                     )}
@@ -174,16 +174,16 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 </div>
                 <button
                   onClick={() => setSelectedCustomer(null)}
-                  className="p-1.5 text-stone-400 hover:text-white rounded-xl hover:bg-stone-800 transition-colors"
+                  className="p-1 text-stone-400 hover:text-white rounded-lg hover:bg-stone-800 transition-colors"
                   title="إلغاء ربط الفاتورة بالعميل"
                 >
-                  <X className="w-4 h-4 text-rose-400" />
+                  <X className="w-3.5 h-3.5 text-rose-400" />
                 </button>
               </div>
             ) : (
               <div>
                 <div className="relative">
-                  <Search className="w-4 h-4 text-stone-400 absolute right-3 top-3" />
+                  <Search className="w-3.5 h-3.5 text-stone-400 absolute right-2.5 top-2.5" />
                   <input
                     type="text"
                     placeholder="بحث باسم العميل أو التليفون..."
@@ -193,26 +193,26 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                       setCustomerSearch(e.target.value);
                       setIsCustomerDropdownOpen(true);
                     }}
-                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-2xl pr-9 pl-16 py-2.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-8 pl-14 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
                   />
-                  <div className="absolute left-2 top-2 flex items-center space-x-1 space-x-reverse">
+                  <div className="absolute left-1.5 top-1.5 flex items-center space-x-1 space-x-reverse">
                     {customerSearch && (
                       <button
                         type="button"
                         onClick={() => setCustomerSearch('')}
-                        className="p-1 text-stone-400 hover:text-stone-200 rounded-lg hover:bg-stone-800 transition-colors"
+                        className="p-0.5 text-stone-400 hover:text-stone-200 rounded-md hover:bg-stone-800 transition-colors"
                         title="مسح البحث"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-3 h-3" />
                       </button>
                     )}
                     <button
                       type="button"
                       onClick={() => setShowAddCustomerForm(!showAddCustomerForm)}
-                      className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[10px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
+                      className="px-1.5 py-0.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[9px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
                       title="إضافة عميل جديد"
                     >
-                      <UserPlus className="w-3 h-3" />
+                      <UserPlus className="w-2.5 h-2.5" />
                       <span>جديد</span>
                     </button>
                   </div>
@@ -220,15 +220,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                 {/* Quick Add Customer Modal / Inline Form */}
                 {showAddCustomerForm && (
-                  <form onSubmit={handleCreateCustomer} className="mt-2 p-3 bg-stone-950 border border-stone-800 rounded-2xl space-y-2">
-                    <p className="text-xs font-bold text-amber-400">إضافة عميل جديد لقاعدة البيانات:</p>
-                    <div className="grid grid-cols-2 gap-2">
+                  <form onSubmit={handleCreateCustomer} className="mt-1.5 p-2 bg-stone-950 border border-stone-800 rounded-xl space-y-1.5">
+                    <p className="text-[10px] font-bold text-amber-400">إضافة عميل جديد لقاعدة البيانات:</p>
+                    <div className="grid grid-cols-2 gap-1.5">
                       <input
                         type="text"
                         placeholder="اسم العميل الكامل"
                         value={newCustName}
                         onChange={(e) => setNewCustName(e.target.value)}
-                        className="bg-stone-900 border border-stone-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                        className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500"
                         required
                       />
                       <input
@@ -236,7 +236,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         placeholder="رقم التليفون"
                         value={newCustPhone}
                         onChange={(e) => setNewCustPhone(e.target.value)}
-                        className="bg-stone-900 border border-stone-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                        className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                         required
                       />
                     </div>
@@ -315,23 +315,23 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
         {/* ======================================================== */}
         {/* 2. INVOICE ITEMS SINGLE-ROW TABLE                        */}
         {/* ======================================================== */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center text-stone-500 py-12">
-              <FileText className="w-12 h-12 stroke-[1.25] text-stone-700 mb-2" />
+            <div className="h-full flex flex-col items-center justify-center text-center text-stone-500 py-8">
+              <FileText className="w-10 h-10 stroke-[1.25] text-stone-700 mb-1.5" />
               <p className="text-xs font-bold text-stone-400">الفاتورة فارغة</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-right border-collapse">
                 <thead>
-                  <tr className="text-[11px] font-extrabold text-stone-400 uppercase tracking-wider border-b border-stone-800 bg-stone-950/40">
-                    <th className="py-2.5 px-3">اسم الصنف</th>
-                    <th className="py-2.5 px-2 text-center">الكمية</th>
-                    <th className="py-2.5 px-2 text-center">السعر</th>
-                    <th className="py-2.5 px-2 text-center">إجمالي الصنف</th>
-                    <th className="py-2.5 px-2 text-center">البائع</th>
-                    <th className="py-2.5 px-1 text-center">حذف</th>
+                  <tr className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider border-b border-stone-800 bg-stone-950/40">
+                    <th className="py-1.5 px-2">اسم الصنف</th>
+                    <th className="py-1.5 px-1 text-center">الكمية</th>
+                    <th className="py-1.5 px-1 text-center">السعر</th>
+                    <th className="py-1.5 px-1 text-center">إجمالي الصنف</th>
+                    <th className="py-1.5 px-1 text-center">البائع</th>
+                    <th className="py-1.5 px-1 text-center">حذف</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-800/60">
@@ -356,18 +356,18 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         className="hover:bg-stone-950/80 transition-colors text-xs text-stone-200"
                       >
                         {/* 1. اسم الصنف */}
-                        <td className="py-3 px-3">
-                          <div className="flex items-center space-x-2.5 space-x-reverse min-w-[160px]">
+                        <td className="py-1.5 px-2">
+                          <div className="flex items-center space-x-2 space-x-reverse min-w-[150px]">
                             <img
                               src={item.product.image}
                               alt={item.product.name}
-                              className="w-9 h-9 rounded-lg object-cover bg-stone-950 border border-stone-800"
+                              className="w-7 h-7 rounded-md object-cover bg-stone-950 border border-stone-800"
                             />
                             <div className="min-w-0">
-                              <span className="font-bold text-stone-100 block truncate">
+                              <span className="font-bold text-stone-100 block truncate text-[11px]">
                                 {item.product.name}
                               </span>
-                              <span className="text-[10px] font-mono text-stone-500 block">
+                              <span className="text-[9px] font-mono text-stone-500 block">
                                 {item.product.sku}
                               </span>
                             </div>
@@ -375,49 +375,49 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         </td>
 
                         {/* 2. الكمية */}
-                        <td className="py-3 px-2 text-center">
-                          <div className="inline-flex items-center space-x-1 space-x-reverse bg-stone-950 border border-stone-800 rounded-xl p-1">
+                        <td className="py-1.5 px-1 text-center">
+                          <div className="inline-flex items-center space-x-0.5 space-x-reverse bg-stone-950 border border-stone-800 rounded-lg p-0.5">
                             <button
                               onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
-                              className="p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white"
+                              className="p-0.5 hover:bg-stone-800 rounded-md text-stone-400 hover:text-white"
                             >
-                              <Minus className="w-3 h-3" />
+                              <Minus className="w-2.5 h-2.5" />
                             </button>
-                            <span className="w-7 text-center font-mono text-xs font-bold text-amber-400">
+                            <span className="w-5 text-center font-mono text-[10px] font-bold text-amber-400">
                               {item.quantity}
                             </span>
                             <button
                               onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
-                              className="p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white"
+                              className="p-0.5 hover:bg-stone-800 rounded-md text-stone-400 hover:text-white"
                             >
-                              <Plus className="w-3 h-3" />
+                              <Plus className="w-2.5 h-2.5" />
                             </button>
                           </div>
                         </td>
 
                         {/* 3. السعر */}
-                        <td className="py-3 px-2 text-center font-mono font-bold text-stone-300 whitespace-nowrap">
+                        <td className="py-1.5 px-1 text-center font-mono font-bold text-stone-300 whitespace-nowrap text-[11px]">
                           {unitPrice.toLocaleString()} ج.م
                           {item.discountPercent > 0 && (
-                            <span className="block text-[9px] text-emerald-400 font-sans">
+                            <span className="block text-[8px] text-emerald-400 font-sans">
                               خصم {item.discountPercent}%
                             </span>
                           )}
                         </td>
 
                         {/* 4. إجمالي الصنف */}
-                        <td className="py-3 px-2 text-center font-mono font-extrabold text-amber-400 whitespace-nowrap">
+                        <td className="py-1.5 px-1 text-center font-mono font-extrabold text-amber-400 whitespace-nowrap text-[11px]">
                           {lineTotal.toLocaleString()} ج.م
                         </td>
 
                         {/* 5. البائع */}
-                        <td className="py-3 px-2 text-center">
+                        <td className="py-1.5 px-1 text-center">
                           <select
                             value={item.assignedAssociateId || currentAssociate?.id || ''}
                             onChange={(e) =>
                               updateCartItemAssociate(item.product.id, e.target.value)
                             }
-                            className="bg-stone-950 border border-stone-800 text-[10px] font-bold text-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500"
+                            className="bg-stone-950 border border-stone-800 text-[9px] font-bold text-amber-300 rounded-md px-1.5 py-0.5 focus:outline-none focus:border-amber-500"
                           >
                             {associates.map((a) => (
                               <option key={a.id} value={a.id}>
@@ -428,13 +428,13 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         </td>
 
                         {/* حذف الصنف */}
-                        <td className="py-3 px-1 text-center">
+                        <td className="py-1.5 px-1 text-center">
                           <button
                             onClick={() => removeFromCart(item.product.id)}
-                            className="p-1.5 text-stone-500 hover:text-rose-400 hover:bg-stone-800 rounded-lg transition-colors"
+                            className="p-1 text-stone-500 hover:text-rose-400 hover:bg-stone-800 rounded-md transition-colors"
                             title="حذف من الفاتورة"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </td>
                       </tr>
@@ -449,9 +449,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
         {/* ======================================================== */}
         {/* 3. FOOTER TOTALS & SUBMIT INVOICE BUTTON                  */}
         {/* ======================================================== */}
-        <div className="p-4 bg-stone-950 border-t border-stone-800 space-y-3">
+        <div className="p-3 bg-stone-950 border-t border-stone-800 space-y-2">
           
-          <div className="space-y-1.5 text-xs text-stone-400">
+          <div className="space-y-1 text-[11px] text-stone-400">
             <div className="flex justify-between">
               <span>المجموع الفرعي (عدد الأصناف: {cart.reduce((a, c) => a + c.quantity, 0)})</span>
               <span className="font-mono text-stone-200 font-bold">{subtotal.toLocaleString()} ج.م</span>
@@ -465,24 +465,24 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             )}
 
             <div className="flex justify-between text-stone-400">
-              <span>ضريبة المبيعات والقيمة المضافة ({(taxRate * 100).toFixed(0)}%)</span>
+              <span>ضريبة القيمة المضافة ({(taxRate * 100).toFixed(0)}%)</span>
               <span className="font-mono text-stone-200">{taxTotal.toLocaleString()} ج.م</span>
             </div>
 
-            <div className="flex justify-between text-lg font-extrabold text-white pt-2 border-t border-stone-800">
+            <div className="flex justify-between text-base font-extrabold text-white pt-1.5 border-t border-stone-800">
               <span>إجمالي الفاتورة النهائي</span>
               <span className="font-mono text-amber-400">{grandTotal.toLocaleString()} ج.م</span>
             </div>
           </div>
 
-          <div className="flex space-x-2 space-x-reverse pt-1">
+          <div className="flex space-x-1.5 space-x-reverse pt-0.5">
             {cart.length > 0 && (
               <button
                 onClick={clearCart}
-                className="px-3 py-3 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 rounded-2xl border border-stone-800 transition-colors"
+                className="px-2 py-2 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 rounded-xl border border-stone-800 transition-colors"
                 title="تفريغ الفاتورة بالكامل"
               >
-                <Trash2 className="w-4 h-4 text-rose-400" />
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
               </button>
             )}
 
@@ -501,14 +501,14 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                     alert(`خطأ: ${e.message}`);
                   }
                 }}
-                className={`px-4 py-3 rounded-2xl border transition-all flex items-center justify-center space-x-1.5 space-x-reverse font-bold text-xs ${
+                className={`px-2.5 py-2 rounded-xl border transition-all flex items-center justify-center space-x-1 space-x-reverse font-bold text-[10px] ${
                   selectedCustomer
                     ? 'bg-amber-950/70 hover:bg-amber-900 border-amber-800 text-amber-300'
                     : 'bg-stone-900/40 border-stone-800 text-stone-600 cursor-not-allowed'
                 }`}
                 title={selectedCustomer ? "تعليق الفاتورة وحفظها" : "يجب اختيار عميل أولاً لتعليق الفاتورة"}
               >
-                <Clock className="w-4 h-4" />
+                <Clock className="w-3.5 h-3.5" />
                 <span>تعليق</span>
               </button>
             )}
@@ -516,9 +516,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             <button
               onClick={onOpenCheckout}
               disabled={cart.length === 0}
-              className="flex-1 py-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:hover:bg-amber-600 text-white rounded-2xl font-extrabold text-sm shadow-xl shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all active:scale-[0.99]"
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:hover:bg-amber-600 text-white rounded-xl font-extrabold text-xs shadow-md shadow-amber-950 flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-[0.99]"
             >
-              <CreditCard className="w-4 h-4" />
+              <CreditCard className="w-3.5 h-3.5" />
               <span>إتمام الفاتورة والدفع ({grandTotal.toLocaleString()} ج.م)</span>
             </button>
           </div>

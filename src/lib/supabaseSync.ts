@@ -34,6 +34,8 @@ export async function syncClosedShiftToSupabase(shift: ClosedShift) {
       total_installment: shift.totalInstallment,
       total_debt_collected: shift.totalDebtCollected,
       notes: shift.notes || '',
+      opening_balance: shift.openingBalance || 0,
+      leftover_balance: shift.leftoverBalance || 0,
       created_at: new Date().toISOString(),
     });
   } catch (err) {
@@ -80,7 +82,7 @@ export async function syncProductToSupabase(product: Product) {
 
 export async function syncTransactionToSupabase(transaction: Transaction) {
   try {
-    await supabase.from('transactions').upsert({
+    const payloadWithSplit: any = {
       id: transaction.id,
       receipt_number: transaction.receiptNumber,
       grand_total: transaction.grandTotal,
@@ -90,8 +92,26 @@ export async function syncTransactionToSupabase(transaction: Transaction) {
       customer_id: transaction.customerId,
       associate_id: transaction.primaryAssociateId,
       items: transaction.items,
+      split_payments: transaction.splitPayments || null,
       created_at: new Date(transaction.timestamp).toISOString(),
-    });
+    };
+
+    const { error } = await supabase.from('transactions').upsert(payloadWithSplit);
+    if (error) {
+      // Fallback if split_payments column doesn't exist in Supabase yet
+      await supabase.from('transactions').upsert({
+        id: transaction.id,
+        receipt_number: transaction.receiptNumber,
+        grand_total: transaction.grandTotal,
+        subtotal: transaction.subtotal,
+        discount_amount: transaction.discountTotal,
+        payment_method: transaction.paymentMethod,
+        customer_id: transaction.customerId,
+        associate_id: transaction.primaryAssociateId,
+        items: transaction.items,
+        created_at: new Date(transaction.timestamp).toISOString(),
+      });
+    }
   } catch (err) {
     console.warn('Supabase transaction sync error:', err);
   }

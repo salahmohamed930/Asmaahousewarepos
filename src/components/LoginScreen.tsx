@@ -181,17 +181,6 @@ export const LoginScreen: React.FC = () => {
 
       <div className="max-w-md w-full bg-stone-900 border border-stone-800 rounded-3xl p-7 shadow-2xl relative z-10 animate-in fade-in zoom-in-95 duration-300">
         
-        {/* Security Encrypted Status Banner */}
-        <div className="flex items-center justify-between bg-stone-950/90 border border-stone-800/80 rounded-2xl px-3.5 py-2 mb-6 text-[11px] text-stone-400">
-          <div className="flex items-center space-x-1.5 space-x-reverse text-amber-400 font-medium">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>نظام تسجيل الدخول الآمن (POS)</span>
-          </div>
-          <span className="text-[10px] bg-emerald-950/80 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-800/60 font-mono font-bold">
-            مشفّر 256-Bit
-          </span>
-        </div>
-
         {/* Brand Header */}
         <div className="text-center mb-5">
           <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-700 text-stone-950 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-amber-600/20">

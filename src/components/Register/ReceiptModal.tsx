@@ -9,7 +9,7 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose }) => {
-  const { associates } = usePOS();
+  const { associates, settings } = usePOS();
   if (!transaction) return null;
 
   const handlePrint = () => {
@@ -25,136 +25,232 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   const discountTotal = transaction.discountTotal || 0;
   const grandTotal = transaction.grandTotal || subtotal - discountTotal;
 
+  const printSettings = settings?.printSettings || {
+    headerText: 'أسماء للأدوات المنزلية',
+    footerText: 'شكرًا لزيارتكم! نسعد دائمًا بخدمتكم.',
+    showSellerCode: true,
+    showQRCode: true,
+    showLogo: true,
+    receiptType: 'thermal' as const
+  };
+
   return (
     <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto dir-rtl">
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-stone-100 my-8">
+      <div className={`bg-stone-900 border border-stone-800 rounded-3xl w-full p-6 shadow-2xl relative text-stone-100 my-8 transition-all ${
+        printSettings.receiptType === 'a4' ? 'max-w-4xl' : 'max-w-md'
+      }`}>
         
+        {/* Style block for perfect physical print scaling */}
+        <style>{`
+          @media print {
+            body {
+              background: white !important;
+              color: black !important;
+            }
+            /* Hide absolute everything else */
+            body > * {
+              display: none !important;
+            }
+            /* Show only the target receipt wrapper and force full height/width */
+            #printable-receipt-wrap, #printable-receipt-wrap * {
+              display: block !important;
+              visibility: visible !important;
+            }
+            #printable-receipt {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              max-width: none !important;
+              box-shadow: none !important;
+              background: white !important;
+              color: black !important;
+              padding: 10px !important;
+              margin: 0 !important;
+              border: none !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+          }
+        `}</style>
+
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 left-4 text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
+          className="absolute top-4 left-4 text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors no-print"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Printable Thermal Receipt Card */}
-        <div id="printable-receipt" className="bg-stone-50 text-stone-900 rounded-2xl p-6 font-sans text-xs shadow-inner">
-          
-          {/* Receipt Header */}
-          <div className="text-center pb-4 border-b border-dashed border-stone-300 space-y-1">
-            <div className="w-10 h-10 bg-amber-600 text-white rounded-full flex items-center justify-center mx-auto mb-1 shadow-sm">
-              <ShoppingBag className="w-5 h-5" />
+        {/* Printable Thermal/A4 Receipt Card */}
+        <div id="printable-receipt-wrap" className="w-full">
+          <div 
+            id="printable-receipt" 
+            className={`bg-stone-50 text-stone-900 rounded-2xl p-6 font-sans text-xs shadow-inner mx-auto space-y-4 ${
+              printSettings.receiptType === 'a4' 
+                ? 'w-full max-w-4xl min-h-[600px] border border-stone-300' 
+                : 'max-w-md w-full'
+            }`}
+          >
+            
+            {/* Receipt Header */}
+            <div className="text-center pb-4 border-b border-dashed border-stone-300 space-y-1">
+              {printSettings.showLogo !== false && (
+                <div className="w-12 h-12 bg-amber-600 text-white rounded-full flex items-center justify-center mx-auto mb-1 shadow-sm">
+                  <ShoppingBag className="w-6 h-6" />
+                </div>
+              )}
+              <h1 className="text-lg font-black tracking-tight text-stone-900">
+                {printSettings.headerText || 'أسماء للأدوات المنزلية'}
+              </h1>
+              <p className="text-[10px] text-stone-500 font-bold">
+                {printSettings.receiptType === 'a4' ? 'فاتورة مبيعات وضمان رسمية (A4)' : 'فاتورة مبيعات رقمية ورقية'}
+              </p>
+              <p className="text-[11px] text-amber-700 font-mono font-extrabold mt-1">
+                رقم الفاتورة: #{transaction.receiptNumber}
+              </p>
+              <p className="text-[10px] text-stone-500 font-mono">
+                {new Date(transaction.timestamp).toLocaleString('ar-EG')}
+              </p>
             </div>
-            <h1 className="text-base font-extrabold tracking-tight text-stone-900">
-              أسماء للأدوات المنزلية
-            </h1>
-            <p className="text-[10px] text-stone-500 font-bold">فاتورة مبيعات رقمية ورقية</p>
-            <p className="text-[11px] text-amber-700 font-mono font-extrabold mt-1">
-              رقم الفاتورة: #{transaction.receiptNumber}
-            </p>
-            <p className="text-[10px] text-stone-500 font-mono">
-              {new Date(transaction.timestamp).toLocaleString('ar-EG')}
-            </p>
-          </div>
 
-          {/* Customer & Seller PIN Meta */}
-          <div className="py-3 border-b border-dashed border-stone-300 space-y-1.5 text-[11px]">
-            <div className="flex justify-between items-center">
-              <span className="text-stone-500 font-bold">كود البائع:</span>
-              <span className="font-mono font-extrabold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
-                كود: {sellerPinCode}
-              </span>
-            </div>
+            {/* Customer & Seller PIN Meta */}
+            <div className="py-2 border-b border-dashed border-stone-300 space-y-1.5 text-[11px]">
+              <div className="grid grid-cols-2 gap-2">
+                {printSettings.showSellerCode !== false && (
+                  <div className="flex justify-between items-center bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-lg">
+                    <span className="text-stone-500 font-bold">كود البائع:</span>
+                    <span className="font-mono font-extrabold text-amber-800">
+                      كود: {sellerPinCode}
+                    </span>
+                  </div>
+                )}
 
-            {transaction.customerName && (
-              <div className="flex justify-between items-center">
-                <span className="text-stone-500 font-bold">العميل:</span>
-                <span className="font-bold text-stone-800">
-                  {transaction.customerName}
-                </span>
+                <div className="flex justify-between items-center bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-lg">
+                  <span className="text-stone-500 font-bold">طريقة الدفع:</span>
+                  <span className="font-bold text-stone-800">
+                    {transaction.paymentMethod === 'cash' || transaction.paymentMethod === 'كاش'
+                      ? 'كاش 💵'
+                      : transaction.paymentMethod === 'installment' || transaction.paymentMethod === 'تقسيط شهري'
+                      ? 'تقسيط 📅'
+                      : transaction.paymentMethod === 'دفع متعدد'
+                      ? 'دفع مجزأ / متعدد 🧾'
+                      : 'بطاقة / جملة 💳'}
+                  </span>
+                </div>
               </div>
-            )}
 
-            <div className="flex justify-between items-center">
-              <span className="text-stone-500 font-bold">طريقة الدفع:</span>
-              <span className="font-bold text-stone-800">
-                {transaction.paymentMethod === 'cash' || transaction.paymentMethod === 'كاش'
-                  ? 'كاش 💵'
-                  : transaction.paymentMethod === 'installment' || transaction.paymentMethod === 'تقسيط شهري'
-                  ? 'تقسيط 📅'
-                  : 'بطاقة / جملة 💳'}
-              </span>
+              {transaction.customerName && (
+                <div className="flex justify-between items-center bg-stone-100/50 border border-stone-200 px-3 py-1.5 rounded-lg mt-1">
+                  <span className="text-stone-500 font-bold">اسم العميل:</span>
+                  <span className="font-extrabold text-stone-900">
+                    {transaction.customerName}
+                  </span>
+                </div>
+              )}
             </div>
-          </div>
 
-          {/* Line Items */}
-          <div className="py-3 border-b border-dashed border-stone-300">
-            <table className="w-full text-right">
-              <thead>
-                <tr className="text-[10px] uppercase text-stone-500 border-b border-stone-200">
-                  <th className="pb-1">الصنف</th>
-                  <th className="pb-1 text-center">الكمية</th>
-                  <th className="pb-1 text-center">السعر</th>
-                  <th className="pb-1 text-left">الإجمالي</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {transaction.items.map((item, idx) => (
-                  <tr key={idx} className="text-[11px]">
-                    <td className="py-1.5 pl-1 font-bold text-stone-800 leading-tight">
-                      {item.productName}
-                      <span className="block text-[9px] text-stone-400 font-mono">{item.sku}</span>
-                    </td>
-                    <td className="py-1.5 text-center font-mono text-stone-700">{item.quantity}</td>
-                    <td className="py-1.5 text-center font-mono text-stone-700">
-                      {(item.unitPrice || 0).toLocaleString()}
-                    </td>
-                    <td className="py-1.5 text-left font-mono font-bold text-stone-900">
-                      {(item.totalPrice || 0).toLocaleString()} ج.م
-                    </td>
+            {/* Line Items */}
+            <div className="py-2 border-b border-dashed border-stone-300">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="text-[10px] uppercase text-stone-500 border-b border-stone-300 bg-stone-100">
+                    <th className="p-2">الصنف والوصف</th>
+                    <th className="p-2 text-center">الكمية</th>
+                    <th className="p-2 text-center">سعر الوحدة</th>
+                    <th className="p-2 text-left">الإجمالي</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Financial Totals */}
-          <div className="py-3 space-y-1.5 text-xs">
-            <div className="flex justify-between text-stone-600">
-              <span>المجموع الفرعي:</span>
-              <span className="font-mono font-bold">{subtotal.toLocaleString()} ج.م</span>
+                </thead>
+                <tbody className="divide-y divide-stone-200">
+                  {transaction.items.map((item, idx) => (
+                    <tr key={idx} className="text-[11px] hover:bg-stone-100/30">
+                      <td className="p-2 font-bold text-stone-900 leading-tight">
+                        {item.productName}
+                        <span className="block text-[9px] text-stone-400 font-mono mt-0.5">{item.sku}</span>
+                      </td>
+                      <td className="p-2 text-center font-mono font-bold text-stone-700">{item.quantity}</td>
+                      <td className="p-2 text-center font-mono text-stone-700">
+                        {(item.unitPrice || 0).toLocaleString()} ج.م
+                      </td>
+                      <td className="p-2 text-left font-mono font-extrabold text-stone-950">
+                        {(item.totalPrice || 0).toLocaleString()} ج.م
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
-            {discountTotal > 0 && (
-              <div className="flex justify-between text-emerald-700 font-bold">
-                <span>إجمالي الخصم:</span>
-                <span className="font-mono">-{discountTotal.toLocaleString()} ج.م</span>
+            {/* Financial Totals */}
+            <div className="py-2 space-y-2 text-xs">
+              <div className="flex justify-between text-stone-600">
+                <span>المجموع الفرعي للأصناف:</span>
+                <span className="font-mono font-bold">{subtotal.toLocaleString()} ج.م</span>
+              </div>
+
+              {discountTotal > 0 && (
+                <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                  <span>إجمالي الخصم الممنوح:</span>
+                  <span className="font-mono font-extrabold">-{discountTotal.toLocaleString()} ج.م</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-sm font-black text-stone-950 pt-2 border-t border-stone-300">
+                <span>الإجمالي النهائي المستحق:</span>
+                <span className="font-mono text-base text-amber-800 font-black">{grandTotal.toLocaleString()} ج.م</span>
+              </div>
+
+              {transaction.splitPayments && transaction.splitPayments.length > 0 ? (
+                <div className="pt-2 border-t border-dashed border-stone-200 mt-2 space-y-1 bg-stone-100/50 p-2.5 rounded-lg border border-stone-200">
+                  <span className="text-[10px] font-bold text-stone-500 block mb-1">تفاصيل الدفع المجزأ:</span>
+                  {transaction.splitPayments.map((p, pIdx) => (
+                    <div key={pIdx} className="flex justify-between text-[11px] text-stone-800 font-medium">
+                      <span>{p.method}:</span>
+                      <span className="font-mono font-bold">{p.amount.toLocaleString()} ج.م</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                transaction.amountPaid !== undefined && transaction.amountPaid !== grandTotal && (
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dotted border-stone-200">
+                    <div className="flex justify-between text-emerald-800 bg-emerald-50/50 border border-emerald-100 px-2 py-1 rounded-md text-[10px] font-bold">
+                      <span>المدفوع:</span>
+                      <span className="font-mono">{(transaction.amountPaid || 0).toLocaleString()} ج.م</span>
+                    </div>
+                    <div className="flex justify-between text-rose-800 bg-rose-50/50 border border-rose-100 px-2 py-1 rounded-md text-[10px] font-bold">
+                      <span>المتبقي مديونية:</span>
+                      <span className="font-mono">{(transaction.amountDeferred || 0).toLocaleString()} ج.م</span>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* Custom Footer Text */}
+            {printSettings.footerText && (
+              <div className="text-center pt-3 border-t border-dashed border-stone-300 text-[10px] text-stone-500 font-bold leading-relaxed">
+                {printSettings.footerText}
               </div>
             )}
 
-            <div className="flex justify-between text-sm font-extrabold text-stone-950 pt-1.5 border-t border-stone-300">
-              <span>الإجمالي النهائي:</span>
-              <span className="font-mono text-amber-800">{grandTotal.toLocaleString()} ج.م</span>
-            </div>
-
-            {transaction.amountPaid !== undefined && transaction.amountPaid !== grandTotal && (
-              <>
-                <div className="flex justify-between text-stone-600 font-bold text-[11px] pt-1">
-                  <span>المبلغ المدفوع الآن:</span>
-                  <span className="font-mono text-emerald-700">{(transaction.amountPaid || 0).toLocaleString()} ج.م</span>
+            {/* Custom QR Code option */}
+            {printSettings.showQRCode !== false && (
+              <div className="flex flex-col items-center justify-center pt-3 border-t border-dashed border-stone-300">
+                <div className="w-16 h-16 bg-white border border-stone-200 p-1 rounded-lg flex items-center justify-center">
+                  <svg className="w-full h-full text-stone-900" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2,2 H8 V8 H2 Z M4,4 V6 H6 V4 Z M16,2 H22 V8 H16 Z M18,4 V6 H20 V4 Z M2,16 H8 V22 H2 Z M4,18 V20 H6 V18 Z M10,10 H14 V14 H10 Z M12,2 H14 V4 H12 Z M10,6 H12 V8 H10 Z M14,16 H16 V18 H14 Z M10,18 H12 V20 H10 Z M12,20 H14 V22 H12 Z M16,10 H18 V12 H16 Z M18,12 H20 V14 H18 Z M20,16 H22 V18 H20 Z M18,20 H20 V22 H18 Z" />
+                  </svg>
                 </div>
-                <div className="flex justify-between text-rose-700 font-bold text-[11px]">
-                  <span>المتبقي مديونية (آجل):</span>
-                  <span className="font-mono">{(transaction.amountDeferred || 0).toLocaleString()} ج.م</span>
-                </div>
-              </>
+                <span className="text-[8px] text-stone-400 mt-1 font-bold">فاتورة مبيعات معتمدة رقمياً</span>
+              </div>
             )}
-          </div>
 
+          </div>
         </div>
 
         {/* Action Controls */}
-        <div className="mt-5 flex items-center space-x-2 space-x-reverse">
+        <div className="mt-5 flex items-center space-x-2 space-x-reverse no-print">
           <button
             onClick={handlePrint}
             className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse transition-colors shadow-lg"

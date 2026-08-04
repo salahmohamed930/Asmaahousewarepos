@@ -76,7 +76,7 @@ export interface Customer {
   address?: string;           // عنوان العميل
 }
 
-export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية';
+export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية' | 'دفع متعدد';
 
 export interface TransactionCommission {
   associateId: string;
@@ -95,6 +95,11 @@ export interface TransactionItem {
   unitPrice: number;
   totalPrice: number;
   assignedAssociateId?: string;
+}
+
+export interface SplitPaymentItem {
+  method: PaymentMethod;
+  amount: number;
 }
 
 export interface Transaction {
@@ -119,6 +124,7 @@ export interface Transaction {
   amountPaid?: number;        // المبلغ المدفوع كاش أو إلكترونياً
   amountDeferred?: number;    // المبلغ المرحل لمديونية الآجل
   originalCart?: CartItem[];  // سلة المشتريات الأصلية المستعادة
+  splitPayments?: SplitPaymentItem[]; // تفاصيل طرق الدفع المجزأة
 }
 
 export interface ShiftRecord {
@@ -146,4 +152,32 @@ export interface ClosedShift {
   totalInstallment: number;
   totalDebtCollected: number;
   notes?: string;
+  openingBalance?: number;    // الرصيد الافتتاحي المستلم من الوردية السابقة
+  leftoverBalance?: number;   // الرصيد المستبقى بالخزنة للوردية القادمة
 }
+
+export interface ProfitMargin {
+  cash: number;
+  wholesale: number;
+  installment: number;
+}
+
+export interface PrintSettings {
+  headerText: string;
+  footerText: string;
+  showSellerCode: boolean;
+  showQRCode: boolean;
+  showLogo: boolean;
+  receiptType: 'thermal' | 'a4';
+}
+
+export interface AppSettings {
+  theme: 'dark' | 'light';
+  profitMargins: {
+    default: ProfitMargin;
+    categories: Record<string, ProfitMargin>;
+  };
+  printSettings: PrintSettings;
+  categories: string[];
+}
+

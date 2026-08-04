@@ -10,6 +10,8 @@ import {
   PriceTier,
   TransactionCommission,
   ClosedShift,
+  AppSettings,
+  SplitPaymentItem,
 } from '../types';
 import {
   INITIAL_ASSOCIATES,
@@ -36,11 +38,13 @@ interface POSContextType {
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
-  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers';
+  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'settings';
   globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
   taxRate: number;
+  settings: AppSettings;
   
-  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers') => void;
+  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'settings') => void;
+  updateSettings: (settings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void;
   setCurrentAssociate: (associate: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
   quickSwitchByPin: (pin: string) => boolean;
@@ -65,7 +69,8 @@ interface POSContextType {
     paymentDetails?: string,
     notes?: string,
     amountPaid?: number,
-    amountDeferred?: number
+    amountDeferred?: number,
+    splitPayments?: SplitPaymentItem[]
   ) => Transaction;
   voidTransaction: (transactionId: string) => void;
   holdCart: (notes?: string) => void;
@@ -81,6 +86,7 @@ interface POSContextType {
   // Catalog & Customer Management
   addProduct: (prod: Omit<Product, 'id'>) => void;
   updateProduct: (prod: Product) => void;
+  bulkUpdateProducts: (productIds: string[], updates: Partial<Product>) => void;
   addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Customer;
   updateCustomer: (cust: Customer) => void;
   payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => void;
@@ -131,8 +137,70 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [globalPriceTier, setGlobalPriceTierState] = useState<PriceTier>('cash');
   const [taxRate] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
-    'register' | 'associates' | 'catalog' | 'analytics' | 'customers'
+    'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'settings'
   >('register');
+
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
+    const defaultCats = [
+      'أطقم طهي وحلل',
+      'أدوات مائدة وتوزيع',
+      'أجهزة كهربائية منزلية',
+      'بلاستيكيات ومنظمات',
+      'زجاجيات وبورسلين',
+      'أدوات تنظيف ومستلزمات'
+    ];
+    const defaultMargins = {
+      default: { cash: 20, wholesale: 10, installment: 30 },
+      categories: {
+        'أطقم طهي وحلل': { cash: 25, wholesale: 15, installment: 35 },
+        'أجهزة كهربائية منزلية': { cash: 15, wholesale: 8, installment: 25 }
+      }
+    };
+    const defaultPrint = {
+      headerText: 'محلات أسماء للأدوات المنزلية',
+      footerText: 'شكراً لزيارتكم! الفاتورة قابلة للاستبدال خلال 14 يوماً من تاريخ الشراء بوجود أصل الفاتورة.',
+      showSellerCode: true,
+      showQRCode: true,
+      showLogo: true,
+      receiptType: 'thermal' as const
+    };
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          theme: parsed.theme || 'dark',
+          profitMargins: parsed.profitMargins || defaultMargins,
+          printSettings: parsed.printSettings || defaultPrint,
+          categories: parsed.categories || defaultCats
+        };
+      } catch (e) {
+        // ignore
+      }
+    }
+    return {
+      theme: 'dark',
+      profitMargins: defaultMargins,
+      printSettings: defaultPrint,
+      categories: defaultCats
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_settings`, JSON.stringify(settings));
+    if (settings.theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+  }, [settings]);
+
+  const updateSettings = (newSettings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => {
+    setSettings((prev) => {
+      const resolved = typeof newSettings === 'function' ? newSettings(prev) : { ...prev, ...newSettings };
+      return resolved;
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_associates`, JSON.stringify(associates));
@@ -249,6 +317,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             totalInstallment: Number(s.total_installment ?? 0),
             totalDebtCollected: Number(s.total_debt_collected ?? 0),
             notes: s.notes || '',
+            openingBalance: Number(s.opening_balance ?? s.openingBalance ?? 0),
+            leftoverBalance: Number(s.leftover_balance ?? s.leftoverBalance ?? 0),
           }));
           setClosedShifts(mappedShifts);
         }
@@ -387,7 +457,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     paymentDetails = '',
     notes = '',
     amountPaid?: number,
-    amountDeferred?: number
+    amountDeferred?: number,
+    splitPayments?: SplitPaymentItem[]
   ): Transaction => {
     if (!currentAssociate) {
       throw new Error('رجاءً اختر البائع المسؤول قبل إتمام البيع.');
@@ -509,6 +580,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'مكتملة',
       amountPaid: amountPaid !== undefined ? amountPaid : grandTotal,
       amountDeferred: amountDeferred !== undefined ? amountDeferred : 0,
+      splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : undefined,
     };
 
     setProducts((prev) =>
@@ -748,6 +820,19 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syncProductToSupabase(prod);
   };
 
+  const bulkUpdateProducts = (productIds: string[], updates: Partial<Product>) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (productIds.includes(p.id)) {
+          const updated = { ...p, ...updates };
+          syncProductToSupabase(updated);
+          return updated;
+        }
+        return p;
+      })
+    );
+  };
+
   const addCustomer = (
     custData: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>
   ): Customer => {
@@ -865,6 +950,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeTab,
         globalPriceTier,
         taxRate,
+        settings,
+        updateSettings,
         setActiveTab,
         setCurrentAssociate,
         setGlobalPriceTier,
@@ -889,6 +976,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAssociate,
         addProduct,
         updateProduct,
+        bulkUpdateProducts,
         addCustomer,
         updateCustomer,
         payCustomerDebt,

@@ -32,6 +32,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   const [paymentError, setPaymentError] = useState<string>('');
   const [isPartialPayment, setIsPartialPayment] = useState<boolean>(false);
   const [partialPaidAmount, setPartialPaidAmount] = useState<string>('');
+  const [isSplitPayment, setIsSplitPayment] = useState<boolean>(false);
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({
+    'كاش': '',
+    'فيزا / كارت': '',
+    'محفظة إلكترونية': '',
+    'تقسيط شهري': '',
+    'آجل / حساب جملة': '',
+  });
 
   if (!isOpen || !currentAssociate) return null;
 
@@ -73,38 +81,62 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   let paidAmount = grandTotal;
   let deferredAmount = 0;
 
-  if (selectedCustomer && isCreditEligible) {
-    if (paymentMethod === 'آجل / حساب جملة') {
-      if (isPartialPayment) {
-        paidAmount = Math.min(grandTotal, Math.max(0, parseFloat(partialPaidAmount) || 0));
-        deferredAmount = Math.max(0, grandTotal - paidAmount);
+  if (isSplitPayment) {
+    deferredAmount = parseFloat(splitAmounts['آجل / حساب جملة']) || 0;
+    paidAmount = (parseFloat(splitAmounts['كاش']) || 0) +
+                 (parseFloat(splitAmounts['فيزا / كارت']) || 0) +
+                 (parseFloat(splitAmounts['محفظة إلكترونية']) || 0) +
+                 (parseFloat(splitAmounts['تقسيط شهري']) || 0);
+  } else {
+    if (selectedCustomer && isCreditEligible) {
+      if (paymentMethod === 'آجل / حساب جملة') {
+        if (isPartialPayment) {
+          paidAmount = Math.min(grandTotal, Math.max(0, parseFloat(partialPaidAmount) || 0));
+          deferredAmount = Math.max(0, grandTotal - paidAmount);
+        } else {
+          paidAmount = 0;
+          deferredAmount = grandTotal;
+        }
       } else {
-        paidAmount = 0;
-        deferredAmount = grandTotal;
+        if (isPartialPayment) {
+          paidAmount = Math.min(grandTotal, Math.max(0, parseFloat(partialPaidAmount) || 0));
+          deferredAmount = Math.max(0, grandTotal - paidAmount);
+        } else {
+          paidAmount = grandTotal;
+          deferredAmount = 0;
+        }
       }
     } else {
-      if (isPartialPayment) {
-        paidAmount = Math.min(grandTotal, Math.max(0, parseFloat(partialPaidAmount) || 0));
-        deferredAmount = Math.max(0, grandTotal - paidAmount);
+      if (paymentMethod === 'آجل / حساب جملة') {
+        paidAmount = 0;
+        deferredAmount = grandTotal;
       } else {
         paidAmount = grandTotal;
         deferredAmount = 0;
       }
     }
-  } else {
-    if (paymentMethod === 'آجل / حساب جملة') {
-      paidAmount = 0;
-      deferredAmount = grandTotal;
-    } else {
-      paidAmount = grandTotal;
-      deferredAmount = 0;
-    }
   }
 
   // Cash Calculations
   const tenderNumber = parseFloat(cashTendered) || 0;
-  const targetRequiredAmount = (paymentMethod === 'كاش' && isPartialPayment) ? paidAmount : grandTotal;
+  const targetRequiredAmount = isSplitPayment 
+    ? (parseFloat(splitAmounts['كاش']) || 0)
+    : ((paymentMethod === 'كاش' && isPartialPayment) ? paidAmount : grandTotal);
   const changeDue = Math.max(0, tenderNumber - targetRequiredAmount);
+
+  const fillRemainingAmount = (method: string) => {
+    let totalOther = 0;
+    Object.entries(splitAmounts).forEach(([m, val]) => {
+      if (m !== method) {
+        totalOther += parseFloat(val as string) || 0;
+      }
+    });
+    const remaining = Math.max(0, grandTotal - totalOther);
+    setSplitAmounts(prev => ({
+      ...prev,
+      [method]: remaining > 0 ? remaining.toString() : ''
+    }));
+  };
 
   // Projected Commission calculation
   const primaryAssocRate = currentAssociate.commissionRate;
@@ -118,40 +150,80 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   };
 
   const handleProcessPayment = () => {
-    if (paymentMethod === 'آجل / حساب جملة' && !selectedCustomer) {
-      setPaymentError('يجب اختيار عميل لتسجيل مبيعات الآجل.');
-      return;
-    }
-
-    if (paymentMethod === 'آجل / حساب جملة' && selectedCustomer && !isCreditEligible) {
-      setPaymentError(`العميل (${selectedCustomer.name}) غير مؤهل للمعاملات الآجلة.`);
-      return;
-    }
-
-    if (isPartialPayment && !selectedCustomer) {
-      setPaymentError('يجب اختيار عميل لتفعيل الدفع الجزئي والآجل.');
-      return;
-    }
-
-    if (isPartialPayment && selectedCustomer && !isCreditEligible) {
-      setPaymentError(`العميل (${selectedCustomer.name}) غير مؤهل للمعاملات الآجلة والدفع الجزئي.`);
-      return;
-    }
-
-    // Cash Validation
-    const requiredCash = isPartialPayment ? paidAmount : grandTotal;
-    if (paymentMethod === 'كاش' && tenderNumber < requiredCash) {
-      setPaymentError(`المبلغ المدفوع (${tenderNumber.toLocaleString()} ج.م) أقل من المبلغ المطلوب (${requiredCash.toLocaleString()} ج.م).`);
-      return;
-    }
-
-    // Check credit limit
-    if (selectedCustomer && isCreditEligible && deferredAmount > 0) {
-      const currentDebt = selectedCustomer.currentDebt || 0;
-      const creditLimit = selectedCustomer.creditLimit || 0;
-      if (currentDebt + deferredAmount > creditLimit) {
-        setPaymentError(`المبلغ المطلوب ترحيله للآجل (${deferredAmount.toLocaleString()} ج.م) سيتجاوز الحد الائتماني المتبقي للعميل (${(creditLimit - currentDebt).toLocaleString()} ج.م).`);
+    if (isSplitPayment) {
+      const splitCash = parseFloat(splitAmounts['كاش']) || 0;
+      const splitCard = parseFloat(splitAmounts['فيزا / كارت']) || 0;
+      const splitWallet = parseFloat(splitAmounts['محفظة إلكترونية']) || 0;
+      const splitInstallment = parseFloat(splitAmounts['تقسيط شهري']) || 0;
+      const splitDeferred = parseFloat(splitAmounts['آجل / حساب جملة']) || 0;
+      
+      const totalAllocated = splitCash + splitCard + splitWallet + splitInstallment + splitDeferred;
+      
+      if (Math.abs(totalAllocated - grandTotal) > 0.1) {
+        setPaymentError(`يجب أن يتطابق إجمالي المبالغ المجزأة (${totalAllocated.toLocaleString()} ج.م) مع إجمالي الفاتورة المطلوب (${grandTotal.toLocaleString()} ج.م). المتبقي لتوزيعه: ${(grandTotal - totalAllocated).toLocaleString()} ج.م.`);
         return;
+      }
+
+      if (splitDeferred > 0 && !selectedCustomer) {
+        setPaymentError('يجب اختيار عميل لتسجيل مبيعات الجزء الآجل.');
+        return;
+      }
+
+      if (splitDeferred > 0 && selectedCustomer && !isCreditEligible) {
+        setPaymentError(`العميل (${selectedCustomer.name}) غير مؤهل للمعاملات الآجلة.`);
+        return;
+      }
+
+      if (splitCash > 0 && tenderNumber > 0 && tenderNumber < splitCash) {
+        setPaymentError(`المبلغ النقدي المستلم (${tenderNumber.toLocaleString()} ج.م) أقل من النصيب النقدي المحدد في التجزئة (${splitCash.toLocaleString()} ج.م).`);
+        return;
+      }
+
+      // Check credit limit
+      if (selectedCustomer && isCreditEligible && splitDeferred > 0) {
+        const currentDebt = selectedCustomer.currentDebt || 0;
+        const creditLimit = selectedCustomer.creditLimit || 0;
+        if (currentDebt + splitDeferred > creditLimit) {
+          setPaymentError(`المبلغ المطلوب ترحيله للآجل (${splitDeferred.toLocaleString()} ج.م) سيتجاوز الحد الائتماني المتبقي للعميل (${(creditLimit - currentDebt).toLocaleString()} ج.م).`);
+          return;
+        }
+      }
+    } else {
+      if (paymentMethod === 'آجل / حساب جملة' && !selectedCustomer) {
+        setPaymentError('يجب اختيار عميل لتسجيل مبيعات الآجل.');
+        return;
+      }
+
+      if (paymentMethod === 'آجل / حساب جملة' && selectedCustomer && !isCreditEligible) {
+        setPaymentError(`العميل (${selectedCustomer.name}) غير مؤهل للمعاملات الآجلة.`);
+        return;
+      }
+
+      if (isPartialPayment && !selectedCustomer) {
+        setPaymentError('يجب اختيار عميل لتفعيل الدفع الجزئي والآجل.');
+        return;
+      }
+
+      if (isPartialPayment && selectedCustomer && !isCreditEligible) {
+        setPaymentError(`العميل (${selectedCustomer.name}) غير مؤهل للمعاملات الآجلة والدفع الجزئي.`);
+        return;
+      }
+
+      // Cash Validation
+      const requiredCash = isPartialPayment ? paidAmount : grandTotal;
+      if (paymentMethod === 'كاش' && tenderNumber < requiredCash) {
+        setPaymentError(`المبلغ المدفوع (${tenderNumber.toLocaleString()} ج.م) أقل من المبلغ المطلوب (${requiredCash.toLocaleString()} ج.م).`);
+        return;
+      }
+
+      // Check credit limit
+      if (selectedCustomer && isCreditEligible && deferredAmount > 0) {
+        const currentDebt = selectedCustomer.currentDebt || 0;
+        const creditLimit = selectedCustomer.creditLimit || 0;
+        if (currentDebt + deferredAmount > creditLimit) {
+          setPaymentError(`المبلغ المطلوب ترحيله للآجل (${deferredAmount.toLocaleString()} ج.م) سيتجاوز الحد الائتماني المتبقي للعميل (${(creditLimit - currentDebt).toLocaleString()} ج.م).`);
+          return;
+        }
       }
     }
 
@@ -161,23 +233,39 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     setTimeout(() => {
       try {
         let details = '';
-        if (paymentMethod === 'فيزا / كارت') {
-          details = 'بطاقة دفع فيزا رقم ' + Math.floor(1000 + Math.random() * 9000);
-        } else if (paymentMethod === 'كاش') {
-          details = `المستلم: ${tenderNumber.toLocaleString()} ج.م | الباقي: ${changeDue.toLocaleString()} ج.م`;
-        } else if (paymentMethod === 'محفظة إلكترونية') {
-          details = 'دفع إلكتروني عبر الهاتف الذكي NFC';
-        } else if (paymentMethod === 'آجل / حساب جملة') {
-          details = 'تسجيل آجل على حساب العميل';
-        } else if (paymentMethod === 'تقسيط شهري') {
-          details = 'تقسيط شهري متفق عليه مع العميل';
+        let finalMethod = paymentMethod;
+        let finalSplitArray: any[] | undefined = undefined;
+
+        if (isSplitPayment) {
+          finalMethod = 'دفع متعدد';
+          const activeSplits = Object.entries(splitAmounts)
+            .filter(([_, val]) => parseFloat(val as string) > 0)
+            .map(([method, val]) => ({
+              method: method as PaymentMethod,
+              amount: parseFloat(val as string)
+            }));
+          
+          details = 'دفع مجزأ: ' + activeSplits.map(s => `${s.method} (${s.amount.toLocaleString()} ج.م)`).join(' | ');
+          finalSplitArray = activeSplits;
+        } else {
+          if (paymentMethod === 'فيزا / كارت') {
+            details = 'بطاقة دفع فيزا رقم ' + Math.floor(1000 + Math.random() * 9000);
+          } else if (paymentMethod === 'كاش') {
+            details = `المستلم: ${tenderNumber.toLocaleString()} ج.م | الباقي: ${changeDue.toLocaleString()} ج.م`;
+          } else if (paymentMethod === 'محفظة إلكترونية') {
+            details = 'دفع إلكتروني عبر الهاتف الذكي NFC';
+          } else if (paymentMethod === 'آجل / حساب جملة') {
+            details = 'تسجيل آجل على حساب العميل';
+          } else if (paymentMethod === 'تقسيط شهري') {
+            details = 'تقسيط شهري متفق عليه مع العميل';
+          }
+
+          if (deferredAmount > 0) {
+            details += ` | (دفع جزئي: تم دفع ${paidAmount.toLocaleString()} ج.م وتأجيل ${deferredAmount.toLocaleString()} ج.م)`;
+          }
         }
 
-        if (deferredAmount > 0) {
-          details += ` | (دفع جزئي: تم دفع ${paidAmount.toLocaleString()} ج.م وتأجيل ${deferredAmount.toLocaleString()} ج.م)`;
-        }
-
-        const completedTx = completeTransaction(paymentMethod, 0, details, '', paidAmount, deferredAmount);
+        const completedTx = completeTransaction(finalMethod, 0, details, '', paidAmount, deferredAmount, finalSplitArray);
         setIsProcessing(false);
         onSuccess(completedTx);
       } catch (err: any) {
@@ -341,106 +429,246 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           </div>
         </div>
 
-        {/* Payment Method Selector */}
-        <div className="mb-5">
-          <label className="block text-xs font-semibold text-stone-300 uppercase tracking-wider mb-2">
-            اختر طريقة الدفع والتحصيل
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {[
-              { id: 'كاش', label: 'كاش / نقدي', icon: Banknote },
-              { id: 'فيزا / كارت', label: 'فيزا / كارت', icon: CreditCard },
-              { id: 'محفظة إلكترونية', label: 'محفظة ذكية', icon: Smartphone },
-              { id: 'آجل / حساب جملة', label: 'حساب آجل', icon: Gift },
-            ].map((m) => {
-              const Icon = m.icon;
-              const isSel = paymentMethod === m.id;
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                  className={`p-3 rounded-2xl border flex flex-col items-center justify-center space-y-1.5 transition-all ${
-                    isSel
-                      ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-lg shadow-amber-950/50'
-                      : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200 hover:bg-stone-800/80'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-xs font-medium">{m.label}</span>
-                </button>
-              );
-            })}
+        {/* Split Payment Toggle */}
+        <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 flex items-center justify-between">
+          <div className="flex items-center space-x-2 space-x-reverse">
+            <input
+              type="checkbox"
+              id="splitPayToggle"
+              checked={isSplitPayment}
+              onChange={(e) => {
+                setIsSplitPayment(e.target.checked);
+                setSplitAmounts({
+                  'كاش': '',
+                  'فيزا / كارت': '',
+                  'محفظة إلكترونية': '',
+                  'تقسيط شهري': '',
+                  'آجل / حساب جملة': '',
+                });
+                setPaymentError('');
+              }}
+              className="w-4 h-4 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-stone-950"
+            />
+            <label htmlFor="splitPayToggle" className="text-xs font-bold text-stone-300 cursor-pointer">
+              تجزئة طرق الدفع للفاتورة (الدفع بأكثر من وسيلة معاً)
+            </label>
           </div>
+          <span className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold ${
+            isSplitPayment 
+              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
+              : 'bg-stone-900 text-stone-500 border-stone-800'
+          }`}>
+            {isSplitPayment ? 'مفعّل' : 'غير نشط'}
+          </span>
         </div>
 
-        {/* Partial Payment Toggle and Input */}
-        {selectedCustomer && isCreditEligible && (
-          <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2 space-x-reverse">
-                <input
-                  type="checkbox"
-                  id="partialPayToggle"
-                  checked={isPartialPayment || paymentMethod === 'آجل / حساب جملة'}
-                  disabled={paymentMethod === 'آجل / حساب جملة'}
-                  onChange={(e) => {
-                    setIsPartialPayment(e.target.checked);
-                    if (e.target.checked) {
-                      setPartialPaidAmount('');
-                    }
-                  }}
-                  className="w-4 h-4 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-stone-950"
-                />
-                <label htmlFor="partialPayToggle" className="text-xs font-bold text-stone-300 cursor-pointer">
-                  {paymentMethod === 'آجل / حساب جملة' 
-                    ? 'دفع جزء من الفاتورة الآن وتأجيل المتبقي' 
-                    : 'تفعيل الدفع الجزئي وترحيل المتبقي للآجل'}
-                </label>
-              </div>
-              {(isPartialPayment || paymentMethod === 'آجل / حساب جملة') && (
-                <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
-                  دفع جزئي نشط
-                </span>
-              )}
+        {isSplitPayment ? (
+          <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 space-y-4">
+            <h3 className="text-xs font-bold text-stone-300 uppercase tracking-wider">توزيع المبالغ على طرق الدفع</h3>
+            
+            <div className="space-y-3">
+              {[
+                { id: 'كاش', label: 'كاش / نقدي', icon: Banknote, color: 'text-emerald-400' },
+                { id: 'فيزا / كارت', label: 'فيزا / كارت', icon: CreditCard, color: 'text-blue-400' },
+                { id: 'محفظة إلكترونية', label: 'محفظة ذكية', icon: Smartphone, color: 'text-indigo-400' },
+                { id: 'تقسيط شهري', label: 'تقسيط شهري', icon: Receipt, color: 'text-amber-400' },
+                { 
+                  id: 'آجل / حساب جملة', 
+                  label: 'حساب آجل (مديونية)', 
+                  icon: Gift, 
+                  color: 'text-rose-400',
+                  disabled: !selectedCustomer || !isCreditEligible,
+                  helpText: !selectedCustomer 
+                    ? 'يجب اختيار عميل لتسجيل مبيعات الآجل' 
+                    : !isCreditEligible 
+                    ? 'العميل الحالي غير مؤهل للآجل' 
+                    : `الحد المتبقي للعميل: ${Math.max(0, (selectedCustomer.creditLimit || 0) - (selectedCustomer.currentDebt || 0)).toLocaleString()} ج.م`
+                },
+              ].map((m) => {
+                const Icon = m.icon;
+                const isDis = m.disabled;
+                const val = splitAmounts[m.id] || '';
+                return (
+                  <div key={m.id} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 space-x-reverse text-xs font-bold text-stone-200">
+                        <Icon className={`w-4 h-4 ${m.color}`} />
+                        <span>{m.label}</span>
+                      </div>
+                      {!isDis && (
+                        <button
+                          type="button"
+                          onClick={() => fillRemainingAmount(m.id)}
+                          className="text-[10px] text-amber-500 hover:text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 transition-colors"
+                        >
+                          دفع المتبقي
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        placeholder="0.00"
+                        value={val}
+                        disabled={isDis}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSplitAmounts((prev) => ({
+                            ...prev,
+                            [m.id]: value === '' ? '' : Math.max(0, parseFloat(value) || 0).toString(),
+                          }));
+                        }}
+                        className={`w-full bg-stone-900 border ${
+                          isDis ? 'border-stone-850 opacity-40 text-stone-500 cursor-not-allowed' : 'border-stone-700 focus:border-amber-500'
+                        } rounded-xl px-3 py-2 text-sm text-stone-100 font-mono focus:outline-none`}
+                      />
+                      <span className="absolute left-3 top-2 text-xs text-stone-500">ج.م</span>
+                    </div>
+                    {m.helpText && (
+                      <p className={`text-[10px] font-bold ${isDis ? 'text-rose-400/80' : 'text-stone-400'}`}>
+                        {m.helpText}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            {(isPartialPayment || paymentMethod === 'آجل / حساب جملة') && (
-              <div className="space-y-3 pt-2 border-t border-stone-800">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-stone-400 mb-1">المبلغ المدفوع الآن (ج.م)</label>
+            {/* Split Totals Indicator */}
+            <div className="border-t border-stone-800 pt-3 mt-2 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-stone-400">
+                <span>المبلغ الموزع حالياً:</span>
+                <span className="font-mono text-stone-200 font-bold">
+                  {(paidAmount + deferredAmount).toLocaleString()} ج.م
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-stone-400">
+                <span>المطلوب الكلي للفاتورة:</span>
+                <span className="font-mono text-amber-400 font-extrabold text-sm">
+                  {grandTotal.toLocaleString()} ج.م
+                </span>
+              </div>
+              
+              {/* Diff status */}
+              {Math.abs((paidAmount + deferredAmount) - grandTotal) > 0.01 ? (
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-center py-1.5 rounded-lg text-[10px] font-bold">
+                  {(paidAmount + deferredAmount) < grandTotal 
+                    ? `متبقي لم يُوزع بعد: ${(grandTotal - (paidAmount + deferredAmount)).toLocaleString()} ج.م`
+                    : `المبلغ الموزع زائد بـ: ${((paidAmount + deferredAmount) - grandTotal).toLocaleString()} ج.م`}
+                </div>
+              ) : (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-center py-1.5 rounded-lg text-[10px] font-bold">
+                  تم توزيع كامل مبلغ الفاتورة بشكل صحيح!
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Payment Method Selector */}
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-stone-300 uppercase tracking-wider mb-2">
+                اختر طريقة الدفع والتحصيل
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {[
+                  { id: 'كاش', label: 'كاش / نقدي', icon: Banknote },
+                  { id: 'فيزا / كارت', label: 'فيزا / كارت', icon: CreditCard },
+                  { id: 'محفظة إلكترونية', label: 'محفظة ذكية', icon: Smartphone },
+                  { id: 'آجل / حساب جملة', label: 'حساب آجل', icon: Gift },
+                ].map((m) => {
+                  const Icon = m.icon;
+                  const isSel = paymentMethod === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => setPaymentMethod(m.id as PaymentMethod)}
+                      className={`p-3 rounded-2xl border flex flex-col items-center justify-center space-y-1.5 transition-all ${
+                        isSel
+                          ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-lg shadow-amber-950/50'
+                          : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200 hover:bg-stone-800/80'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="text-xs font-medium">{m.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Partial Payment Toggle and Input */}
+            {selectedCustomer && isCreditEligible && (
+              <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 space-x-reverse">
                     <input
-                      type="number"
-                      placeholder="0.00"
-                      value={partialPaidAmount}
-                      onChange={(e) => setPartialPaidAmount(e.target.value)}
-                      className="w-full bg-stone-900 border border-stone-700 focus:border-amber-500 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none text-left font-mono"
+                      type="checkbox"
+                      id="partialPayToggle"
+                      checked={isPartialPayment || paymentMethod === 'آجل / حساب جملة'}
+                      disabled={paymentMethod === 'آجل / حساب جملة'}
+                      onChange={(e) => {
+                        setIsPartialPayment(e.target.checked);
+                        if (e.target.checked) {
+                          setPartialPaidAmount('');
+                        }
+                      }}
+                      className="w-4 h-4 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-stone-950"
                     />
+                    <label htmlFor="partialPayToggle" className="text-xs font-bold text-stone-300 cursor-pointer">
+                      {paymentMethod === 'آجل / حساب جملة' 
+                        ? 'دفع جزء من الفاتورة الآن وتأجيل المتبقي' 
+                        : 'تفعيل الدفع الجزئي وترحيل المتبقي للآجل'}
+                    </label>
                   </div>
-                  <div>
-                    <label className="block text-[11px] text-stone-400 mb-1">المبلغ المرحل للمديونية</label>
-                    <div className="w-full bg-stone-900/50 border border-stone-800 rounded-xl px-3 py-2 text-rose-400 text-left font-mono font-bold">
-                      {deferredAmount.toLocaleString()} ج.م
+                  {(isPartialPayment || paymentMethod === 'آجل / حساب جملة') && (
+                    <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                      دفع جزئي نشط
+                    </span>
+                  )}
+                </div>
+
+                {(isPartialPayment || paymentMethod === 'آجل / حساب جملة') && (
+                  <div className="space-y-3 pt-2 border-t border-stone-800">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] text-stone-400 mb-1">المبلغ المدفوع الآن (ج.م)</label>
+                        <input
+                          type="number"
+                          placeholder="0.00"
+                          value={partialPaidAmount}
+                          onChange={(e) => setPartialPaidAmount(e.target.value)}
+                          className="w-full bg-stone-900 border border-stone-700 focus:border-amber-500 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none text-left font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-stone-400 mb-1">المبلغ المرحل للمديونية</label>
+                        <div className="w-full bg-stone-900/50 border border-stone-800 rounded-xl px-3 py-2 text-rose-400 text-left font-mono font-bold">
+                          {deferredAmount.toLocaleString()} ج.م
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-stone-400 bg-stone-900 p-2 rounded-xl flex justify-between">
+                      <span>المديونية المتوقعة للعميل بعد المعاملة:</span>
+                      <span className="font-mono text-rose-400 font-bold">
+                        {((selectedCustomer.currentDebt || 0) + deferredAmount).toLocaleString()} ج.م
+                      </span>
                     </div>
                   </div>
-                </div>
-
-                <div className="text-[10px] text-stone-400 bg-stone-900 p-2 rounded-xl flex justify-between">
-                  <span>المديونية المتوقعة للعميل بعد المعاملة:</span>
-                  <span className="font-mono text-rose-400 font-bold">
-                    {((selectedCustomer.currentDebt || 0) + deferredAmount).toLocaleString()} ج.م
-                  </span>
-                </div>
+                )}
               </div>
             )}
-          </div>
+          </>
         )}
 
-        {/* Cash Tender Input UI (Only when Cash selected) */}
-        {paymentMethod === 'كاش' && (
+        {/* Cash Tender Input UI (For non-split cash OR active cash portion in split) */}
+        {((!isSplitPayment && paymentMethod === 'كاش') || (isSplitPayment && (parseFloat(splitAmounts['كاش']) || 0) > 0)) && (
           <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-stone-300">المبلغ المستلم من العميل (ج.م)</label>
+              <label className="text-xs font-medium text-stone-300">
+                {isSplitPayment ? 'المبلغ النقدي المستلم من العميل (ج.م)' : 'المبلغ المستلم من العميل (ج.م)'}
+              </label>
               <div className="flex space-x-1.5 space-x-reverse">
                 {[
                   Math.ceil(targetRequiredAmount),
@@ -450,6 +678,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 ].map((amt, idx) => (
                   <button
                     key={idx}
+                    type="button"
                     onClick={() => handleQuickCash(amt)}
                     className="px-2.5 py-1 bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 text-xs font-mono rounded-lg"
                   >

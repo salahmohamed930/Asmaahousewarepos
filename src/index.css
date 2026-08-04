@@ -1,1 +1,30 @@
 @import "tailwindcss";
+
+html.light {
+  --color-stone-50: #0c0a09;
+  --color-stone-100: #1c1917;
+  --color-stone-200: #292524;
+  --color-stone-300: #44403c;
+  --color-stone-400: #57534e;
+  --color-stone-500: #78716c;
+  --color-stone-600: #a8a29e;
+  --color-stone-700: #d6d3d1;
+  --color-stone-800: #e7e5e4;
+  --color-stone-850: #f0eeed;
+  --color-stone-900: #f5f5f4;
+  --color-stone-950: #fafaf9;
+}
+
+/* Let's make sure the light mode has elegant scrollbars and prints clean */
+html.light ::-webkit-scrollbar-track {
+  background: #fafaf9;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 10px;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}

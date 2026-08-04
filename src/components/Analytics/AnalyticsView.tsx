@@ -69,6 +69,36 @@ export const AnalyticsView: React.FC = () => {
   const [shiftEndTime, setShiftEndTime] = useState<string>(getNowStr());
   const [drawerActualCash, setDrawerActualCash] = useState<number>(0);
   const [shiftNotes, setShiftNotes] = useState<string>('');
+  const [openingBalance, setOpeningBalance] = useState<number>(0);
+  const [leftoverBalance, setLeftoverBalance] = useState<number>(0);
+
+  const formatToLocalDatetimeLocal = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      const tzOffset = date.getTimezoneOffset() * 60000;
+      return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+    } catch (e) {
+      return getTodayStartStr();
+    }
+  };
+
+  // Automatically calculate shift starting state based on the last closed shift
+  React.useEffect(() => {
+    if (closedShifts && closedShifts.length > 0) {
+      const lastShift = closedShifts[0];
+      if (lastShift.endTime) {
+        setShiftStartTime(formatToLocalDatetimeLocal(lastShift.endTime));
+      }
+      if (lastShift.leftoverBalance !== undefined) {
+        setOpeningBalance(lastShift.leftoverBalance);
+      } else {
+        setOpeningBalance(0);
+      }
+    } else {
+      setShiftStartTime(getTodayStartStr());
+      setOpeningBalance(0);
+    }
+  }, [closedShifts]);
 
   // -------------------------------------------------------------
   // DATA PARSING FOR OVERVIEW TAB
@@ -210,8 +240,12 @@ export const AnalyticsView: React.FC = () => {
       // Debt payment is positive inflow of cash
       return acc + Math.abs(tx.grandTotal);
     }
+    if (tx.splitPayments && tx.splitPayments.length > 0) {
+      const cashItem = tx.splitPayments.find(p => p.method === 'كاش' || p.method === 'cash');
+      return acc + (cashItem ? cashItem.amount : 0);
+    }
     if (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش') {
-      return acc + (tx.grandTotal || 0);
+      return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
     }
     return acc;
   }, 0);
@@ -219,8 +253,13 @@ export const AnalyticsView: React.FC = () => {
   const totalFilteredCardInflow = filteredInflows.reduce((acc, tx) => {
     const isDebtPayment = tx.id.startsWith('pay_');
     if (isDebtPayment) return acc; // Assume debt collected in cash unless stated
-    if (tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري') {
-      return acc + (tx.grandTotal || 0);
+    if (tx.splitPayments && tx.splitPayments.length > 0) {
+      const visaAmt = tx.splitPayments.find(p => p.method === 'فيزا / كارت')?.amount || 0;
+      const walletAmt = tx.splitPayments.find(p => p.method === 'محفظة إلكترونية')?.amount || 0;
+      return acc + visaAmt + walletAmt;
+    }
+    if (tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري' && tx.paymentMethod !== 'آجل / حساب جملة') {
+      return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
     }
     return acc;
   }, 0);
@@ -257,22 +296,50 @@ export const AnalyticsView: React.FC = () => {
 
   // Expected cash, card, installment, debt collected during this shift
   const shiftExpectedCashSales = shiftInscopeTransactions
-    .filter((tx) => !tx.id.startsWith('pay_') && (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'))
-    .reduce((acc, tx) => acc + (tx.grandTotal || 0), 0);
+    .filter((tx) => !tx.id.startsWith('pay_'))
+    .reduce((acc, tx) => {
+      if (tx.splitPayments && tx.splitPayments.length > 0) {
+        const cashItem = tx.splitPayments.find(p => p.method === 'كاش' || p.method === 'cash');
+        return acc + (cashItem ? cashItem.amount : 0);
+      }
+      if (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش') {
+        return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
+      }
+      return acc;
+    }, 0);
 
   const shiftExpectedDebtCollected = shiftInscopeTransactions
     .filter((tx) => tx.id.startsWith('pay_'))
     .reduce((acc, tx) => acc + Math.abs(tx.grandTotal), 0);
 
-  const shiftExpectedCashTotal = shiftExpectedCashSales + shiftExpectedDebtCollected;
+  const shiftExpectedCashTotal = openingBalance + shiftExpectedCashSales + shiftExpectedDebtCollected;
 
   const shiftExpectedCardTotal = shiftInscopeTransactions
-    .filter((tx) => !tx.id.startsWith('pay_') && tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري')
-    .reduce((acc, tx) => acc + (tx.grandTotal || 0), 0);
+    .filter((tx) => !tx.id.startsWith('pay_'))
+    .reduce((acc, tx) => {
+      if (tx.splitPayments && tx.splitPayments.length > 0) {
+        const visaAmt = tx.splitPayments.find(p => p.method === 'فيزا / كارت')?.amount || 0;
+        const walletAmt = tx.splitPayments.find(p => p.method === 'محفظة إلكترونية')?.amount || 0;
+        return acc + visaAmt + walletAmt;
+      }
+      if (tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري' && tx.paymentMethod !== 'آجل / حساب جملة') {
+        return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
+      }
+      return acc;
+    }, 0);
 
   const shiftExpectedInstallmentTotal = shiftInscopeTransactions
-    .filter((tx) => !tx.id.startsWith('pay_') && (tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'))
-    .reduce((acc, tx) => acc + (tx.grandTotal || 0), 0);
+    .filter((tx) => !tx.id.startsWith('pay_'))
+    .reduce((acc, tx) => {
+      if (tx.splitPayments && tx.splitPayments.length > 0) {
+        const instItem = tx.splitPayments.find(p => p.method === 'تقسيط شهري' || p.method === 'installment');
+        return acc + (instItem ? instItem.amount : 0);
+      }
+      if (tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري') {
+        return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
+      }
+      return acc;
+    }, 0);
 
   const shiftSalesCount = shiftInscopeTransactions.filter((tx) => !tx.id.startsWith('pay_')).length;
   const shiftSalesSum = shiftInscopeTransactions
@@ -307,6 +374,8 @@ export const AnalyticsView: React.FC = () => {
       totalInstallment: shiftExpectedInstallmentTotal,
       totalDebtCollected: shiftExpectedDebtCollected,
       notes: shiftNotes || 'تم تقفيل الوردية بنجاح',
+      openingBalance: openingBalance,
+      leftoverBalance: leftoverBalance,
     };
 
     closeShift(closedRecord);
@@ -321,6 +390,7 @@ export const AnalyticsView: React.FC = () => {
 
     // Reset fields
     setDrawerActualCash(0);
+    setLeftoverBalance(0);
     setShiftNotes('');
   };
 
@@ -885,9 +955,9 @@ export const AnalyticsView: React.FC = () => {
               </div>
 
               {/* Step 1: Select Employee and shift range */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-stone-950 p-4 rounded-2xl border border-stone-800/80">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-stone-950 p-4 rounded-2xl border border-stone-800/80">
                 
-                <div className="space-y-1.5 col-span-1 sm:col-span-2">
+                <div className="space-y-1.5 col-span-1 sm:col-span-3">
                   <label className="text-xs font-bold text-stone-400">البائع المسؤول المراد تقفيل ورديته</label>
                   <select
                     value={shiftCloseEmployeeId}
@@ -920,6 +990,17 @@ export const AnalyticsView: React.FC = () => {
                     value={shiftEndTime}
                     onChange={(e) => setShiftEndTime(e.target.value)}
                     className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-stone-200">الرصيد الافتتاحي بالخزينة (ج.م)</label>
+                  <input
+                    type="number"
+                    value={openingBalance || ''}
+                    onChange={(e) => setOpeningBalance(Math.max(0, parseFloat(e.target.value) || 0))}
+                    placeholder="رصيد بداية الوردية..."
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 font-bold focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
@@ -986,6 +1067,31 @@ export const AnalyticsView: React.FC = () => {
                         className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-3 text-sm text-amber-400 font-extrabold focus:outline-none focus:border-amber-500"
                       />
                       <span className="absolute left-3 top-3 text-xs text-stone-500">ج.م</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-200 block">
+                      المبلغ المتروك بالخزنة كفكة للوردية القادمة
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={leftoverBalance || ''}
+                        onChange={(e) => setLeftoverBalance(Math.max(0, parseFloat(e.target.value) || 0))}
+                        placeholder="المبلغ المراد إبقائه بالدرج..."
+                        className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-3 text-sm text-emerald-400 font-extrabold focus:outline-none focus:border-emerald-500"
+                      />
+                      <span className="absolute left-3 top-3 text-xs text-stone-500">ج.م</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-stone-400 block">المبلغ الصافي المرحل / المورد للإدارة</label>
+                    <div className="p-3.5 rounded-xl border border-stone-800 bg-stone-950/80 text-center flex flex-col justify-center h-[50px]">
+                      <span className="text-sm font-extrabold text-indigo-400 font-mono">
+                        {Math.max(0, drawerActualCash - leftoverBalance).toLocaleString()} ج.م
+                      </span>
                     </div>
                   </div>
 
@@ -1104,6 +1210,23 @@ export const AnalyticsView: React.FC = () => {
                         </div>
                       </div>
 
+                      {((shift.openingBalance && shift.openingBalance > 0) || (shift.leftoverBalance && shift.leftoverBalance > 0)) && (
+                        <div className="flex justify-between items-center bg-stone-900/30 px-2 py-1.5 rounded-xl border border-stone-850/40 text-[10px] text-stone-400">
+                          {shift.openingBalance !== undefined && shift.openingBalance > 0 && (
+                            <div>
+                              <span>الافتتاحي: </span>
+                              <span className="font-mono text-stone-300 font-bold">{shift.openingBalance.toLocaleString()} ج.م</span>
+                            </div>
+                          )}
+                          {shift.leftoverBalance !== undefined && shift.leftoverBalance > 0 && (
+                            <div>
+                              <span>المتروك بالخزنة: </span>
+                              <span className="font-mono text-emerald-400 font-bold">{shift.leftoverBalance.toLocaleString()} ج.م</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="flex justify-between items-center text-[10px] text-stone-400">
                         <span className="truncate max-w-[160px] italic">"{shift.notes}"</span>
                         <button
@@ -1191,7 +1314,13 @@ export const AnalyticsView: React.FC = () => {
 
               {/* Reconciliation values */}
               <div className="text-right space-y-2 bg-stone-50 p-3 rounded-2xl border border-stone-200">
-                <div className="flex justify-between text-xs">
+                {selectedShiftToPrint.openingBalance !== undefined && selectedShiftToPrint.openingBalance > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-stone-500">الرصيد الافتتاحي المستلم:</span>
+                    <span className="font-mono text-stone-800">{selectedShiftToPrint.openingBalance.toLocaleString()} ج.م</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs border-t border-stone-100 pt-1">
                   <span className="text-stone-500 font-bold">الرصيد النقدي المتوقع (كاش):</span>
                   <span className="font-mono font-extrabold text-stone-900">{selectedShiftToPrint.expectedCash.toLocaleString()} ج.م</span>
                 </div>
@@ -1199,6 +1328,18 @@ export const AnalyticsView: React.FC = () => {
                   <span className="text-stone-500 font-bold">المبلغ الفعلي المقبوض (كاش):</span>
                   <span className="font-mono font-extrabold text-amber-600">{selectedShiftToPrint.actualCash.toLocaleString()} ج.م</span>
                 </div>
+                {selectedShiftToPrint.leftoverBalance !== undefined && selectedShiftToPrint.leftoverBalance > 0 && (
+                  <div className="flex justify-between text-xs border-t border-stone-100 pt-1 text-emerald-700 font-bold">
+                    <span>الرصيد المتروك بالخزنة (فكة):</span>
+                    <span className="font-mono">{selectedShiftToPrint.leftoverBalance.toLocaleString()} ج.م</span>
+                  </div>
+                )}
+                {selectedShiftToPrint.leftoverBalance !== undefined && selectedShiftToPrint.leftoverBalance > 0 && (
+                  <div className="flex justify-between text-xs border-t border-stone-100 pt-1 text-indigo-700 font-bold">
+                    <span>المبلغ المرحل / المورد للإدارة:</span>
+                    <span className="font-mono">{Math.max(0, selectedShiftToPrint.actualCash - selectedShiftToPrint.leftoverBalance).toLocaleString()} ج.م</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-xs border-t border-stone-200 pt-1.5 font-bold">
                   <span className="text-stone-600 font-extrabold">مقدار العجز / الزيادة:</span>
                   <span className={`font-mono font-extrabold ${

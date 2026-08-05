@@ -30,6 +30,7 @@ export const CatalogView: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
+  const [labelProducts, setLabelProducts] = useState<Product[] | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Remember last chosen category
@@ -999,11 +1000,15 @@ export const CatalogView: React.FC = () => {
       )}
 
       {/* Product Price & Barcode Label Modal */}
-      {labelProduct && (
+      {(labelProduct || (labelProducts && labelProducts.length > 0)) && (
         <ProductLabelModal
           product={labelProduct}
-          isOpen={!!labelProduct}
-          onClose={() => setLabelProduct(null)}
+          products={labelProducts}
+          isOpen={!!labelProduct || !!(labelProducts && labelProducts.length > 0)}
+          onClose={() => {
+            setLabelProduct(null);
+            setLabelProducts(null);
+          }}
         />
       )}
 
@@ -1020,12 +1025,24 @@ export const CatalogView: React.FC = () => {
                 تم تحديد <strong className="text-amber-400 font-extrabold text-sm">{selectedProductIds.length}</strong> من الأصناف
               </span>
               <span className="text-[10px] text-stone-400">
-                يمكنك الآن تعديل القسم أو الأسعار أو الكمية لهم دفعة واحدة.
+                يمكنك طباعة ملصقات الباركود والسعر بناءً على رصيد المخزون، أو التعديل الجماعي للبيانات.
               </span>
             </div>
           </div>
           
           <div className="flex items-center space-x-2 space-x-reverse shrink-0">
+            <button
+              onClick={() => {
+                const selectedProds = products.filter((p) => selectedProductIds.includes(p.id));
+                setLabelProducts(selectedProds);
+              }}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-black rounded-xl shadow-md transition-colors flex items-center space-x-1.5 space-x-reverse"
+              title="طباعة ملصقات باركود وسعر للأصناف المحددة بعدد مساوي لرصيد كل منها بالمخزن"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>طباعة ملصقات الرصيد ({selectedProductIds.length})</span>
+            </button>
+
             <button
               onClick={() => {
                 setBulkForm({
@@ -1041,16 +1058,17 @@ export const CatalogView: React.FC = () => {
                 });
                 setIsBulkModalOpen(true);
               }}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-black rounded-xl shadow-md transition-colors flex items-center space-x-1.5 space-x-reverse"
+              className="px-3.5 py-2 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-white text-xs font-bold rounded-xl border border-stone-800 transition-colors flex items-center space-x-1.5 space-x-reverse"
             >
-              <Edit className="w-3.5 h-3.5" />
-              <span>إجراء تعديل جماعي</span>
+              <Edit className="w-3.5 h-3.5 text-stone-400" />
+              <span>تعديل جماعي</span>
             </button>
+
             <button
               onClick={() => setSelectedProductIds([])}
-              className="px-3.5 py-2 bg-stone-950 hover:bg-stone-850 text-stone-300 hover:text-white text-xs font-bold rounded-xl border border-stone-800 transition-colors"
+              className="px-3 py-2 bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-white text-xs font-bold rounded-xl border border-stone-800 transition-colors"
             >
-              إلغاء التحديد
+              إلغاء
             </button>
           </div>
         </div>

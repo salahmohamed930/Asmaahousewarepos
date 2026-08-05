@@ -139,7 +139,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   };
 
   // Projected Commission calculation
-  const primaryAssocRate = currentAssociate.commissionRate;
+  const primaryAssocRate = currentAssociate?.commissionRate || 0;
   const totalSplitPercent = splitAssociates.reduce((acc, s) => acc + s.sharePercentage, 0);
   const primarySharePercent = Math.max(0, 100 - totalSplitPercent);
   const projectedPrimaryCommission =
@@ -296,7 +296,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           <div>
             <h2 className="text-xl font-bold tracking-tight">إتمام الدفع وتحصيل الفاتورة</h2>
             <p className="text-xs text-stone-400">
-              نقطة بيع #01 • البائع المسؤول: {currentAssociate.name}
+              نقطة بيع #01 • البائع المسؤول: {currentAssociate?.name || 'غير محدد'}
             </p>
           </div>
         </div>
@@ -340,12 +340,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           <div className="mt-3 bg-stone-900 border border-stone-800 rounded-xl p-2.5 flex items-center justify-between text-xs">
             <div className="flex items-center space-x-2 space-x-reverse">
               <img
-                src={currentAssociate.avatar}
-                alt={currentAssociate.name}
+                src={currentAssociate?.avatar || ''}
+                alt={currentAssociate?.name || ''}
                 className="w-6 h-6 rounded-lg object-cover"
               />
               <span className="text-stone-300">
-                عمولة البائع: {currentAssociate.name}{' '}
+                عمولة البائع: {currentAssociate?.name || 'غير محدد'}{' '}
                 {splitAssociates.length > 0 ? `(تقسيم ${primarySharePercent}%)` : ''}
               </span>
             </div>

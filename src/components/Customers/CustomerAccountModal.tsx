@@ -68,13 +68,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   
   // Filter invoices (excluding pure debt payments)
   const invoices = customerTx.filter(t => {
-    const isPayment = t.items.some(item => item.product.id === 'debt_payment');
+    const isPayment = t.items.some(item => item.productId === 'debt_payment' || (item as any).product?.id === 'debt_payment' || t.id.startsWith('pay_'));
     return !isPayment;
   });
 
   // Filter payments
   const payments = customerTx.filter(t => {
-    return t.items.some(item => item.product.id === 'debt_payment');
+    return t.items.some(item => item.productId === 'debt_payment' || (item as any).product?.id === 'debt_payment' || t.id.startsWith('pay_'));
   });
 
   const currentDebt = customer.currentDebt || 0;
@@ -550,7 +550,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         <div className="bg-stone-900/60 rounded-xl p-2.5 max-w-xs w-full text-[11px] text-stone-400 border border-stone-800/50">
                           <span className="font-bold text-stone-300 block mb-1">المنتجات ({totalItemsCount}):</span>
                           <p className="truncate">
-                            {tx.items.map(item => `${item.product.name} (x${item.quantity})`).join('، ')}
+                            {tx.items.map(item => `${item.productName || (item as any).product?.name || 'منتج'} (x${item.quantity})`).join('، ')}
                           </p>
                         </div>
 

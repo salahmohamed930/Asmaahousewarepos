@@ -12,12 +12,16 @@ import {
   ClosedShift,
   AppSettings,
   SplitPaymentItem,
+  Supplier,
+  SupplierTransaction,
 } from '../types';
 import {
   INITIAL_ASSOCIATES,
   INITIAL_PRODUCTS,
   INITIAL_CUSTOMERS,
   INITIAL_TRANSACTIONS,
+  INITIAL_SUPPLIERS,
+  INITIAL_SUPPLIER_TRANSACTIONS,
 } from '../data/initialData';
 import {
   syncProductToSupabase,
@@ -25,6 +29,8 @@ import {
   syncCustomerToSupabase,
   syncAssociateToSupabase,
   syncClosedShiftToSupabase,
+  syncSupplierToSupabase,
+  syncSupplierTransactionToSupabase,
 } from '../lib/supabaseSync';
 import { supabase } from '../lib/supabase';
 
@@ -34,16 +40,18 @@ interface POSContextType {
   products: Product[];
   customers: Customer[];
   transactions: Transaction[];
+  suppliers: Supplier[];
+  supplierTransactions: SupplierTransaction[];
   currentAssociate: Associate | null;
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
-  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'settings';
+  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings';
   globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
   taxRate: number;
   settings: AppSettings;
   
-  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'settings') => void;
+  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings') => void;
   updateSettings: (settings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void;
   setCurrentAssociate: (associate: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
@@ -91,6 +99,12 @@ interface POSContextType {
   updateCustomer: (cust: Customer) => void;
   payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => void;
   
+  // Supplier Actions
+  addSupplier: (supplier: Omit<Supplier, 'id'>) => Supplier;
+  updateSupplier: (supplier: Supplier) => void;
+  deleteSupplier: (supplierId: string) => void;
+  recordSupplierTransaction: (tx: Omit<SupplierTransaction, 'id' | 'date'>) => void;
+
   // Shift Closure Actions
   closedShifts: ClosedShift[];
   closeShift: (shift: Omit<ClosedShift, 'id'>) => void;
@@ -129,6 +143,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_suppliers`);
+    return saved ? JSON.parse(saved) : INITIAL_SUPPLIERS;
+  });
+
+  const [supplierTransactions, setSupplierTransactions] = useState<SupplierTransaction[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
+    return saved ? JSON.parse(saved) : INITIAL_SUPPLIER_TRANSACTIONS;
+  });
+
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -137,7 +161,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [globalPriceTier, setGlobalPriceTierState] = useState<PriceTier>('cash');
   const [taxRate] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
-    'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'settings'
+    'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings'
   >('register');
 
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -349,6 +373,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_closed_shifts`, JSON.stringify(closedShifts));
   }, [closedShifts]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_suppliers`, JSON.stringify(suppliers));
+  }, [suppliers]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_supplier_txs`, JSON.stringify(supplierTransactions));
+  }, [supplierTransactions]);
 
   const setCurrentAssociate = (assoc: Associate | null) => {
     setCurrentAssociateState(assoc);
@@ -665,8 +697,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
-    const primaryAssocId = currentAssociate.id;
-    const primaryAssocName = currentAssociate.name;
+    const primaryAssocId = currentAssociate?.id || 'system';
+    const primaryAssocName = currentAssociate?.name || 'النظام';
 
     const receiptNumber = `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -680,8 +712,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       taxTotal: 0,
       grandTotal,
       paymentMethod: 'كاش',
-      customerId: selectedCustomer.id,
-      customerName: selectedCustomer.name,
+      customerId: selectedCustomer?.id,
+      customerName: selectedCustomer?.name,
       primaryAssociateId: primaryAssocId,
       primaryAssociateName: primaryAssocName,
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
@@ -913,16 +945,69 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syncTransactionToSupabase(newTransaction);
   };
 
+  const addSupplier = (supplierData: Omit<Supplier, 'id'>): Supplier => {
+    const newSupplier: Supplier = {
+      ...supplierData,
+      id: `supp_${Date.now()}`,
+      currentBalance: supplierData.currentBalance || 0,
+    };
+    setSuppliers((prev) => [newSupplier, ...prev]);
+    syncSupplierToSupabase(newSupplier);
+    return newSupplier;
+  };
+
+  const updateSupplier = (updated: Supplier) => {
+    setSuppliers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    syncSupplierToSupabase(updated);
+  };
+
+  const deleteSupplier = (supplierId: string) => {
+    setSuppliers((prev) => prev.filter((s) => s.id !== supplierId));
+  };
+
+  const recordSupplierTransaction = (txData: Omit<SupplierTransaction, 'id' | 'date'>) => {
+    const newTx: SupplierTransaction = {
+      ...txData,
+      id: `stx_${Date.now()}`,
+      date: new Date().toISOString(),
+    };
+
+    setSupplierTransactions((prev) => [newTx, ...prev]);
+    syncSupplierTransactionToSupabase(newTx);
+
+    setSuppliers((prev) =>
+      prev.map((s) => {
+        if (s.id === txData.supplierId) {
+          let delta = 0;
+          if (txData.type === 'supply_invoice') delta = txData.amount;
+          else if (txData.type === 'payment' || txData.type === 'return') delta = -txData.amount;
+
+          const updated = {
+            ...s,
+            currentBalance: Math.max(0, (s.currentBalance || 0) + delta),
+          };
+          syncSupplierToSupabase(updated);
+          return updated;
+        }
+        return s;
+      })
+    );
+  };
+
   const resetDemoData = () => {
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_associates`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_products`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_customers`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_transactions`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_suppliers`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
 
     setAssociates(INITIAL_ASSOCIATES);
     setProducts(INITIAL_PRODUCTS);
     setCustomers(INITIAL_CUSTOMERS);
     setTransactions(INITIAL_TRANSACTIONS);
+    setSuppliers(INITIAL_SUPPLIERS);
+    setSupplierTransactions(INITIAL_SUPPLIER_TRANSACTIONS);
     setCurrentAssociateState(INITIAL_ASSOCIATES[0]);
     clearCart();
   };
@@ -943,6 +1028,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         products,
         customers,
         transactions,
+        suppliers,
+        supplierTransactions,
         currentAssociate,
         cart,
         selectedCustomer,
@@ -980,6 +1067,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomer,
         updateCustomer,
         payCustomerDebt,
+        addSupplier,
+        updateSupplier,
+        deleteSupplier,
+        recordSupplierTransaction,
         closedShifts,
         closeShift,
         refreshDataFromSupabase: loadFromSupabase,

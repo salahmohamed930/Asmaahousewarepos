@@ -1,4 +1,4 @@
-import { Associate, Product, Customer, Transaction } from '../types';
+import { Associate, Product, Customer, Transaction, Supplier, SupplierTransaction } from '../types';
 
 export const INITIAL_ASSOCIATES: Associate[] = [
   {
@@ -328,3 +328,106 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     status: 'مكتملة',
   },
 ];
+
+export const INITIAL_SUPPLIERS: Supplier[] = [
+  {
+    id: 'supp_1',
+    name: 'مجموعة الأهرام للستانلس والأواني',
+    companyName: 'شركة الأهرام للأواني المنزلية',
+    phone: '01098765432',
+    email: 'sales@ahram-cookware.com',
+    address: 'المنطقة الصناعية - العاشر من رمضان',
+    category: 'أطقم طهي وحلل',
+    currentBalance: 48500, // مستحق له علينا
+    notes: 'مورد رئيسي لأطقم الحلل الستانلس والجرانيت. فترة ائتمان 45 يوم.',
+    taxNumber: '482-192-301',
+  },
+  {
+    id: 'supp_2',
+    name: 'شركة العربي للواردات والأجهزة',
+    companyName: 'العربي جروب',
+    phone: '01223344556',
+    email: 'info@elaraby-group.com',
+    address: 'شارع البوستة - العتبة - القاهرة',
+    category: 'أجهزة منزلية وكهربائية',
+    currentBalance: 125000,
+    notes: 'تأمين بضائع وأجهزة كهربائية، خصم تعجيل دفع 3%.',
+    taxNumber: '109-883-774',
+  },
+  {
+    id: 'supp_3',
+    name: 'مصنع الروضة للأواني الكورية',
+    companyName: 'الروضة لإستيراد وتصنيع أدوات المطبخ',
+    phone: '01155443322',
+    email: 'elrawdacookware@gmail.com',
+    address: 'شبرا الخيمة - القليوبية',
+    category: 'أطقم طهي وحلل',
+    currentBalance: 0,
+    notes: 'الحساب خالص بالكامل، تسليم فوري للمستودع.',
+    taxNumber: '331-552-990',
+  },
+  {
+    id: 'supp_4',
+    name: 'مؤسسة النجمة للكريستال والبورسلين',
+    companyName: 'النجمة جولدن للاستيراد',
+    phone: '01500998877',
+    email: 'contact@alnejma-crystal.com',
+    address: 'الموسكي - القاهرة',
+    category: 'مستلزمات تقديم وديكور',
+    currentBalance: 24000,
+    notes: 'مورد أطقم الصيني والبايركس وكاسات الكريستال.',
+    taxNumber: '662-771-443',
+  },
+];
+
+export const INITIAL_SUPPLIER_TRANSACTIONS: SupplierTransaction[] = [
+  {
+    id: 'stx_101',
+    supplierId: 'supp_1',
+    supplierName: 'مجموعة الأهرام للستانلس والأواني',
+    type: 'supply_invoice',
+    amount: 65000,
+    date: new Date(Date.now() - 15 * 86400 * 1000).toISOString(),
+    referenceNumber: 'INV-AHRAM-8821',
+    paymentMethod: 'آجل / توريد',
+    notes: 'توريد شحنة أطقم ستانلس 18/10 وجرانيت كوري',
+    associateName: 'أسماء علي',
+  },
+  {
+    id: 'stx_102',
+    supplierId: 'supp_1',
+    supplierName: 'مجموعة الأهرام للستانلس والأواني',
+    type: 'payment',
+    amount: 16500,
+    date: new Date(Date.now() - 5 * 86400 * 1000).toISOString(),
+    referenceNumber: 'PAY-CASH-402',
+    paymentMethod: 'تحويل بنكي',
+    notes: 'سداد دفعة حساب تحت الحساب',
+    associateName: 'أسماء علي',
+  },
+  {
+    id: 'stx_103',
+    supplierId: 'supp_2',
+    supplierName: 'شركة العربي للواردات والأجهزة',
+    type: 'supply_invoice',
+    amount: 150000,
+    date: new Date(Date.now() - 10 * 86400 * 1000).toISOString(),
+    referenceNumber: 'INV-ELARABY-9901',
+    paymentMethod: 'آجل / توريد',
+    notes: 'استلام خلاطات ومحضرات طعام ومراوح',
+    associateName: 'أسماء علي',
+  },
+  {
+    id: 'stx_104',
+    supplierId: 'supp_2',
+    supplierName: 'شركة العربي للواردات والأجهزة',
+    type: 'payment',
+    amount: 25000,
+    date: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
+    referenceNumber: 'PAY-CASH-490',
+    paymentMethod: 'كاش / خزينة الفرع',
+    notes: 'سداد دفعة نقداً لمندوب الشركة',
+    associateName: 'أسماء علي',
+  },
+];
+

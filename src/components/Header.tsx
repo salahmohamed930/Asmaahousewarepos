@@ -6,6 +6,7 @@ import {
   Package,
   BarChart3,
   UserCheck,
+  Truck,
   KeyRound,
   ChevronDown,
   LogOut,
@@ -31,12 +32,13 @@ export const Header: React.FC = () => {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isAssociateDropdownOpen, setIsAssociateDropdownOpen] = useState(false);
 
-  // Exact sections + Settings as requested:
+  // Navigation tabs with suppliers page:
   const tabs = [
     { id: 'catalog', label: 'الأصناف', icon: Package },
     { id: 'register', label: 'الفواتير', icon: FileText },
     { id: 'analytics', label: 'التقارير', icon: BarChart3 },
     { id: 'customers', label: 'حسابات العملاء', icon: UserCheck },
+    { id: 'suppliers', label: 'حسابات الموردين', icon: Truck },
     { id: 'associates', label: 'الموظفين', icon: Users },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ] as const;
@@ -180,6 +182,7 @@ export const Header: React.FC = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (!currentAssociate) return;
                               if (currentAssociate.isClockedIn) {
                                 clockOutAssociate(currentAssociate.id);
                               } else {
@@ -187,20 +190,20 @@ export const Header: React.FC = () => {
                               }
                             }}
                             className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-colors ${
-                              currentAssociate.isClockedIn
+                              currentAssociate?.isClockedIn
                                 ? 'bg-amber-950/60 text-amber-300 hover:bg-amber-900/80 border border-amber-800/50'
                                 : 'bg-emerald-900/60 text-emerald-200 hover:bg-emerald-800/80 border border-emerald-800/50'
                             }`}
                           >
-                            {currentAssociate.isClockedIn ? (
+                            {currentAssociate?.isClockedIn ? (
                               <>
                                 <LogOut className="w-3.5 h-3.5" />
-                                <span>تسجيل انصراف {currentAssociate.name.split(' ')[0]}</span>
+                                <span>تسجيل انصراف {currentAssociate?.name?.split(' ')[0]}</span>
                               </>
                             ) : (
                               <>
                                 <LogIn className="w-3.5 h-3.5" />
-                                <span>تسجيل حضور {currentAssociate.name.split(' ')[0]}</span>
+                                <span>تسجيل حضور {currentAssociate?.name?.split(' ')[0]}</span>
                               </>
                             )}
                           </button>

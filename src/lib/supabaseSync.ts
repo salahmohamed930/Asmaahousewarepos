@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Product, Customer, Transaction, Associate, ClosedShift } from '../types';
+import { Product, Customer, Transaction, Associate, ClosedShift, Supplier, SupplierTransaction } from '../types';
 
 /**
  * Sync POS Data with Supabase Database
@@ -149,3 +149,43 @@ export async function syncAssociateToSupabase(associate: Associate) {
     console.warn('Supabase associate sync error:', err);
   }
 }
+
+export async function syncSupplierToSupabase(supplier: Supplier) {
+  try {
+    await supabase.from('suppliers').upsert({
+      id: supplier.id,
+      name: supplier.name,
+      company_name: supplier.companyName || '',
+      phone: supplier.phone || '',
+      email: supplier.email || '',
+      address: supplier.address || '',
+      category: supplier.category || '',
+      current_balance: supplier.currentBalance,
+      notes: supplier.notes || '',
+      tax_number: supplier.taxNumber || '',
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Supabase supplier sync:', err);
+  }
+}
+
+export async function syncSupplierTransactionToSupabase(tx: SupplierTransaction) {
+  try {
+    await supabase.from('supplier_transactions').upsert({
+      id: tx.id,
+      supplier_id: tx.supplierId,
+      supplier_name: tx.supplierName,
+      type: tx.type,
+      amount: tx.amount,
+      date: tx.date,
+      reference_number: tx.referenceNumber || '',
+      payment_method: tx.paymentMethod || '',
+      notes: tx.notes || '',
+      associate_name: tx.associateName || '',
+    });
+  } catch (err) {
+    console.warn('Supabase supplier transaction sync:', err);
+  }
+}
+

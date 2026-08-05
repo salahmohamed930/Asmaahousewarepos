@@ -60,6 +60,32 @@ export interface CartItem {
   notes?: string;
 }
 
+export interface Supplier {
+  id: string;
+  name: string;
+  companyName?: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  category?: string;
+  currentBalance: number; // الرصيد الدائن / مستحقات المورد له لدينا
+  notes?: string;
+  taxNumber?: string;
+}
+
+export interface SupplierTransaction {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  type: 'supply_invoice' | 'payment' | 'return';
+  amount: number;
+  date: string;
+  referenceNumber?: string;
+  paymentMethod?: string;
+  notes?: string;
+  associateName?: string;
+}
+
 export interface Customer {
   id: string;
   name: string;

@@ -21,7 +21,7 @@ interface PaymentModalProps {
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { cart, currentAssociate, splitAssociates, selectedCustomer, taxRate, globalPriceTier, completeTransaction } =
+  const { cart, currentAssociate, splitAssociates, selectedCustomer, taxRate, globalPriceTier, completeTransaction, getCartItemDiscountAmount, settings } =
     usePOS();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('كاش');
@@ -39,6 +39,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     'محفظة إلكترونية': '',
     'تقسيط شهري': '',
     'آجل / حساب جملة': '',
+    'نقاط ولاء': '',
   });
 
   if (!isOpen || !currentAssociate) return null;
@@ -60,12 +61,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   cart.forEach((item) => {
     const unitPrice = getItemUnitPrice(item);
     const lineTotal = unitPrice * item.quantity;
-    const lineDisc = (lineTotal * item.discountPercent) / 100;
+    const lineDisc = getCartItemDiscountAmount(item);
     subtotal += lineTotal;
     discountTotal += lineDisc;
   });
 
-  const netSubtotal = subtotal - discountTotal;
+  const netSubtotal = Math.max(0, subtotal - discountTotal);
   const taxTotal = Math.round(netSubtotal * taxRate * 100) / 100;
 
   const tipAmount =
@@ -86,7 +87,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     paidAmount = (parseFloat(splitAmounts['كاش']) || 0) +
                  (parseFloat(splitAmounts['فيزا / كارت']) || 0) +
                  (parseFloat(splitAmounts['محفظة إلكترونية']) || 0) +
-                 (parseFloat(splitAmounts['تقسيط شهري']) || 0);
+                 (parseFloat(splitAmounts['تقسيط شهري']) || 0) +
+                 (parseFloat(splitAmounts['نقاط ولاء']) || 0);
   } else {
     if (selectedCustomer && isCreditEligible) {
       if (paymentMethod === 'آجل / حساب جملة') {
@@ -156,12 +158,25 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
       const splitWallet = parseFloat(splitAmounts['محفظة إلكترونية']) || 0;
       const splitInstallment = parseFloat(splitAmounts['تقسيط شهري']) || 0;
       const splitDeferred = parseFloat(splitAmounts['آجل / حساب جملة']) || 0;
+      const splitPoints = parseFloat(splitAmounts['نقاط ولاء']) || 0;
       
-      const totalAllocated = splitCash + splitCard + splitWallet + splitInstallment + splitDeferred;
+      const totalAllocated = splitCash + splitCard + splitWallet + splitInstallment + splitDeferred + splitPoints;
       
       if (Math.abs(totalAllocated - grandTotal) > 0.1) {
         setPaymentError(`يجب أن يتطابق إجمالي المبالغ المجزأة (${totalAllocated.toLocaleString()} ج.م) مع إجمالي الفاتورة المطلوب (${grandTotal.toLocaleString()} ج.م). المتبقي لتوزيعه: ${(grandTotal - totalAllocated).toLocaleString()} ج.م.`);
         return;
+      }
+
+      if (splitPoints > 0) {
+        if (!selectedCustomer) {
+          setPaymentError('يجب اختيار عميل لاستخدام نقاط الولاء كجزء من الدفع.');
+          return;
+        }
+        const pointsNeeded = Math.ceil(splitPoints / (settings.loyaltyPointValue || 0.1));
+        if (selectedCustomer.loyaltyPoints < pointsNeeded) {
+          setPaymentError(`نقاط العميل غير كافية لدفع مبلغ ${splitPoints} ج.م (المطلوب: ${pointsNeeded} نقطة، المتاح للعميل: ${selectedCustomer.loyaltyPoints} نقطة).`);
+          return;
+        }
       }
 
       if (splitDeferred > 0 && !selectedCustomer) {
@@ -207,6 +222,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
       if (isPartialPayment && selectedCustomer && !isCreditEligible) {
         setPaymentError(`العميل (${selectedCustomer.name}) غير مؤهل للمعاملات الآجلة والدفع الجزئي.`);
         return;
+      }
+
+      if (paymentMethod === 'نقاط ولاء') {
+        if (!selectedCustomer) {
+          setPaymentError('يجب اختيار عميل أولاً لدفع قيمة الفاتورة باستخدام نقاط الولاء.');
+          return;
+        }
+        const pointsNeeded = Math.ceil(grandTotal / (settings.loyaltyPointValue || 0.1));
+        if (selectedCustomer.loyaltyPoints < pointsNeeded) {
+          setPaymentError(`نقاط العميل غير كافية لدفع قيمة الفاتورة كاملة (${grandTotal.toLocaleString()} ج.م) (المطلوب: ${pointsNeeded} نقطة، المتاح للعميل: ${selectedCustomer.loyaltyPoints} نقطة).`);
+          return;
+        }
       }
 
       // Cash Validation
@@ -258,6 +285,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             details = 'تسجيل آجل على حساب العميل';
           } else if (paymentMethod === 'تقسيط شهري') {
             details = 'تقسيط شهري متفق عليه مع العميل';
+          } else if (paymentMethod === 'نقاط ولاء') {
+            const pointsNeeded = Math.ceil(grandTotal / (settings.loyaltyPointValue || 0.1));
+            details = `دفع بنقاط الولاء: تم خصم ${pointsNeeded} نقطة من حساب العميل`;
           }
 
           if (deferredAmount > 0) {
@@ -444,6 +474,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                   'محفظة إلكترونية': '',
                   'تقسيط شهري': '',
                   'آجل / حساب جملة': '',
+                  'نقاط ولاء': '',
                 });
                 setPaymentError('');
               }}
@@ -483,6 +514,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                     : !isCreditEligible 
                     ? 'العميل الحالي غير مؤهل للآجل' 
                     : `الحد المتبقي للعميل: ${Math.max(0, (selectedCustomer.creditLimit || 0) - (selectedCustomer.currentDebt || 0)).toLocaleString()} ج.م`
+                },
+                { 
+                  id: 'نقاط ولاء', 
+                  label: 'نقاط الولاء (استبدال النقاط)', 
+                  icon: Sparkles, 
+                  color: 'text-amber-500',
+                  disabled: !selectedCustomer || (selectedCustomer.loyaltyPoints || 0) <= 0,
+                  helpText: !selectedCustomer 
+                    ? 'يجب اختيار عميل لاستخدام نقاط الولاء' 
+                    : (selectedCustomer.loyaltyPoints || 0) <= 0 
+                    ? 'لا يملك العميل نقاط ولاء كافية' 
+                    : `رصيد العميل: ${selectedCustomer.loyaltyPoints} نقطة (تساوي ${(selectedCustomer.loyaltyPoints * (settings.loyaltyPointValue || 0.1)).toLocaleString()} ج.م)`
                 },
               ].map((m) => {
                 const Icon = m.icon;
@@ -576,16 +619,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                   { id: 'فيزا / كارت', label: 'فيزا / كارت', icon: CreditCard },
                   { id: 'محفظة إلكترونية', label: 'محفظة ذكية', icon: Smartphone },
                   { id: 'آجل / حساب جملة', label: 'حساب آجل', icon: Gift },
+                  { id: 'نقاط ولاء', label: 'نقاط ولاء', icon: Sparkles, disabled: !selectedCustomer || (selectedCustomer.loyaltyPoints || 0) <= 0 },
                 ].map((m) => {
                   const Icon = m.icon;
                   const isSel = paymentMethod === m.id;
+                  const isDisabled = m.disabled;
                   return (
                     <button
                       key={m.id}
+                      disabled={isDisabled}
                       onClick={() => setPaymentMethod(m.id as PaymentMethod)}
                       className={`p-3 rounded-2xl border flex flex-col items-center justify-center space-y-1.5 transition-all ${
                         isSel
                           ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-lg shadow-amber-950/50'
+                          : isDisabled
+                          ? 'bg-stone-900/10 border-stone-850 text-stone-600 cursor-not-allowed opacity-30'
                           : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200 hover:bg-stone-800/80'
                       }`}
                     >
@@ -597,8 +645,37 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
               </div>
             </div>
 
+            {paymentMethod === 'نقاط ولاء' && selectedCustomer && (
+              <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 space-y-3">
+                <div className="flex items-center space-x-2 space-x-reverse text-amber-400 text-sm font-bold">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                  <span>تفاصيل الدفع بنقاط الولاء</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                  <div className="bg-stone-900/60 p-2.5 rounded-xl border border-stone-800">
+                    <span className="text-stone-400 block mb-1">النقاط المطلوبة للفاتورة</span>
+                    <span className="font-mono text-white font-extrabold text-base">
+                      {Math.ceil(grandTotal / (settings.loyaltyPointValue || 0.1))} نقطة
+                    </span>
+                  </div>
+                  <div className="bg-stone-900/60 p-2.5 rounded-xl border border-stone-800">
+                    <span className="text-stone-400 block mb-1">رصيد نقاط العميل الحالي</span>
+                    <span className="font-mono text-emerald-400 font-extrabold text-base">
+                      {selectedCustomer.loyaltyPoints} نقطة
+                    </span>
+                  </div>
+                </div>
+                <div className="text-[11px] text-stone-400 bg-stone-900/40 p-2.5 rounded-xl border border-stone-850 flex justify-between">
+                  <span>القيمة النقدية للنقطة الواحدة:</span>
+                  <span className="font-bold text-stone-200">
+                    {(settings.loyaltyPointValue || 0.1)} ج.م
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Partial Payment Toggle and Input */}
-            {selectedCustomer && isCreditEligible && (
+            {selectedCustomer && isCreditEligible && paymentMethod !== 'نقاط ولاء' && (
               <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 mb-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2 space-x-reverse">

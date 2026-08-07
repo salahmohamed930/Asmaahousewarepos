@@ -102,7 +102,7 @@ export interface Customer {
   address?: string;           // عنوان العميل
 }
 
-export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية' | 'دفع متعدد';
+export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية' | 'دفع متعدد' | 'نقاط ولاء';
 
 export interface TransactionCommission {
   associateId: string;
@@ -205,5 +205,14 @@ export interface AppSettings {
   };
   printSettings: PrintSettings;
   categories: string[];
+  loyaltyPointsRatio?: number; // كم جنيه ينفقه العميل ليحصل على نقطة واحدة
+  loyaltyPointValue?: number;  // القيمة المالية للنقطة الواحدة بالجنيه
+}
+
+export interface ProductDiscount {
+  productId: string;
+  type: 'percentage' | 'amount';
+  value: number;
+  isActive: boolean;
 }
 

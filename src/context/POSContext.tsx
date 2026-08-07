@@ -14,6 +14,7 @@ import {
   SplitPaymentItem,
   Supplier,
   SupplierTransaction,
+  ProductDiscount,
 } from '../types';
 import {
   INITIAL_ASSOCIATES,
@@ -46,12 +47,13 @@ interface POSContextType {
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
-  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings';
+  activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts';
   globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
   taxRate: number;
   settings: AppSettings;
+  discounts: ProductDiscount[];
   
-  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings') => void;
+  setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts') => void;
   updateSettings: (settings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void;
   setCurrentAssociate: (associate: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
@@ -65,6 +67,10 @@ interface POSContextType {
   updateCartItemAssociate: (productId: string, associateId?: string) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
+  getCartItemDiscountAmount: (item: CartItem) => number;
+  getCartItemDiscountPercent: (item: CartItem) => number;
+  addDiscount: (discount: ProductDiscount) => void;
+  removeDiscount: (productId: string) => void;
   
   // Split & Customer Actions
   setSplitAssociates: (splits: SplitAssociate[]) => void;
@@ -161,8 +167,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [globalPriceTier, setGlobalPriceTierState] = useState<PriceTier>('cash');
   const [taxRate] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
-    'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings'
+    'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts'
   >('register');
+
+  const [discounts, setDiscounts] = useState<ProductDiscount[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_discounts`);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_discounts`, JSON.stringify(discounts));
+  }, [discounts]);
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
@@ -196,7 +211,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           theme: parsed.theme || 'dark',
           profitMargins: parsed.profitMargins || defaultMargins,
           printSettings: parsed.printSettings || defaultPrint,
-          categories: parsed.categories || defaultCats
+          categories: parsed.categories || defaultCats,
+          loyaltyPointsRatio: parsed.loyaltyPointsRatio !== undefined ? parsed.loyaltyPointsRatio : 10,
+          loyaltyPointValue: parsed.loyaltyPointValue !== undefined ? parsed.loyaltyPointValue : 0.1,
         };
       } catch (e) {
         // ignore
@@ -206,7 +223,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       theme: 'dark',
       profitMargins: defaultMargins,
       printSettings: defaultPrint,
-      categories: defaultCats
+      categories: defaultCats,
+      loyaltyPointsRatio: 10,
+      loyaltyPointValue: 0.1,
     };
   });
 
@@ -412,9 +431,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const existingIndex = prevCart.findIndex((item) => item.product.id === product.id);
       if (existingIndex > -1) {
         const updated = [...prevCart];
-        updated[existingIndex].quantity += quantity;
+        const newQty = updated[existingIndex].quantity + quantity;
+        if (newQty > product.stock) {
+          alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
+          return prevCart;
+        }
+        updated[existingIndex].quantity = newQty;
         updated[existingIndex].selectedPriceTier = tier;
         return updated;
+      }
+      if (quantity > product.stock) {
+        alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
+        return prevCart;
       }
       return [
         ...prevCart,
@@ -431,6 +459,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateCartQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productId);
+      return;
+    }
+    const product = products.find((p) => p.id === productId);
+    if (product && quantity > product.stock) {
+      alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
       return;
     }
     setCart((prev) =>
@@ -462,6 +495,47 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         item.product.id === productId ? { ...item, assignedAssociateId: associateId } : item
       )
     );
+  };
+
+  const getCartItemDiscountAmount = (item: CartItem): number => {
+    const unitPrice = getItemUnitPrice(item);
+    
+    // Check if there is an active admin discount for this product
+    const adminDiscount = discounts.find((d) => d.productId === item.product.id && d.isActive !== false);
+    let adminDiscountAmt = 0;
+    if (adminDiscount) {
+      if (adminDiscount.type === 'percentage') {
+        adminDiscountAmt = (unitPrice * adminDiscount.value) / 100;
+      } else {
+        adminDiscountAmt = adminDiscount.value;
+      }
+    }
+
+    // Add manual discount percent if any
+    const manualDiscountAmt = (unitPrice * (item.discountPercent || 0)) / 100;
+
+    // Total discount amount per unit
+    const totalDiscountPerUnit = Math.min(unitPrice, adminDiscountAmt + manualDiscountAmt);
+    return Math.round(totalDiscountPerUnit * item.quantity * 100) / 100;
+  };
+
+  const getCartItemDiscountPercent = (item: CartItem): number => {
+    const unitPrice = getItemUnitPrice(item);
+    if (unitPrice <= 0) return 0;
+    const discountAmt = getCartItemDiscountAmount(item);
+    const originalTotal = unitPrice * item.quantity;
+    return Math.round((discountAmt / originalTotal) * 100 * 100) / 100;
+  };
+
+  const addDiscount = (discount: ProductDiscount) => {
+    setDiscounts((prev) => {
+      const filtered = prev.filter((d) => d.productId !== discount.productId);
+      return [...filtered, discount];
+    });
+  };
+
+  const removeDiscount = (productId: string) => {
+    setDiscounts((prev) => prev.filter((d) => d.productId !== productId));
   };
 
   const removeFromCart = (productId: string) => {
@@ -506,8 +580,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const transactionItems = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
-      const lineDiscount = (lineOriginalTotal * (item.discountPercent || 0)) / 100;
-      const lineNetTotal = lineOriginalTotal - lineDiscount;
+      const lineDiscount = getCartItemDiscountAmount(item);
+      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
 
       subtotal += lineOriginalTotal;
       discountTotal += lineDiscount;
@@ -536,8 +610,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     cart.forEach((item) => {
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
-      const lineDiscount = (lineOriginalTotal * item.discountPercent) / 100;
-      const lineNetTotal = lineOriginalTotal - lineDiscount;
+      const lineDiscount = getCartItemDiscountAmount(item);
+      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
 
       if (item.assignedAssociateId) {
         associateSalesMap[item.assignedAssociateId] =
@@ -631,13 +705,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCustomers((prev) =>
         prev.map((c) => {
           if (c.id === selectedCustomer.id) {
-            const addedPoints = Math.floor(grandTotal / 10);
+            const ratio = settings.loyaltyPointsRatio || 10;
+            const addedPoints = Math.floor(grandTotal / ratio);
+
+            // Calculate points used
+            let pointsUsed = 0;
+            const pointVal = settings.loyaltyPointValue || 0.1;
+            if (paymentMethod === 'نقاط ولاء') {
+              pointsUsed = Math.ceil(grandTotal / pointVal);
+            } else if (paymentMethod === 'دفع متعدد' && splitPayments) {
+              const ptsPay = splitPayments.find((sp) => sp.method === 'نقاط ولاء');
+              if (ptsPay) {
+                pointsUsed = Math.ceil(ptsPay.amount / pointVal);
+              }
+            }
+
             const currentDebtVal = c.currentDebt || 0;
             const newDebt = currentDebtVal + (amountDeferred || 0);
             const updated = {
               ...c,
               totalSpent: c.totalSpent + grandTotal,
-              loyaltyPoints: c.loyaltyPoints + addedPoints,
+              loyaltyPoints: Math.max(0, c.loyaltyPoints + addedPoints - pointsUsed),
               currentDebt: newDebt,
             };
             syncCustomerToSupabase(updated);
@@ -678,8 +766,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const transactionItems = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
-      const lineDiscount = (lineOriginalTotal * (item.discountPercent || 0)) / 100;
-      const lineNetTotal = lineOriginalTotal - lineDiscount;
+      const lineDiscount = getCartItemDiscountAmount(item);
+      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
 
       subtotal += lineOriginalTotal;
       discountTotal += lineDiscount;
@@ -773,7 +861,25 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const cust = customers.find((c) => c.id === foundTx.customerId);
       if (cust) {
         setSelectedCustomer(cust);
+      } else {
+        setSelectedCustomer({
+          id: foundTx.customerId,
+          name: foundTx.customerName || 'عميل معلق',
+          phone: '',
+          email: '',
+          loyaltyPoints: 0,
+          totalSpent: 0,
+        });
       }
+    } else if (foundTx.customerName) {
+      setSelectedCustomer({
+        id: `temp_${Date.now()}`,
+        name: foundTx.customerName,
+        phone: '',
+        email: '',
+        loyaltyPoints: 0,
+        totalSpent: 0,
+      });
     }
 
     if (foundTx.splitAssociates) {
@@ -1038,6 +1144,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         globalPriceTier,
         taxRate,
         settings,
+        discounts,
         updateSettings,
         setActiveTab,
         setCurrentAssociate,
@@ -1050,6 +1157,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCartItemAssociate,
         removeFromCart,
         clearCart,
+        getCartItemDiscountAmount,
+        getCartItemDiscountPercent,
+        addDiscount,
+        removeDiscount,
         setSplitAssociates,
         setSelectedCustomer,
         completeTransaction,

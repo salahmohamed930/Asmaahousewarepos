@@ -13,6 +13,7 @@ import {
   FolderPlus,
   Layout,
   Sliders,
+  Sparkles,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -275,6 +276,57 @@ export const SettingsView: React.FC = () => {
                     className="rounded bg-stone-950 border-stone-800 text-amber-600 focus:ring-0 cursor-pointer"
                   />
                 </label>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 5: Loyalty Points Settings */}
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-4 shadow-md">
+            <h2 className="text-sm font-black text-amber-500 mb-3 flex items-center space-x-2 space-x-reverse">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>إعدادات نظام نقاط الولاء</span>
+            </h2>
+            <p className="text-[11px] text-stone-400 mb-4">اضبط قيمة النقاط وعدد الجنيهات المطلوبة للحصول على كل نقطة للعميل.</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-stone-400 text-xs mb-1 font-bold">معدل اكتساب النقاط (جنيه لكل نقطة):</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={settings.loyaltyPointsRatio ?? 10}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseInt(e.target.value) || 1);
+                      updateSettings({ loyaltyPointsRatio: val });
+                      triggerSuccess(`تم تحديث معدل النقاط: نقطة واحدة لكل ${val} جنيه شراء.`);
+                    }}
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-mono font-bold"
+                  />
+                  <span className="absolute left-3 top-2 text-[10px] text-stone-500 font-bold">ج.م = 1 نقطة</span>
+                </div>
+                <p className="text-[10px] text-stone-500 mt-1">يحصل العميل على نقطة واحدة مقابل كل X جنيه ينفقها.</p>
+              </div>
+
+              <div>
+                <label className="block text-stone-400 text-xs mb-1 font-bold">سعر/قيمة النقطة الواحدة بالجنيه:</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={settings.loyaltyPointValue ?? 0.1}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      updateSettings({ loyaltyPointValue: val });
+                      triggerSuccess(`تم تحديث قيمة النقطة: ${val} جنيه لكل نقطة مستردة.`);
+                    }}
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-mono font-bold"
+                  />
+                  <span className="absolute left-3 top-2 text-[10px] text-stone-500 font-bold">ج.م لكل نقطة</span>
+                </div>
+                <p className="text-[10px] text-stone-500 mt-1">القيمة النقدية التي يتم خصمها من الفاتورة مقابل كل نقطة يتم استبدالها.</p>
               </div>
             </div>
           </div>

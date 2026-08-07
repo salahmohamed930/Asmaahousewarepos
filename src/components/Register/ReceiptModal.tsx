@@ -136,6 +136,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                       ? 'تقسيط 📅'
                       : transaction.paymentMethod === 'دفع متعدد'
                       ? 'دفع مجزأ / متعدد 🧾'
+                      : transaction.paymentMethod === 'نقاط ولاء'
+                      ? 'نقاط الولاء 🌟'
                       : 'بطاقة / جملة 💳'}
                   </span>
                 </div>
@@ -171,10 +173,32 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                       </td>
                       <td className="p-2 text-center font-mono font-bold text-stone-700">{item.quantity}</td>
                       <td className="p-2 text-center font-mono text-stone-700">
-                        {(item.unitPrice || 0).toLocaleString()} ج.م
+                        {item.totalPrice !== (item.unitPrice || 0) * item.quantity ? (
+                          <div className="flex flex-col items-center">
+                            <span className="line-through text-[10px] text-stone-400">
+                              {(item.unitPrice || 0).toLocaleString()} ج.م
+                            </span>
+                            <span className="text-emerald-700 font-bold text-[11px]">
+                              {(Math.round((item.totalPrice / item.quantity) * 100) / 100).toLocaleString()} ج.م
+                            </span>
+                          </div>
+                        ) : (
+                          <span>{(item.unitPrice || 0).toLocaleString()} ج.م</span>
+                        )}
                       </td>
                       <td className="p-2 text-left font-mono font-extrabold text-stone-950">
-                        {(item.totalPrice || 0).toLocaleString()} ج.م
+                        {item.totalPrice !== (item.unitPrice || 0) * item.quantity ? (
+                          <div className="flex flex-col items-end">
+                            <span className="line-through text-[10px] text-stone-400 font-medium">
+                              {((item.unitPrice || 0) * item.quantity).toLocaleString()} ج.م
+                            </span>
+                            <span className="text-emerald-700 font-black">
+                              {(item.totalPrice || 0).toLocaleString()} ج.م
+                            </span>
+                          </div>
+                        ) : (
+                          <span>{(item.totalPrice || 0).toLocaleString()} ج.م</span>
+                        )}
                       </td>
                     </tr>
                   ))}

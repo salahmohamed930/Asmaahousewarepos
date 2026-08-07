@@ -14,6 +14,7 @@ import {
   Store,
   Database,
   Settings,
+  Percent,
 } from 'lucide-react';
 import QuickPinModal from './QuickPinModal';
 
@@ -36,6 +37,7 @@ export const Header: React.FC = () => {
   const tabs = [
     { id: 'catalog', label: 'الأصناف', icon: Package },
     { id: 'register', label: 'الفواتير', icon: FileText },
+    { id: 'discounts', label: 'الخصومات', icon: Percent },
     { id: 'analytics', label: 'التقارير', icon: BarChart3 },
     { id: 'customers', label: 'حسابات العملاء', icon: UserCheck },
     { id: 'suppliers', label: 'حسابات الموردين', icon: Truck },

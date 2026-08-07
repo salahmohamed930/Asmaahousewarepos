@@ -39,6 +39,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     removeFromCart,
     clearCart,
     holdCart,
+    getCartItemDiscountAmount,
   } = usePOS();
 
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -67,7 +68,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
         : item.product.priceWholesale;
 
     const originalLinePrice = unitPrice * item.quantity;
-    const itemDiscount = (originalLinePrice * item.discountPercent) / 100;
+    const itemDiscount = getCartItemDiscountAmount(item);
     subtotal += originalLinePrice;
     discountTotal += itemDiscount;
   });
@@ -344,7 +345,11 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         ? item.product.priceInstallment
                         : item.product.priceWholesale;
 
-                    const lineTotal = (unitPrice * item.quantity * (100 - item.discountPercent)) / 100;
+                    const lineDiscount = getCartItemDiscountAmount(item);
+                    const lineTotal = Math.max(0, unitPrice * item.quantity - lineDiscount);
+                    const overallDiscountPercent = Math.round((lineDiscount / (unitPrice * item.quantity)) * 105) > 0 
+                      ? Math.round((lineDiscount / (unitPrice * item.quantity)) * 100)
+                      : 0;
                     
                     const itemAssociate = item.assignedAssociateId
                       ? associates.find((a) => a.id === item.assignedAssociateId)
@@ -397,17 +402,34 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                         {/* 3. السعر */}
                         <td className="py-1.5 px-1 text-center font-mono font-bold text-stone-300 whitespace-nowrap text-[11px]">
-                          {unitPrice.toLocaleString()} ج.م
-                          {item.discountPercent > 0 && (
-                            <span className="block text-[8px] text-emerald-400 font-sans">
-                              خصم {item.discountPercent}%
-                            </span>
+                          {overallDiscountPercent > 0 ? (
+                            <div className="flex flex-col items-center">
+                              <span className="line-through text-[9px] text-stone-500">
+                                {unitPrice.toLocaleString()} ج.م
+                              </span>
+                              <span className="text-emerald-400 font-bold">
+                                {Math.round((lineTotal / item.quantity) * 100) / 100} ج.م
+                              </span>
+                            </div>
+                          ) : (
+                            <span>{unitPrice.toLocaleString()} ج.م</span>
                           )}
                         </td>
 
                         {/* 4. إجمالي الصنف */}
                         <td className="py-1.5 px-1 text-center font-mono font-extrabold text-amber-400 whitespace-nowrap text-[11px]">
-                          {lineTotal.toLocaleString()} ج.م
+                          {overallDiscountPercent > 0 ? (
+                            <div className="flex flex-col items-center">
+                              <span className="line-through text-[9px] text-stone-500 font-mono">
+                                {(unitPrice * item.quantity).toLocaleString()} ج.م
+                              </span>
+                              <span className="text-emerald-400 font-black">
+                                {lineTotal.toLocaleString()} ج.م
+                              </span>
+                            </div>
+                          ) : (
+                            <span>{lineTotal.toLocaleString()} ج.م</span>
+                          )}
                         </td>
 
                         {/* 5. البائع */}

@@ -9,6 +9,7 @@ import { CatalogView } from './components/Catalog/CatalogView';
 import { CustomersView } from './components/Customers/CustomersView';
 import { SuppliersView } from './components/Suppliers/SuppliersView';
 import { SettingsView } from './components/Settings/SettingsView';
+import { DiscountsView } from './components/Discounts/DiscountsView';
 
 const MainLayout: React.FC = () => {
   const { currentAssociate, activeTab } = usePOS();
@@ -29,6 +30,7 @@ const MainLayout: React.FC = () => {
         {activeTab === 'customers' && <CustomersView />}
         {activeTab === 'suppliers' && <SuppliersView />}
         {activeTab === 'settings' && <SettingsView />}
+        {activeTab === 'discounts' && <DiscountsView />}
       </main>
     </div>
   );

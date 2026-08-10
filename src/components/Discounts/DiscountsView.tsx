@@ -29,6 +29,7 @@ export const DiscountsView: React.FC = () => {
   // Form states
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
   const [discountValue, setDiscountValue] = useState<number>(0);
+  const [applyTo, setApplyTo] = useState<'cash' | 'installment' | 'both'>('both');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -55,8 +56,10 @@ export const DiscountsView: React.FC = () => {
     if (existing) {
       setDiscountType(existing.type);
       setDiscountValue(existing.value);
+      setApplyTo(existing.applyTo || 'both');
     } else {
       setDiscountValue(0);
+      setApplyTo('both');
     }
   };
 
@@ -87,7 +90,8 @@ export const DiscountsView: React.FC = () => {
       productId: selectedProduct.id,
       type: discountType,
       value: Number(discountValue),
-      isActive: true
+      isActive: true,
+      applyTo: applyTo
     };
 
     addDiscount(newDiscount);
@@ -98,6 +102,7 @@ export const DiscountsView: React.FC = () => {
     setSelectedProduct(null);
     setProductSearch('');
     setDiscountValue(0);
+    setApplyTo('both');
   };
 
   return (
@@ -247,6 +252,48 @@ export const DiscountsView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Apply To Selection */}
+              <div>
+                <label className="block text-xs font-bold text-stone-300 mb-2">تطبيق الخصم على</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setApplyTo('cash')}
+                    className={`py-2.5 px-2 rounded-2xl text-[11px] font-bold border text-center transition-all ${
+                      applyTo === 'cash'
+                        ? 'bg-amber-600/10 border-amber-500 text-amber-400 shadow-sm'
+                        : 'bg-stone-950 border-stone-850 text-stone-400 hover:text-stone-300 hover:bg-stone-900/40'
+                    }`}
+                  >
+                    <span>الكاش فقط</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setApplyTo('installment')}
+                    className={`py-2.5 px-2 rounded-2xl text-[11px] font-bold border text-center transition-all ${
+                      applyTo === 'installment'
+                        ? 'bg-amber-600/10 border-amber-500 text-amber-400 shadow-sm'
+                        : 'bg-stone-950 border-stone-850 text-stone-400 hover:text-stone-300 hover:bg-stone-900/40'
+                    }`}
+                  >
+                    <span>القسط فقط</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setApplyTo('both')}
+                    className={`py-2.5 px-2 rounded-2xl text-[11px] font-bold border text-center transition-all ${
+                      applyTo === 'both'
+                        ? 'bg-amber-600/10 border-amber-500 text-amber-400 shadow-sm'
+                        : 'bg-stone-950 border-stone-850 text-stone-400 hover:text-stone-300 hover:bg-stone-900/40'
+                    }`}
+                  >
+                    <span>الكاش والقسط</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Status Alert Messages */}
               {errorMsg && (
                 <div className="bg-rose-950/20 border border-rose-900/40 text-rose-400 p-3 rounded-2xl text-xs flex items-start gap-2">
@@ -290,7 +337,7 @@ export const DiscountsView: React.FC = () => {
                   <thead>
                     <tr className="text-stone-400 border-b border-stone-800">
                       <th className="pb-3 pt-1 font-bold">الصنف والوصف</th>
-                      <th className="pb-3 pt-1 text-center font-bold">سعر الكاش الاصلي</th>
+                      <th className="pb-3 pt-1 text-center font-bold">السعر الأصلي</th>
                       <th className="pb-3 pt-1 text-center font-bold">الخصم المطبق</th>
                       <th className="pb-3 pt-1 text-center font-bold">السعر بعد الخصم</th>
                       <th className="pb-3 pt-1 text-left font-bold">إجراءات</th>
@@ -301,11 +348,18 @@ export const DiscountsView: React.FC = () => {
                       const prod = products.find((p) => p.id === disc.productId);
                       if (!prod) return null;
 
-                      let discountedPrice = prod.priceCash;
+                      let originalPrice = prod.priceCash;
+                      let priceLabel = 'كاش';
+                      if (disc.applyTo === 'installment') {
+                        originalPrice = prod.priceInstallment || 0;
+                        priceLabel = 'قسط';
+                      }
+
+                      let discountedPrice = originalPrice;
                       if (disc.type === 'percentage') {
-                        discountedPrice = Math.max(0, prod.priceCash * (1 - disc.value / 100));
+                        discountedPrice = Math.max(0, originalPrice * (1 - disc.value / 100));
                       } else {
-                        discountedPrice = Math.max(0, prod.priceCash - disc.value);
+                        discountedPrice = Math.max(0, originalPrice - disc.value);
                       }
 
                       return (
@@ -319,12 +373,24 @@ export const DiscountsView: React.FC = () => {
                               />
                               <div>
                                 <span className="font-extrabold text-stone-100 block leading-normal">{prod.name}</span>
-                                <span className="text-[10px] text-stone-500 font-mono block mt-0.5">SKU: {prod.sku}</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] text-stone-500 font-mono">SKU: {prod.sku}</span>
+                                  <span className="text-[10px] text-stone-500">•</span>
+                                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                                    disc.applyTo === 'cash' ? 'bg-blue-950/40 text-blue-400 border border-blue-900/30' :
+                                    disc.applyTo === 'installment' ? 'bg-purple-950/40 text-purple-400 border border-purple-900/30' :
+                                    'bg-stone-800 text-stone-300 border border-stone-700/50'
+                                  }`}>
+                                    {disc.applyTo === 'cash' ? 'كاش فقط' :
+                                     disc.applyTo === 'installment' ? 'قسط فقط' :
+                                     'كاش وقسط'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </td>
                           <td className="py-3.5 text-center font-mono font-medium text-stone-400">
-                            {prod.priceCash.toLocaleString()} ج.م
+                            {originalPrice.toLocaleString()} ج.م <span className="text-[10px] text-stone-500">({priceLabel})</span>
                           </td>
                           <td className="py-3.5 text-center font-bold text-emerald-500">
                             {disc.type === 'percentage' ? (
@@ -338,7 +404,7 @@ export const DiscountsView: React.FC = () => {
                             )}
                           </td>
                           <td className="py-3.5 text-center font-mono font-black text-white">
-                            {discountedPrice.toLocaleString()} ج.م
+                            {discountedPrice.toLocaleString()} ج.م <span className="text-[10px] text-stone-500">({priceLabel})</span>
                           </td>
                           <td className="py-3.5 text-left pl-1">
                             <button

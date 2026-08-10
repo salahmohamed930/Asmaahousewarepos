@@ -214,5 +214,6 @@ export interface ProductDiscount {
   type: 'percentage' | 'amount';
   value: number;
   isActive: boolean;
+  applyTo?: 'cash' | 'installment' | 'both';
 }
 

@@ -504,10 +504,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const adminDiscount = discounts.find((d) => d.productId === item.product.id && d.isActive !== false);
     let adminDiscountAmt = 0;
     if (adminDiscount) {
-      if (adminDiscount.type === 'percentage') {
-        adminDiscountAmt = (unitPrice * adminDiscount.value) / 100;
-      } else {
-        adminDiscountAmt = adminDiscount.value;
+      const tier = item.selectedPriceTier || globalPriceTier;
+      const appliesToCash = !adminDiscount.applyTo || adminDiscount.applyTo === 'cash' || adminDiscount.applyTo === 'both';
+      const appliesToInstallment = !adminDiscount.applyTo || adminDiscount.applyTo === 'installment' || adminDiscount.applyTo === 'both';
+      
+      let isApplicable = false;
+      if (tier === 'cash' && appliesToCash) {
+        isApplicable = true;
+      } else if (tier === 'installment' && appliesToInstallment) {
+        isApplicable = true;
+      } else if (tier === 'wholesale' && appliesToCash) {
+        isApplicable = true;
+      } else if (tier !== 'cash' && tier !== 'installment' && appliesToCash) {
+        isApplicable = true;
+      }
+
+      if (isApplicable) {
+        if (adminDiscount.type === 'percentage') {
+          adminDiscountAmt = (unitPrice * adminDiscount.value) / 100;
+        } else {
+          adminDiscountAmt = adminDiscount.value;
+        }
       }
     }
 

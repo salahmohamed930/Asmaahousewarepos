@@ -66,10 +66,11 @@ export const AssociatesView: React.FC = () => {
 
   const handleOpenAdd = () => {
     const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const generatedPassword = Math.floor(1000 + Math.random() * 9000).toString();
     setFormData({
       name: '',
       username: '',
-      password: generatedPin,
+      password: generatedPassword,
       pin: generatedPin,
       role: 'مسؤول مبيعات',
       permissions: ['create_invoice', 'apply_discount'],
@@ -269,11 +270,20 @@ export const AssociatesView: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-stone-400 font-semibold flex items-center gap-1">
-                          <Lock className="w-3 h-3 text-amber-400" />
-                          كلمة المرور / PIN:
+                          <Lock className="w-3 h-3 text-emerald-400" />
+                          كلمة المرور:
                         </span>
                         <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/60">
-                          {assoc.password || assoc.pin}
+                          {assoc.password || '—'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-stone-400 font-semibold flex items-center gap-1">
+                          <Key className="w-3 h-3 text-amber-500" />
+                          كود البائع (PIN):
+                        </span>
+                        <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/60">
+                          {assoc.pin || '—'}
                         </span>
                       </div>
                     </div>
@@ -390,14 +400,14 @@ export const AssociatesView: React.FC = () => {
                 />
               </div>
 
-              {/* Username & Password Edit Fields (ADMIN PERMISSION EDITING) */}
+              {/* Username, Password & PIN Edit Fields (ADMIN PERMISSION EDITING) */}
               <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-3">
                 <span className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
                   <Lock className="w-4 h-4" />
-                  <span>تعديل بيانات الدخول (اسم المستخدم وكلمة المرور)</span>
+                  <span>بيانات الدخول والأمان (اسم المستخدم، كلمة المرور، وكود البائع)</span>
                 </span>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-stone-300 text-[11px] mb-1 font-bold">اسم المستخدم (Username)</label>
                     <input
@@ -411,20 +421,33 @@ export const AssociatesView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-stone-300 text-[11px] mb-1 font-bold">كلمة المرور / الرمز السري (Password)</label>
+                    <label className="block text-stone-300 text-[11px] mb-1 font-bold">كلمة المرور (للجهاز)</label>
                     <input
                       type="text"
                       required
                       value={formData.password}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData({ ...formData, password: val, pin: val });
-                      }}
-                      placeholder="مثال: 1001"
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="مثال: pass123"
                       className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-emerald-400 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-stone-300 text-[11px] mb-1 font-bold">كود البائع (PIN للتبديل السريع)</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.pin}
+                      onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+                      placeholder="مثال: 1001"
+                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-amber-500 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
+
+                <p className="text-[10px] text-stone-500 mt-1 leading-relaxed">
+                  * يُستخدم <strong className="text-stone-400">اسم المستخدم وكلمة المرور</strong> لتسجيل الدخول الكلي للنظام. بينما يُستخدم <strong className="text-stone-400">كود البائع (PIN)</strong> المكون من 4 أرقام للتبديل السريع وتسجيل مبيعات البائع في شاشة الكاشير.
+                </p>
               </div>
 
               {/* User Permissions Checkboxes */}

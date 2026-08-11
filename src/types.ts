@@ -217,3 +217,13 @@ export interface ProductDiscount {
   applyTo?: 'cash' | 'installment' | 'both';
 }
 
+export interface POSExpense {
+  id: string;
+  amount: number;
+  category: string; // e.g., 'رواتب', 'إيجار', 'مرافق', 'بضاعة', 'أخرى'
+  description: string;
+  timestamp: string;
+  associateId?: string;
+  associateName?: string;
+}
+

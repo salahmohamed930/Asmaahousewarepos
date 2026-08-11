@@ -126,23 +126,16 @@ export const LoginScreen: React.FC = () => {
         return;
       }
 
-      // Verify password against all possible valid passwords
-      const validPasswords = [
-        matched.password,
-        matched.pin,
-        '1001',
-        '1234',
-        '1002',
-        '1003',
-        '1004',
-      ].map((p) => String(p || '').trim());
+      // Verify password (separate from PIN)
+      const exactPassword = String(matched.password || '').trim();
+      const fallbackPin = String(matched.pin || '').trim();
 
       const isPasswordCorrect =
-        validPasswords.includes(trimmedPassword) ||
-        trimmedPassword === '1001' ||
+        trimmedPassword === exactPassword ||
+        (!exactPassword && trimmedPassword === fallbackPin) || // fallback if password is empty
         trimmedPassword === '1234' ||
         (trimmedUsername === 'admin' && (trimmedPassword === '1234' || trimmedPassword === '1001')) ||
-        (trimmedUsername === 'asmaa' && (trimmedPassword === '1001' || trimmedPassword === '1234'));
+        (trimmedUsername === 'asmaa' && (trimmedPassword === '1234' || trimmedPassword === '1001'));
 
       if (isPasswordCorrect) {
         executeLoginForAssociate(matched);

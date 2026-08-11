@@ -15,6 +15,7 @@ import {
   Supplier,
   SupplierTransaction,
   ProductDiscount,
+  POSExpense,
 } from '../types';
 import {
   INITIAL_ASSOCIATES,
@@ -32,6 +33,7 @@ import {
   syncClosedShiftToSupabase,
   syncSupplierToSupabase,
   syncSupplierTransactionToSupabase,
+  syncExpenseToSupabase,
 } from '../lib/supabaseSync';
 import { supabase } from '../lib/supabase';
 
@@ -115,6 +117,12 @@ interface POSContextType {
   closedShifts: ClosedShift[];
   closeShift: (shift: Omit<ClosedShift, 'id'>) => void;
   
+  // Expenses & Return Invoice Actions
+  expenses: POSExpense[];
+  addExpense: (expense: Omit<POSExpense, 'id' | 'timestamp'>) => void;
+  deleteExpense: (id: string) => void;
+  returnTransaction: (transactionId: string) => void;
+  
   refreshDataFromSupabase: () => Promise<void>;
   resetDemoData: () => void;
 }
@@ -178,6 +186,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_discounts`, JSON.stringify(discounts));
   }, [discounts]);
+
+  const [expenses, setExpenses] = useState<POSExpense[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_expenses`);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(expenses));
+  }, [expenses]);
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
@@ -913,6 +930,76 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
   };
 
+  const returnTransaction = (transactionId: string) => {
+    setTransactions((prev) =>
+      prev.map((t) => {
+        if (t.id === transactionId && t.status === 'مكتملة') {
+          // 1. Revert product stock
+          setProducts((prevProducts) =>
+            prevProducts.map((p) => {
+              const returnedItem = t.items.find((item) => item.productId === p.id);
+              if (returnedItem) {
+                const updatedProd = { ...p, stock: p.stock + returnedItem.quantity };
+                syncProductToSupabase(updatedProd);
+                return updatedProd;
+              }
+              return p;
+            })
+          );
+
+          // 2. Revert customer balance
+          if (t.customerId) {
+            setCustomers((prevCusts) =>
+              prevCusts.map((c) => {
+                if (c.id === t.customerId) {
+                  const ratio = settings.loyaltyPointsRatio || 10;
+                  const addedPoints = Math.floor(t.grandTotal / ratio);
+                  
+                  // Revert loyalty points and spent total, also decrease currentDebt if amountDeferred exists
+                  const newDebt = Math.max(0, (c.currentDebt || 0) - (t.amountDeferred || 0));
+                  const newSpent = Math.max(0, (c.totalSpent || 0) - t.grandTotal);
+                  const newPoints = Math.max(0, (c.loyaltyPoints || 0) - addedPoints);
+
+                  const updatedCust = {
+                    ...c,
+                    totalSpent: newSpent,
+                    loyaltyPoints: newPoints,
+                    currentDebt: newDebt,
+                  };
+                  syncCustomerToSupabase(updatedCust);
+                  return updatedCust;
+                }
+                return c;
+              })
+            );
+          }
+
+          // 3. Mark transaction as returned
+          const updatedTx: Transaction = { ...t, status: 'مسترجعة' };
+          syncTransactionToSupabase(updatedTx);
+          return updatedTx;
+        }
+        return t;
+      })
+    );
+  };
+
+  const addExpense = (expenseData: Omit<POSExpense, 'id' | 'timestamp'>) => {
+    const newExpense: POSExpense = {
+      ...expenseData,
+      id: `expense_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      associateId: currentAssociate?.id || undefined,
+      associateName: currentAssociate?.name || undefined,
+    };
+    setExpenses((prev) => [newExpense, ...prev]);
+    syncExpenseToSupabase(newExpense);
+  };
+
+  const deleteExpense = (id: string) => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+  };
+
   const clockInAssociate = (associateId: string) => {
     setAssociates((prev) =>
       prev.map((a) => {
@@ -1201,6 +1288,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordSupplierTransaction,
         closedShifts,
         closeShift,
+        expenses,
+        addExpense,
+        deleteExpense,
+        returnTransaction,
         refreshDataFromSupabase: loadFromSupabase,
         resetDemoData,
       }}

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Product, Customer, Transaction, Associate, ClosedShift, Supplier, SupplierTransaction } from '../types';
+import { Product, Customer, Transaction, Associate, ClosedShift, Supplier, SupplierTransaction, POSExpense } from '../types';
 
 /**
  * Sync POS Data with Supabase Database
@@ -188,4 +188,21 @@ export async function syncSupplierTransactionToSupabase(tx: SupplierTransaction)
     console.warn('Supabase supplier transaction sync:', err);
   }
 }
+
+export async function syncExpenseToSupabase(expense: POSExpense) {
+  try {
+    await supabase.from('expenses').upsert({
+      id: expense.id,
+      amount: expense.amount,
+      category: expense.category,
+      description: expense.description,
+      timestamp: expense.timestamp,
+      associate_id: expense.associateId,
+      associate_name: expense.associateName,
+    });
+  } catch (err) {
+    console.warn('Supabase expense sync:', err);
+  }
+}
+
 

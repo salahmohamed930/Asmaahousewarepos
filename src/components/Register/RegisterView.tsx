@@ -52,6 +52,54 @@ export const RegisterView: React.FC = () => {
   // Mode state: DEFAULT TO 'history' AS REQUESTED!
   const [viewMode, setViewMode] = useState<'history' | 'create' | 'expenses'>('history');
 
+  // Expense management state in RegisterView
+  const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState('رواتب وأجور');
+  const [expenseDescription, setExpenseDescription] = useState('');
+  const [expenseError, setExpenseError] = useState('');
+  const [expenseFilter, setExpenseFilter] = useState('all');
+
+  const handleLocalAddExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    setExpenseError('');
+    
+    const parsedAmount = parseFloat(expenseAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setExpenseError('يرجى إدخال مبلغ صحيح أكبر من الصفر');
+      return;
+    }
+
+    addExpense({
+      amount: parsedAmount,
+      category: expenseCategory,
+      description: expenseDescription,
+    });
+
+    // Reset fields & close modal
+    setExpenseAmount('');
+    setExpenseCategory('رواتب وأجور');
+    setExpenseDescription('');
+    setIsAddExpenseModalOpen(false);
+  };
+
+  const filteredExpenses = expenses.filter(exp => {
+    if (expenseFilter === 'all') return true;
+    return exp.category === expenseFilter;
+  });
+
+  const totalExpensesSum = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+  const expenseCategoriesList = [
+    'رواتب وأجور',
+    'إيجار',
+    'مرافق (كهرباء / مياه)',
+    'بضاعة ومستلزمات',
+    'بوفيه وضيافة',
+    'مصاريف نقل وشحن',
+    'أخرى'
+  ];
+
   // Mobile Sub Tab state inside creation view
   const [mobileSubTab, setMobileSubTab] = useState<'catalog' | 'cart'>('catalog');
 
@@ -198,79 +246,55 @@ export const RegisterView: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 dir-rtl space-y-3.5">
-      
-      {/* Sub-Tab Navigation for Invoice Screen */}
-      <div className="flex border-b border-stone-800 pb-2 mb-2">
-        <div className="flex space-x-2 space-x-reverse bg-stone-900/60 p-1.5 rounded-2xl border border-stone-800/80">
-          <button
-            onClick={() => setViewMode('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
-              viewMode === 'history'
-                ? 'bg-amber-600 text-white shadow font-bold'
-                : 'text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>أرشيف الفواتير ({totalInvoicesCount})</span>
-          </button>
-          
-          <button
-            onClick={() => setViewMode('create')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
-              viewMode === 'create'
-                ? 'bg-amber-600 text-white shadow font-bold'
-                : 'text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>إنشاء فاتورة جديدة</span>
-          </button>
-
-          <button
-            onClick={() => setViewMode('expenses')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
-              viewMode === 'expenses'
-                ? 'bg-amber-600 text-white shadow font-bold'
-                : 'text-stone-400 hover:text-stone-200'
-            }`}
-          >
-            <TrendingDown className="w-3.5 h-3.5" />
-            <span>المصروفات ({expenses.length})</span>
-          </button>
-        </div>
-      </div>
 
       {/* ======================================================== */}
       {/* 1. DEFAULT HISTORY VIEW: PAST INVOICES ARCHIVE            */}
       {/* ======================================================== */}
       {viewMode === 'history' ? (
-        <div className="space-y-3.5">
+        <div className="space-y-4">
           
-          {/* Top minimal heading and action bar */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center space-x-3 space-x-reverse">
-              <h1 className="text-base font-black text-stone-100 flex items-center gap-2">
-                <span>إرشيف الفواتير القديمة</span>
-                <span className="text-xs font-mono bg-stone-900 border border-stone-800 px-2 py-0.5 rounded-full text-stone-400 font-bold">
+          {/* Top heading and action bar */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-stone-900 border border-stone-800/80 p-4 rounded-2xl shadow-md">
+            <div>
+              <h1 className="text-lg font-black text-stone-100 flex items-center gap-2">
+                <span>إدارة الحسابات والعمليات اليومية</span>
+                <span className="text-xs font-mono bg-stone-950 border border-stone-850 px-2 py-0.5 rounded-full text-stone-400 font-bold">
                   {totalInvoicesCount} مكتملة
                 </span>
                 {totalHeldCount > 0 && (
                   <span className="text-xs font-mono bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-full text-amber-300 font-extrabold animate-pulse flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-amber-400" />
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
                     <span>{totalHeldCount} معلقة</span>
                   </span>
                 )}
               </h1>
+              <p className="text-xs text-stone-400 mt-1">تابع فواتير المبيعات والمصروفات اليومية من شاشة واحدة موحدة</p>
             </div>
             
-            <button
-              onClick={() => setViewMode('create')}
-              className="py-1.5 px-3.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-extrabold flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>إضافة فاتورة جديدة</span>
-            </button>
+            <div className="flex items-center space-x-2 space-x-reverse w-full sm:w-auto">
+              <button
+                onClick={() => setViewMode('create')}
+                className="flex-1 sm:flex-initial py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-md shadow-amber-950/40"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>إنشاء فاتورة مبيعات</span>
+              </button>
+
+              <button
+                onClick={() => setIsAddExpenseModalOpen(true)}
+                className="flex-1 sm:flex-initial py-2 px-4 bg-rose-700 hover:bg-rose-600 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-md shadow-rose-950/40"
+              >
+                <TrendingDown className="w-4 h-4 stroke-[2.5]" />
+                <span>تسجيل مصروف جديد</span>
+              </button>
+            </div>
           </div>
+
+          {/* Unified 2-Column Dashboard Grid */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+            
+            {/* Right Column: Invoices Log (col-span-8) */}
+            <div className="xl:col-span-8 space-y-3.5">
 
           {/* Controls & Search Filters Bar */}
           <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-md space-y-2.5">
@@ -538,11 +562,116 @@ export const RegisterView: React.FC = () => {
                 </table>
               </div>
             )}
+              </div>
+            </div>
+
+            {/* Left Column: Expenses list (col-span-4) */}
+            <div className="xl:col-span-4 space-y-3.5">
+              
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-black text-stone-300 flex items-center gap-2">
+                  <TrendingDown className="w-4 h-4 text-rose-500" />
+                  <span>حركة سجل المصروفات</span>
+                </h2>
+
+                <div className="w-36">
+                  <select
+                    value={expenseFilter}
+                    onChange={(e) => setExpenseFilter(e.target.value)}
+                    className="bg-stone-950 border border-stone-800 focus:border-rose-500 rounded-xl px-2.5 py-1 text-[11px] font-bold text-stone-300 focus:outline-none w-full"
+                  >
+                    <option value="all">كل الفئات</option>
+                    {expenseCategoriesList.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Highlight Stats Widget for Expenses */}
+              <div className="bg-stone-900 border border-stone-800/85 rounded-2xl p-3.5 flex items-center justify-between shadow-md">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
+                    <TrendingDown className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-stone-500 font-bold block">إجمالي قيمة المصروفات</span>
+                    <span className="text-xs font-extrabold text-stone-300 mt-0.5 block">حسب الفئة المحددة</span>
+                  </div>
+                </div>
+                <div className="text-left">
+                  <span className="text-lg font-black text-rose-500 font-mono">{totalExpensesSum.toLocaleString()}</span>
+                  <span className="text-[10px] text-stone-400 font-bold mr-1 font-mono">ج.م</span>
+                </div>
+              </div>
+
+              {/* Expenses compact list / table */}
+              <div className="bg-stone-900 border border-stone-800 rounded-2xl shadow-md overflow-hidden">
+                {filteredExpenses.length === 0 ? (
+                  <div className="py-12 text-center text-stone-500">
+                    <Wallet className="w-9 h-9 text-stone-600 mx-auto mb-2 stroke-[1.25]" />
+                    <p className="text-xs font-bold text-stone-400">لا يوجد مصروفات مسجلة</p>
+                    <p className="text-[10px] text-stone-600 mt-1">اضغط على زر "تسجيل مصروف جديد" بالأعلى</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right border-collapse">
+                      <thead>
+                        <tr className="bg-stone-950 text-[10px] font-black text-stone-400 border-b border-stone-800">
+                          <th className="py-2.5 px-3">التاريخ</th>
+                          <th className="py-2.5 px-2 font-bold">الفئة والبيان</th>
+                          <th className="py-2.5 px-2 text-center font-bold">القيمة</th>
+                          <th className="py-2.5 px-2 text-left pl-3 font-bold">إجراء</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-850 text-xs text-stone-300">
+                        {filteredExpenses.map((exp) => (
+                          <tr key={exp.id} className="hover:bg-stone-955/40">
+                            <td className="py-2 px-3 whitespace-nowrap text-stone-400 text-[10px] font-mono">
+                              {new Date(exp.timestamp).toLocaleDateString('ar-EG', {
+                                month: 'numeric',
+                                day: 'numeric',
+                              })}
+                            </td>
+                            <td className="py-2 px-2">
+                              <span className="px-1.5 py-0.2 rounded bg-stone-950 text-stone-300 border border-stone-800 font-bold text-[9px] block w-fit mb-0.5">
+                                {exp.category}
+                              </span>
+                              <p className="text-[11px] text-stone-100 max-w-[130px] truncate" title={exp.description}>
+                                {exp.description || 'بلا بيان إضافي'}
+                              </p>
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono font-black text-rose-500 text-[11px]">
+                              {exp.amount.toLocaleString()} ج.م
+                            </td>
+                            <td className="py-2 px-2 text-left pl-3">
+                              <button
+                                onClick={() => {
+                                  if (confirm('هل تريد حذف قيد هذا المصروف نهائياً؟')) {
+                                    deleteExpense(exp.id);
+                                  }
+                                }}
+                                className="p-1 text-stone-500 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors"
+                                title="حذف المصروف"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
           </div>
 
         </div>
-      ) : viewMode === 'expenses' ? (
-        <ExpensesSubView />
       ) : (
         <>
           {/* ======================================================== */

@@ -66,7 +66,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     discountTotal += lineDisc;
   });
 
-  const netSubtotal = Math.max(0, subtotal - discountTotal);
+  const isReturn = cart.some((item) => item.quantity < 0);
+  const netSubtotal = isReturn ? (subtotal - discountTotal) : Math.max(0, subtotal - discountTotal);
   const taxTotal = Math.round(netSubtotal * taxRate * 100) / 100;
 
   const tipAmount =
@@ -238,7 +239,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
 
       // Cash Validation
       const requiredCash = isPartialPayment ? paidAmount : grandTotal;
-      if (paymentMethod === 'كاش' && tenderNumber < requiredCash) {
+      if (!isReturn && paymentMethod === 'كاش' && tenderNumber < requiredCash) {
         setPaymentError(`المبلغ المدفوع (${tenderNumber.toLocaleString()} ج.م) أقل من المبلغ المطلوب (${requiredCash.toLocaleString()} ج.م).`);
         return;
       }
@@ -320,11 +321,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
 
         {/* Title */}
         <div className="flex items-center space-x-3 space-x-reverse mb-6">
-          <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-2xl flex items-center justify-center">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
+            isReturn 
+              ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+              : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+          }`}>
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight">إتمام الدفع وتحصيل الفاتورة</h2>
+            <h2 className="text-xl font-bold tracking-tight">
+              {isReturn ? 'إتمام المرتجع وصرف المبلغ المسترد' : 'إتمام الدفع وتحصيل الفاتورة'}
+            </h2>
             <p className="text-xs text-stone-400">
               نقطة بيع #01 • البائع المسؤول: {currentAssociate?.name || 'غير محدد'}
             </p>
@@ -359,7 +366,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             )}
 
             <div className="border-t border-stone-800 pt-2.5 mt-2 flex justify-between items-baseline">
-              <span className="text-sm font-bold text-white">الإجمالي النهائي المطلوب</span>
+              <span className="text-sm font-bold text-white">{isReturn ? 'إجمالي قيمة المرتجع المسترد للعميل' : 'الإجمالي النهائي المطلوب'}</span>
               <span className="text-2xl font-mono font-extrabold text-amber-400">
                 {grandTotal.toLocaleString()} ج.م
               </span>
@@ -379,9 +386,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 {splitAssociates.length > 0 ? `(تقسيم ${primarySharePercent}%)` : ''}
               </span>
             </div>
-            <div className="text-emerald-400 font-mono font-semibold text-xs flex items-center space-x-1 space-x-reverse">
+            <div className={`font-mono font-semibold text-xs flex items-center space-x-1 space-x-reverse ${projectedPrimaryCommission < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
               <Sparkles className="w-3.5 h-3.5" />
-              <span>+{projectedPrimaryCommission.toLocaleString()} ج.م عمولة</span>
+              <span>{projectedPrimaryCommission >= 0 ? '+' : ''}{projectedPrimaryCommission.toLocaleString()} ج.م عمولة</span>
             </div>
           </div>
         </div>
@@ -803,9 +810,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             <>
               <CheckCircle2 className="w-5 h-5" />
               <span>
-                {deferredAmount > 0 
-                  ? `تأكيد المعاملة (مدفوع: ${paidAmount.toLocaleString()} ج.م | آجل: ${deferredAmount.toLocaleString()} ج.م)`
-                  : `إتمام وطباعة الفاتورة (${grandTotal.toLocaleString()} ج.م)`}
+                {isReturn
+                  ? `تأكيد المرتجع وصرف المبلغ المسترد (${Math.abs(grandTotal).toLocaleString()} ج.م)`
+                  : deferredAmount > 0 
+                    ? `تأكيد المعاملة (مدفوع: ${paidAmount.toLocaleString()} ج.م | آجل: ${deferredAmount.toLocaleString()} ج.م)`
+                    : `إتمام وطباعة الفاتورة (${grandTotal.toLocaleString()} ج.م)`}
               </span>
             </>
           )}

@@ -6,14 +6,16 @@ import { Product, Customer, Transaction, Associate, ClosedShift, Supplier, Suppl
  * Project URL: https://ilyxhubihdqjbvkkpalx.supabase.co
  */
 
-export async function checkSupabaseConnection(): Promise<boolean> {
+export async function checkSupabaseConnection(): Promise<{ success: boolean; errorMessage?: string }> {
   try {
-    const { error } = await supabase.from('products').select('count', { count: 'exact', head: true });
-    if (!error) return true;
-    return true;
-  } catch (err) {
-    console.warn('Supabase ping:', err);
-    return true;
+    const { error } = await supabase.from('products').select('*', { count: 'exact', head: true }).limit(1);
+    if (error) {
+      return { success: false, errorMessage: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase ping error:', err);
+    return { success: false, errorMessage: err?.message || String(err) };
   }
 }
 

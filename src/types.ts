@@ -207,6 +207,8 @@ export interface AppSettings {
   categories: string[];
   loyaltyPointsRatio?: number; // كم جنيه ينفقه العميل ليحصل على نقطة واحدة
   loyaltyPointValue?: number;  // القيمة المالية للنقطة الواحدة بالجنيه
+  supabaseUrl?: string;        // عنوان قاعدة بيانات Supabase مخصص
+  supabaseAnonKey?: string;    // مفتاح anon لقاعدة بيانات Supabase مخصص
 }
 
 export interface ProductDiscount {

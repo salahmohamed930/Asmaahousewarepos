@@ -105,7 +105,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 {printSettings.headerText || 'أسماء للأدوات المنزلية'}
               </h1>
               <p className="text-[10px] text-stone-500 font-bold">
-                {printSettings.receiptType === 'a4' ? 'فاتورة مبيعات وضمان رسمية (A4)' : 'فاتورة مبيعات رقمية ورقية'}
+                {transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0)
+                  ? 'مرتجع مبيعات رسمي'
+                  : printSettings.receiptType === 'a4'
+                  ? 'فاتورة مبيعات وضمان رسمية (A4)'
+                  : 'فاتورة مبيعات رقمية ورقية'}
               </p>
               <p className="text-[11px] text-amber-700 font-mono font-extrabold mt-1">
                 رقم الفاتورة: #{transaction.receiptNumber}
@@ -221,7 +225,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               )}
 
               <div className="flex justify-between text-sm font-black text-stone-950 pt-2 border-t border-stone-300">
-                <span>الإجمالي النهائي المستحق:</span>
+                <span>
+                  {transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0)
+                    ? 'إجمالي قيمة المرتجع المسترد:'
+                    : 'الإجمالي النهائي المستحق:'}
+                </span>
                 <span className="font-mono text-base text-amber-800 font-black">{grandTotal.toLocaleString()} ج.م</span>
               </div>
 

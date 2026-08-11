@@ -383,16 +383,24 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         <td className="py-1.5 px-1 text-center">
                           <div className="inline-flex items-center space-x-0.5 space-x-reverse bg-stone-950 border border-stone-800 rounded-lg p-0.5">
                             <button
-                              onClick={() => updateCartQuantity(item.product.id, item.quantity - 1)}
+                              onClick={() => updateCartQuantity(item.product.id, item.quantity === 1 ? -1 : item.quantity - 1)}
                               className="p-0.5 hover:bg-stone-800 rounded-md text-stone-400 hover:text-white"
                             >
                               <Minus className="w-2.5 h-2.5" />
                             </button>
-                            <span className="w-5 text-center font-mono text-[10px] font-bold text-amber-400">
-                              {item.quantity}
-                            </span>
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (!isNaN(val)) {
+                                  updateCartQuantity(item.product.id, val);
+                                }
+                              }}
+                              className="w-8 bg-transparent text-center font-mono text-[10px] font-bold text-amber-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-none p-0"
+                            />
                             <button
-                              onClick={() => updateCartQuantity(item.product.id, item.quantity + 1)}
+                              onClick={() => updateCartQuantity(item.product.id, item.quantity === -1 ? 1 : item.quantity + 1)}
                               className="p-0.5 hover:bg-stone-800 rounded-md text-stone-400 hover:text-white"
                             >
                               <Plus className="w-2.5 h-2.5" />
@@ -492,7 +500,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             </div>
 
             <div className="flex justify-between text-base font-extrabold text-white pt-1.5 border-t border-stone-800">
-              <span>إجمالي الفاتورة النهائي</span>
+              <span>{cart.some((item) => item.quantity < 0) ? 'إجمالي قيمة المرتجع المسترد' : 'إجمالي الفاتورة النهائي'}</span>
               <span className="font-mono text-amber-400">{grandTotal.toLocaleString()} ج.م</span>
             </div>
           </div>
@@ -541,7 +549,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
               className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:hover:bg-amber-600 text-white rounded-xl font-extrabold text-xs shadow-md shadow-amber-950 flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-[0.99]"
             >
               <CreditCard className="w-3.5 h-3.5" />
-              <span>إتمام الفاتورة والدفع ({grandTotal.toLocaleString()} ج.م)</span>
+              <span>{cart.some((item) => item.quantity < 0) ? `إتمام المرتجع وصرف المبلغ (${grandTotal.toLocaleString()} ج.م)` : `إتمام الفاتورة والدفع (${grandTotal.toLocaleString()} ج.م)`}</span>
             </button>
           </div>
 

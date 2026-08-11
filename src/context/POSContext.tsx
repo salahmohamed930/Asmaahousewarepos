@@ -34,8 +34,9 @@ import {
   syncSupplierToSupabase,
   syncSupplierTransactionToSupabase,
   syncExpenseToSupabase,
+  checkSupabaseConnection,
 } from '../lib/supabaseSync';
-import { supabase } from '../lib/supabase';
+import { supabase, updateSupabaseClient, getSupabaseKeys } from '../lib/supabase';
 
 
 interface POSContextType {
@@ -125,6 +126,8 @@ interface POSContextType {
   
   refreshDataFromSupabase: () => Promise<void>;
   resetDemoData: () => void;
+  dbStatus: { isConnected: boolean; isChecking: boolean; errorMessage?: string; isCustom: boolean };
+  testDbConnection: () => Promise<{ success: boolean; errorMessage?: string }>;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -255,9 +258,66 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [settings]);
 
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_associates`, JSON.stringify(associates));
+  }, [associates]);
+
+  const [dbStatus, setDbStatus] = useState<{
+    isConnected: boolean;
+    isChecking: boolean;
+    errorMessage?: string;
+    isCustom: boolean;
+  }>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
+      const parsed = saved ? JSON.parse(saved) : null;
+      return {
+        isConnected: false,
+        isChecking: true,
+        isCustom: !!(parsed?.supabaseUrl && parsed?.supabaseAnonKey),
+      };
+    } catch {
+      return { isConnected: false, isChecking: true, isCustom: false };
+    }
+  });
+
+  const testDbConnection = async () => {
+    setDbStatus((p) => ({ ...p, isChecking: true }));
+    const result = await checkSupabaseConnection();
+    setDbStatus((p) => ({
+      ...p,
+      isConnected: result.success,
+      isChecking: false,
+      errorMessage: result.errorMessage,
+    }));
+    return result;
+  };
+
   const updateSettings = (newSettings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => {
     setSettings((prev) => {
       const resolved = typeof newSettings === 'function' ? newSettings(prev) : { ...prev, ...newSettings };
+      
+      // If custom Supabase settings were changed, update the client
+      if (resolved.supabaseUrl !== prev.supabaseUrl || resolved.supabaseAnonKey !== prev.supabaseAnonKey) {
+        if (resolved.supabaseUrl && resolved.supabaseAnonKey) {
+          updateSupabaseClient(resolved.supabaseUrl, resolved.supabaseAnonKey);
+          setDbStatus((p) => ({ ...p, isCustom: true }));
+          setTimeout(() => {
+            testDbConnection();
+            loadFromSupabase();
+          }, 100);
+        } else if (!resolved.supabaseUrl && !resolved.supabaseAnonKey) {
+          // Revert to default keys
+          const keys = getSupabaseKeys();
+          updateSupabaseClient(keys.url, keys.anonKey);
+          setDbStatus((p) => ({ ...p, isCustom: false }));
+          setTimeout(() => {
+            testDbConnection();
+            loadFromSupabase();
+          }, 100);
+        }
+      }
+      
       return resolved;
     });
   };
@@ -268,9 +328,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync initial data from Supabase if available
   const loadFromSupabase = async () => {
+    setDbStatus((p) => ({ ...p, isChecking: true }));
     try {
       // 1. Fetch products from Supabase
-      const { data: prodData } = await supabase.from('products').select('*');
+      const { data: prodData, error: prodErr } = await supabase.from('products').select('*');
+      if (prodErr) {
+        setDbStatus((p) => ({
+          ...p,
+          isConnected: false,
+          isChecking: false,
+          errorMessage: prodErr.message,
+        }));
+        return;
+      }
+
+      setDbStatus((p) => ({
+        ...p,
+        isConnected: true,
+        isChecking: false,
+        errorMessage: undefined,
+      }));
+
       if (prodData && prodData.length > 0) {
         const mappedProducts: Product[] = prodData.map((p: any) => ({
           id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
@@ -385,8 +463,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (shiftErr) {
         console.warn('Closed shifts table might be missing or not created yet in Supabase:', shiftErr);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Supabase initial fetch skipped or table pending:', err);
+      setDbStatus((p) => ({
+        ...p,
+        isConnected: false,
+        isChecking: false,
+        errorMessage: err?.message || String(err),
+      }));
     }
   };
 
@@ -474,7 +558,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
+    if (quantity === 0) {
       removeFromCart(productId);
       return;
     }
@@ -610,12 +694,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let subtotal = 0;
     let discountTotal = 0;
+    const isReturn = cart.some((item) => item.quantity < 0);
 
     const transactionItems = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
       const lineDiscount = getCartItemDiscountAmount(item);
-      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
+      const lineNetTotal = item.quantity < 0 ? lineOriginalTotal : Math.max(0, lineOriginalTotal - lineDiscount);
 
       subtotal += lineOriginalTotal;
       discountTotal += lineDiscount;
@@ -636,7 +721,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       discountTotal += discountTotalOverride;
     }
 
-    const grandTotal = Math.max(0, subtotal - discountTotal);
+    const grandTotal = isReturn ? (subtotal - discountTotal) : Math.max(0, subtotal - discountTotal);
 
     let generalNetSubtotal = 0;
     const associateSalesMap: Record<string, number> = {};
@@ -645,7 +730,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
       const lineDiscount = getCartItemDiscountAmount(item);
-      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
+      const lineNetTotal = item.quantity < 0 ? lineOriginalTotal : Math.max(0, lineOriginalTotal - lineDiscount);
 
       if (item.assignedAssociateId) {
         associateSalesMap[item.assignedAssociateId] =
@@ -658,7 +743,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const primaryAssocId = currentAssociate?.id || 'system';
     const primaryAssocName = currentAssociate?.name || 'النظام';
 
-    if (generalNetSubtotal > 0) {
+    if (generalNetSubtotal !== 0) {
       if (splitAssociates.length > 0) {
         const totalSplitPercent = splitAssociates.reduce((acc, s) => acc + s.sharePercentage, 0);
         const primarySharePercent = Math.max(0, 100 - totalSplitPercent);
@@ -685,7 +770,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const assoc = associates.find((a) => a.id === assocId);
         const rate = assoc ? assoc.commissionRate : 0.05;
         const commissionAmount = Math.round(saleAmt * rate * 100) / 100;
-        const sharePercent = grandTotal > 0 ? Math.round((saleAmt / grandTotal) * 100) : 0;
+        const sharePercent = Math.abs(grandTotal) > 0 ? Math.round((saleAmt / grandTotal) * 100) : 0;
 
         return {
           associateId: assocId,
@@ -717,7 +802,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       commissions,
       notes,
-      status: 'مكتملة',
+      status: isReturn ? 'مسترجعة' : 'مكتملة',
       amountPaid: amountPaid !== undefined ? amountPaid : grandTotal,
       amountDeferred: amountDeferred !== undefined ? amountDeferred : 0,
       splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : undefined,
@@ -1294,6 +1379,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         returnTransaction,
         refreshDataFromSupabase: loadFromSupabase,
         resetDemoData,
+        dbStatus,
+        testDbConnection,
       }}
     >
       {children}

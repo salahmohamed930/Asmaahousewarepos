@@ -27,6 +27,8 @@ export const Header: React.FC = () => {
     clockInAssociate,
     clockOutAssociate,
     resetDemoData,
+    dbStatus,
+    refreshDataFromSupabase,
   } = usePOS();
 
   const [isAssociateDropdownOpen, setIsAssociateDropdownOpen] = useState(false);
@@ -88,6 +90,39 @@ export const Header: React.FC = () => {
 
             {/* Left Active Associate Switcher & Actions */}
             <div className="flex items-center space-x-3 space-x-reverse">
+
+              {/* Database Connection Status Badge */}
+              <button
+                onClick={() => {
+                  if (!dbStatus.isConnected) {
+                    refreshDataFromSupabase();
+                  }
+                }}
+                title={dbStatus.errorMessage ? `خطأ بقاعدة البيانات: ${dbStatus.errorMessage}` : dbStatus.isConnected ? 'متصل بقاعدة البيانات بنجاح' : 'جاري التحقق من الاتصال...'}
+                className={`flex items-center space-x-1.5 space-x-reverse border px-2.5 py-1.5 rounded-xl transition-all text-[11px] font-bold ${
+                  dbStatus.isChecking
+                    ? 'bg-amber-950/40 border-amber-800 text-amber-400'
+                    : dbStatus.isConnected
+                      ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400'
+                      : 'bg-rose-950/40 border-rose-800 text-rose-400 cursor-pointer hover:bg-rose-900/40'
+                }`}
+              >
+                <Database className={`w-3.5 h-3.5 ${dbStatus.isChecking ? 'animate-pulse' : ''}`} />
+                <span className="hidden sm:inline">
+                  {dbStatus.isChecking
+                    ? 'جاري فحص الاتصال...'
+                    : dbStatus.isConnected
+                      ? 'قاعدة البيانات متصلة'
+                      : 'خطأ بالاتصال (اضغط لإعادة المحاولة)'}
+                </span>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  dbStatus.isChecking
+                    ? 'bg-amber-400 animate-ping'
+                    : dbStatus.isConnected
+                      ? 'bg-emerald-400'
+                      : 'bg-rose-500 animate-pulse'
+                }`} />
+              </button>
 
               {/* Active Associate Selector Pill */}
               <div className="relative">

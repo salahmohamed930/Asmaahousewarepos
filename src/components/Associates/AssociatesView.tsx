@@ -18,6 +18,8 @@ import {
   User,
   CheckSquare,
   Square,
+  Printer,
+  RotateCcw,
 } from 'lucide-react';
 
 const ALL_PERMISSIONS: { id: Permission; label: string; desc: string }[] = [
@@ -35,6 +37,172 @@ export const AssociatesView: React.FC = () => {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAssociate, setEditingAssociate] = useState<Associate | null>(null);
+
+  const [salesResets, setSalesResets] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('pos_sales_resets');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const handleResetSales = (assocId: string) => {
+    if (window.confirm('هل أنت متأكد من تصفير مبيعات وعمولات هذا الموظف؟ لن يؤثر هذا على الفواتير التاريخية المسجلة بالنظام.')) {
+      const nowStr = new Date().toISOString();
+      const updated = { ...salesResets, [assocId]: nowStr };
+      setSalesResets(updated);
+      localStorage.setItem('pos_sales_resets', JSON.stringify(updated));
+    }
+  };
+
+  const handleResetAllSales = () => {
+    if (window.confirm('هل أنت متأكد من تصفير مبيعات وعمولات جميع الموظفين؟')) {
+      const nowStr = new Date().toISOString();
+      const updated: Record<string, string> = {};
+      associates.forEach((assoc) => {
+        updated[assoc.id] = nowStr;
+      });
+      setSalesResets(updated);
+      localStorage.setItem('pos_sales_resets', JSON.stringify(updated));
+    }
+  };
+
+  const handlePrintReport = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('الرجاء السماح بالنوافذ المنبثقة لطباعة التقرير');
+      return;
+    }
+
+    const reportDate = new Date().toLocaleString('ar-EG');
+    
+    let rowsHtml = '';
+    let grandSales = 0;
+    let grandCommission = 0;
+
+    associates.forEach((assoc) => {
+      const stats = getAssociateStats(assoc.id);
+      grandSales += stats.totalSales;
+      grandCommission += stats.totalCommission;
+
+      rowsHtml += `
+        <tr style="border-bottom: 1px solid #ddd; text-align: right;">
+          <td style="padding: 10px; font-weight: bold;">${assoc.name}</td>
+          <td style="padding: 10px;">${assoc.role}</td>
+          <td style="padding: 10px; font-family: monospace;">${stats.salesCount}</td>
+          <td style="padding: 10px; font-family: monospace; font-weight: bold;">${stats.totalSales.toLocaleString('ar-EG')} ج.م</td>
+          <td style="padding: 10px; font-family: monospace; font-weight: bold; color: #15803d;">${stats.totalCommission.toLocaleString('ar-EG')} ج.م</td>
+        </tr>
+      `;
+    });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="ar" dir="rtl">
+      <head>
+        <meta charset="UTF-8">
+        <title>تقرير مبيعات وعمولات الموظفين</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 40px;
+            color: #333;
+            background-color: #fff;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+          }
+          h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #111;
+          }
+          h2 {
+            margin: 5px 0 0 0;
+            font-size: 14px;
+            color: #666;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th {
+            background-color: #f4f4f5;
+            padding: 12px 10px;
+            border-bottom: 2px solid #ddd;
+            font-weight: bold;
+            text-align: right;
+          }
+          td {
+            padding: 12px 10px;
+          }
+          .totals {
+            margin-top: 30px;
+            border-top: 2px solid #333;
+            padding-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: bold;
+          }
+          .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+          }
+          @media print {
+            body { margin: 20px; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>محلات أسماء للأدوات المنزلية</h1>
+          <h2>تقرير مبيعات وعمولات الموظفين النشطة</h2>
+          <p style="margin: 5px 0 0 0; font-size: 12px; color: #555;">تاريخ استخراج التقرير: ${reportDate}</p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>اسم الموظف</th>
+              <th>الوظيفة / الدور</th>
+              <th>عدد المبيعات</th>
+              <th>إجمالي المبيعات</th>
+              <th>العمولة المستحقة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div class="totals">
+          <span>إجمالي المبيعات العامة: ${grandSales.toLocaleString('ar-EG')} ج.م</span>
+          <span style="color: #15803d;">إجمالي العمولات المستحقة: ${grandCommission.toLocaleString('ar-EG')} ج.م</span>
+        </div>
+
+        <div class="footer">
+          <p>أسماء للأدوات المنزلية - نظام إدارة المبيعات الذكي POS</p>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -164,8 +332,13 @@ export const AssociatesView: React.FC = () => {
     let totalCommission = 0;
     let salesCount = 0;
 
+    const resetTimeStr = salesResets[assocId];
+    const resetTime = resetTimeStr ? new Date(resetTimeStr).getTime() : 0;
+
     transactions.forEach((tx) => {
       if (tx.status === 'ملغاة') return;
+      if (new Date(tx.timestamp).getTime() <= resetTime) return;
+
       tx.commissions.forEach((comm) => {
         if (comm.associateId === assocId) {
           totalSales += comm.saleAmount;
@@ -197,13 +370,31 @@ export const AssociatesView: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="py-3 px-5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>إضافة مستخدم / بائع جديد</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handlePrintReport}
+            className="py-3 px-4 bg-stone-800 hover:bg-stone-700 text-stone-100 rounded-2xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 space-x-reverse transition-all border border-stone-700"
+          >
+            <Printer className="w-4 h-4 text-emerald-400" />
+            <span>طباعة تقرير المبيعات والعمولات</span>
+          </button>
+
+          <button
+            onClick={handleResetAllSales}
+            className="py-3 px-4 bg-stone-950 hover:bg-stone-900 text-rose-400 hover:text-rose-300 rounded-2xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 space-x-reverse transition-all border border-rose-900/40"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>تصفير كافة المبيعات والعمولات</span>
+          </button>
+
+          <button
+            onClick={handleOpenAdd}
+            className="py-3 px-5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-amber-950 flex items-center justify-center space-x-2 space-x-reverse transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>إضافة مستخدم / بائع جديد</span>
+          </button>
+        </div>
       </div>
 
       {/* Roster Cards */}
@@ -236,14 +427,25 @@ export const AssociatesView: React.FC = () => {
                     <span>{assoc.isClockedIn ? 'على رأس العمل' : 'خارج وردية'}</span>
                   </span>
 
-                  <button
-                    onClick={() => handleOpenEdit(assoc)}
-                    className="p-1.5 text-stone-400 hover:text-stone-100 hover:bg-stone-800 rounded-xl transition-colors flex items-center space-x-1 space-x-reverse bg-stone-950 border border-stone-800 px-2.5 py-1 text-xs"
-                    title="تعديل المستخدم والصلاحيات"
-                  >
-                    <Edit className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-[11px] font-bold text-stone-300">تعديل</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleResetSales(assoc.id)}
+                      className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-xl transition-colors flex items-center space-x-1 space-x-reverse bg-stone-950 border border-stone-800/85 px-2.5 py-1 text-[11px]"
+                      title="تصفير مبيعات وعمولات الموظف"
+                    >
+                      <RotateCcw className="w-3 h-3 text-rose-400" />
+                      <span className="font-bold">تصفير</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenEdit(assoc)}
+                      className="p-1.5 text-stone-400 hover:text-stone-100 hover:bg-stone-800 rounded-xl transition-colors flex items-center space-x-1 space-x-reverse bg-stone-950 border border-stone-800 px-2.5 py-1 text-xs"
+                      title="تعديل المستخدم والصلاحيات"
+                    >
+                      <Edit className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-[11px] font-bold text-stone-300">تعديل</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Associate Main Details */}

@@ -220,7 +220,11 @@ export const RegisterView: React.FC = () => {
     if (sellerFilter !== 'all') {
       const assoc = associates.find((a) => a.pin === sellerFilter || a.id === sellerFilter);
       if (assoc) {
-        matchesSeller = tx.associateId === assoc.id;
+        matchesSeller = 
+          tx.primaryAssociateId === assoc.id || 
+          (tx as any).associateId === assoc.id ||
+          (tx.splitAssociates && tx.splitAssociates.some((sa: any) => sa.associateId === assoc.id)) ||
+          (tx.items && tx.items.some((item: any) => item.assignedAssociateId === assoc.id));
       }
     }
 
@@ -973,6 +977,97 @@ export const RegisterView: React.FC = () => {
         transaction={completedTransaction}
         onClose={() => setCompletedTransaction(null)}
       />
+
+      {/* Add Expense Modal */}
+      {isAddExpenseModalOpen && (
+        <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 dir-rtl">
+          <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-stone-100 animate-in fade-in zoom-in-95 duration-200">
+            {/* Close Button */}
+            <button
+              onClick={() => setIsAddExpenseModalOpen(false)}
+              className="absolute top-4 left-4 text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
+              title="إغلاق"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="text-center mb-5">
+              <div className="w-12 h-12 bg-rose-500/15 text-rose-400 border border-rose-500/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <TrendingDown className="w-6 h-6" />
+              </div>
+              <h2 className="text-lg font-black text-stone-100">تسجيل مصروف جديد</h2>
+              <p className="text-xs text-stone-400 mt-1">يرجى ملء بيانات المصروف لخصمه من الخزينة اليومية</p>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleLocalAddExpense} className="space-y-4">
+              {expenseError && (
+                <div className="bg-rose-950/40 border border-rose-900/50 rounded-xl p-3 text-xs font-bold text-rose-400">
+                  {expenseError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-400 mb-1">المبلغ (ج.م) *</label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  placeholder="مثال: 150"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none font-bold font-mono"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-400 mb-1">فئة المصروف</label>
+                <select
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value)}
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
+                >
+                  {expenseCategoriesList.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-400 mb-1">البيان / تفاصيل المصروف</label>
+                <textarea
+                  value={expenseDescription}
+                  onChange={(e) => setExpenseDescription(e.target.value)}
+                  placeholder="اكتب هنا تفاصيل إضافية عن المصروف..."
+                  rows={3}
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-stone-100 placeholder-stone-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-md"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  <span>تسجيل المصروف</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddExpenseModalOpen(false)}
+                  className="py-2 px-4 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl text-xs font-bold transition-all active:scale-95"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

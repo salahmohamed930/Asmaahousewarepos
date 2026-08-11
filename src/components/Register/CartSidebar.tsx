@@ -26,6 +26,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     currentAssociate,
     associates,
     quickSwitchByPin,
+    setCurrentAssociate,
     customers,
     selectedCustomer,
     setSelectedCustomer,
@@ -139,6 +140,30 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 <span>إفراغ السلة</span>
               </button>
             )}
+          </div>
+
+          {/* Primary Associate/Seller Dropdown Selector */}
+          <div className="bg-stone-900 border border-stone-850 p-2 rounded-xl flex items-center justify-between gap-2">
+            <div className="flex items-center space-x-1.5 space-x-reverse">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-[10px] font-extrabold text-stone-300">البائع النشط للمبيعات:</span>
+            </div>
+            <select
+              value={currentAssociate?.id || ''}
+              onChange={(e) => {
+                const selected = associates.find((a) => a.id === e.target.value);
+                if (selected) {
+                  setCurrentAssociate(selected);
+                }
+              }}
+              className="bg-stone-950 border border-stone-800 text-[11px] font-black text-amber-300 rounded-lg px-2.5 py-1 focus:outline-none focus:border-amber-500"
+            >
+              {associates.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} (كود: {a.pin})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Customer Name & Phone Number Field (With Database Search) */}

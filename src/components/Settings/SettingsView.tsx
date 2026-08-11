@@ -18,7 +18,16 @@ import {
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, products, dbStatus, testDbConnection } = usePOS();
+  const { 
+    settings, 
+    updateSettings, 
+    products, 
+    dbStatus, 
+    testDbConnection,
+    transactions,
+    closedShifts,
+    syncUnsyncedItems
+  } = usePOS();
   const [newCategory, setNewCategory] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -493,6 +502,80 @@ export const SettingsView: React.FC = () => {
                 <span className="leading-relaxed">{diagnosticResult.msg}</span>
               </div>
             )}
+
+            {/* Sync Queue Monitor */}
+            <div className="mt-4 pt-4 border-t border-stone-850">
+              <h3 className="text-xs font-bold text-stone-300 mb-2 flex items-center space-x-1.5 space-x-reverse">
+                <Sliders className="w-3.5 h-3.5 text-amber-500" />
+                <span>مراقبة حالة مزامنة البيانات</span>
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-stone-950 p-2.5 rounded-xl border border-stone-850">
+                  <div className="text-[10px] text-stone-400 font-bold">الفواتير والمبيعات</div>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-black text-stone-100">{transactions.length}</span>
+                    <span className="text-[9px] font-bold text-stone-500">
+                      معلق: <span className={transactions.filter(t => !t.isSynced).length > 0 ? "text-rose-400 font-black" : "text-emerald-400"}>
+                        {transactions.filter(t => !t.isSynced).length}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-stone-950 p-2.5 rounded-xl border border-stone-850">
+                  <div className="text-[10px] text-stone-400 font-bold">الورديات المقفلة</div>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-black text-stone-100">{closedShifts.length}</span>
+                    <span className="text-[9px] font-bold text-stone-500">
+                      معلق: <span className={closedShifts.filter(s => !s.isSynced).length > 0 ? "text-rose-400 font-black" : "text-emerald-400"}>
+                        {closedShifts.filter(s => !s.isSynced).length}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sync Action */}
+              {(() => {
+                const pTxs = transactions.filter(t => !t.isSynced).length;
+                const pShifts = closedShifts.filter(s => !s.isSynced).length;
+                const totalP = pTxs + pShifts;
+
+                if (totalP > 0) {
+                  return (
+                    <div className="space-y-2">
+                      <div className="bg-rose-950/20 border border-rose-900/40 p-2 rounded-xl text-[10px] text-rose-300 leading-relaxed font-bold">
+                        تنبيه: هناك ({totalP}) سجلات (فواتير/ورديات) معلقة ومحفوظة محلياً فقط ولم ترفع إلى قاعدة البيانات السحابية بعد.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await syncUnsyncedItems();
+                            triggerSuccess('تم بدء عملية مزامنة البيانات المعلقة...');
+                          } catch (err) {
+                            alert('حدث خطأ أثناء المزامنة.');
+                          }
+                        }}
+                        disabled={dbStatus.isChecking}
+                        className="w-full py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse shadow-md disabled:opacity-50"
+                      >
+                        <RotateCcw className={`w-3.5 h-3.5 ${dbStatus.isChecking ? 'animate-spin' : ''}`} />
+                        <span>{dbStatus.isChecking ? 'جاري الرفع والمزامنة...' : `مزامنة البيانات المعلقة الآن (${totalP})`}</span>
+                      </button>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="bg-emerald-950/20 border border-emerald-900/40 p-2.5 rounded-xl text-[10px] text-emerald-400 leading-relaxed font-bold flex items-center space-x-2 space-x-reverse">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span>جميع البيانات متزامنة ومحفوظة سحابياً بنجاح! ✨</span>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
           </div>
 
         </div>

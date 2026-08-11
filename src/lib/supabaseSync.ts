@@ -19,9 +19,9 @@ export async function checkSupabaseConnection(): Promise<{ success: boolean; err
   }
 }
 
-export async function syncClosedShiftToSupabase(shift: ClosedShift) {
+export async function syncClosedShiftToSupabase(shift: ClosedShift): Promise<{ success: boolean; error?: any }> {
   try {
-    await supabase.from('closed_shifts').upsert({
+    const { error } = await supabase.from('closed_shifts').upsert({
       id: shift.id,
       associate_id: shift.associateId,
       associate_name: shift.associateName,
@@ -40,8 +40,30 @@ export async function syncClosedShiftToSupabase(shift: ClosedShift) {
       leftover_balance: shift.leftoverBalance || 0,
       created_at: new Date().toISOString(),
     });
+
+    if (error) {
+      // Fallback with minimal columns if the database has a basic schema
+      const { error: fallbackError } = await supabase.from('closed_shifts').upsert({
+        id: shift.id,
+        associate_id: shift.associateId,
+        associate_name: shift.associateName,
+        start_time: shift.startTime,
+        end_time: shift.endTime,
+        expected_cash: shift.expectedCash,
+        actual_cash: shift.actualCash,
+        discrepancy: shift.discrepancy,
+        sales_count: shift.salesCount,
+        total_sales: shift.totalSales,
+      });
+      if (fallbackError) {
+        console.warn('Supabase closed shift fallback sync failed:', fallbackError);
+        return { success: false, error: fallbackError };
+      }
+    }
+    return { success: true };
   } catch (err) {
     console.warn('Supabase closed shift sync error:', err);
+    return { success: false, error: err };
   }
 }
 
@@ -82,7 +104,7 @@ export async function syncProductToSupabase(product: Product) {
   }
 }
 
-export async function syncTransactionToSupabase(transaction: Transaction) {
+export async function syncTransactionToSupabase(transaction: Transaction): Promise<{ success: boolean; error?: any }> {
   try {
     const payloadWithSplit: any = {
       id: transaction.id,
@@ -101,7 +123,7 @@ export async function syncTransactionToSupabase(transaction: Transaction) {
     const { error } = await supabase.from('transactions').upsert(payloadWithSplit);
     if (error) {
       // Fallback if split_payments column doesn't exist in Supabase yet
-      await supabase.from('transactions').upsert({
+      const { error: fallbackError } = await supabase.from('transactions').upsert({
         id: transaction.id,
         receipt_number: transaction.receiptNumber,
         grand_total: transaction.grandTotal,
@@ -113,9 +135,15 @@ export async function syncTransactionToSupabase(transaction: Transaction) {
         items: transaction.items,
         created_at: new Date(transaction.timestamp).toISOString(),
       });
+      if (fallbackError) {
+        console.warn('Supabase transaction fallback sync failed:', fallbackError);
+        return { success: false, error: fallbackError };
+      }
     }
+    return { success: true };
   } catch (err) {
     console.warn('Supabase transaction sync error:', err);
+    return { success: false, error: err };
   }
 }
 

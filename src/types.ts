@@ -151,6 +151,7 @@ export interface Transaction {
   amountDeferred?: number;    // المبلغ المرحل لمديونية الآجل
   originalCart?: CartItem[];  // سلة المشتريات الأصلية المستعادة
   splitPayments?: SplitPaymentItem[]; // تفاصيل طرق الدفع المجزأة
+  isSynced?: boolean;         // تم المزامنة مع قاعدة البيانات السحابية أم لا
 }
 
 export interface ShiftRecord {
@@ -180,6 +181,7 @@ export interface ClosedShift {
   notes?: string;
   openingBalance?: number;    // الرصيد الافتتاحي المستلم من الوردية السابقة
   leftoverBalance?: number;   // الرصيد المستبقى بالخزنة للوردية القادمة
+  isSynced?: boolean;         // تم المزامنة مع قاعدة البيانات السحابية أم لا
 }
 
 export interface ProfitMargin {

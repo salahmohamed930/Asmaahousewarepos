@@ -125,6 +125,7 @@ interface POSContextType {
   returnTransaction: (transactionId: string) => void;
   
   refreshDataFromSupabase: () => Promise<void>;
+  syncUnsyncedItems: () => Promise<void>;
   resetDemoData: () => void;
   dbStatus: { isConnected: boolean; isChecking: boolean; errorMessage?: string; isCustom: boolean };
   testDbConnection: () => Promise<{ success: boolean; errorMessage?: string }>;
@@ -457,11 +458,65 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             notes: s.notes || '',
             openingBalance: Number(s.opening_balance ?? s.openingBalance ?? 0),
             leftoverBalance: Number(s.leftover_balance ?? s.leftoverBalance ?? 0),
+            isSynced: true,
           }));
-          setClosedShifts(mappedShifts);
+
+          setClosedShifts((prev) => {
+            const map = new Map<string, ClosedShift>();
+            mappedShifts.forEach((s) => map.set(s.id, s));
+            prev.forEach((s) => {
+              if (!s.isSynced) {
+                map.set(s.id, { ...s, isSynced: false });
+              } else {
+                map.set(s.id, { ...s, isSynced: true });
+              }
+            });
+            return Array.from(map.values()).sort((a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime());
+          });
         }
       } catch (shiftErr) {
         console.warn('Closed shifts table might be missing or not created yet in Supabase:', shiftErr);
+      }
+
+      // 5. Fetch transactions from Supabase
+      try {
+        const { data: txData } = await supabase.from('transactions').select('*');
+        if (txData && txData.length > 0) {
+          const mappedTxs: Transaction[] = txData.map((t: any) => ({
+            id: t.id,
+            receiptNumber: t.receipt_number || t.receiptNumber || '0000',
+            timestamp: t.created_at || t.timestamp || new Date().toISOString(),
+            items: Array.isArray(t.items) ? t.items : JSON.parse(t.items || '[]'),
+            subtotal: Number(t.subtotal ?? t.grand_total ?? 0),
+            discountTotal: Number(t.discount_amount ?? t.discountTotal ?? 0),
+            taxTotal: Number(t.tax_total ?? t.taxTotal ?? 0),
+            grandTotal: Number(t.grand_total ?? 0),
+            paymentMethod: t.payment_method || 'كاش',
+            paymentDetails: t.payment_details || t.paymentDetails || '',
+            customerId: t.customer_id || t.customerId || undefined,
+            customerName: t.customerName || '',
+            primaryAssociateId: t.associate_id || t.primaryAssociateId || 'system',
+            primaryAssociateName: t.primaryAssociateName || 'موظف',
+            commissions: Array.isArray(t.commissions) ? t.commissions : JSON.parse(t.commissions || '[]'),
+            status: t.status || 'مكتملة',
+            isSynced: true,
+          }));
+
+          setTransactions((prev) => {
+            const map = new Map<string, Transaction>();
+            mappedTxs.forEach((tx) => map.set(tx.id, tx));
+            prev.forEach((tx) => {
+              if (!tx.isSynced) {
+                map.set(tx.id, { ...tx, isSynced: false });
+              } else {
+                map.set(tx.id, { ...tx, isSynced: true });
+              }
+            });
+            return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          });
+        }
+      } catch (txErr) {
+        console.warn('Transactions table might be missing or not created yet in Supabase:', txErr);
       }
     } catch (err: any) {
       console.warn('Supabase initial fetch skipped or table pending:', err);
@@ -472,6 +527,63 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         errorMessage: err?.message || String(err),
       }));
     }
+  };
+
+  const syncTransactionWithStatus = (tx: Transaction) => {
+    syncTransactionToSupabase(tx).then((res) => {
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === tx.id ? { ...t, isSynced: res.success } : t))
+      );
+    });
+  };
+
+  const syncClosedShiftWithStatus = (shift: ClosedShift) => {
+    syncClosedShiftToSupabase(shift).then((res) => {
+      setClosedShifts((prev) =>
+        prev.map((s) => (s.id === shift.id ? { ...s, isSynced: res.success } : s))
+      );
+    });
+  };
+
+  const syncUnsyncedItems = async () => {
+    setDbStatus((p) => ({ ...p, isChecking: true }));
+    let hasError = false;
+    let lastErrorMsg = '';
+
+    // 1. Sync unsynced transactions
+    const unsyncedTxs = transactions.filter((t) => !t.isSynced);
+    for (const tx of unsyncedTxs) {
+      const res = await syncTransactionToSupabase(tx);
+      if (res.success) {
+        setTransactions((prev) =>
+          prev.map((t) => (t.id === tx.id ? { ...t, isSynced: true } : t))
+        );
+      } else {
+        hasError = true;
+        lastErrorMsg = res.error?.message || String(res.error || 'خطأ في مزامنة الفاتورة');
+      }
+    }
+
+    // 2. Sync unsynced closed shifts
+    const unsyncedShifts = closedShifts.filter((s) => !s.isSynced);
+    for (const shift of unsyncedShifts) {
+      const res = await syncClosedShiftToSupabase(shift);
+      if (res.success) {
+        setClosedShifts((prev) =>
+          prev.map((s) => (s.id === shift.id ? { ...s, isSynced: true } : s))
+        );
+      } else {
+        hasError = true;
+        lastErrorMsg = res.error?.message || String(res.error || 'خطأ في مزامنة الوردية');
+      }
+    }
+
+    setDbStatus((p) => ({
+      ...p,
+      isConnected: !hasError,
+      isChecking: false,
+      errorMessage: hasError ? lastErrorMsg : undefined,
+    }));
   };
 
   useEffect(() => {
@@ -856,7 +968,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setTransactions((prev) => [newTransaction, ...prev]);
-    syncTransactionToSupabase(newTransaction);
+    syncTransactionWithStatus(newTransaction);
     clearCart();
 
     return newTransaction;
@@ -932,7 +1044,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTransactions((prev) => [newHeldTransaction, ...prev]);
     try {
-      syncTransactionToSupabase(newHeldTransaction);
+      syncTransactionWithStatus(newHeldTransaction);
     } catch (e) {
       console.error(e);
     }
@@ -1061,7 +1173,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           // 3. Mark transaction as returned
           const updatedTx: Transaction = { ...t, status: 'مسترجعة' };
-          syncTransactionToSupabase(updatedTx);
+          syncTransactionWithStatus(updatedTx);
           return updatedTx;
         }
         return t;
@@ -1237,7 +1349,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setTransactions((prev) => [newTransaction, ...prev]);
-    syncTransactionToSupabase(newTransaction);
+    syncTransactionWithStatus(newTransaction);
   };
 
   const addSupplier = (supplierData: Omit<Supplier, 'id'>): Supplier => {
@@ -1313,7 +1425,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `shift_${Date.now()}`,
     };
     setClosedShifts((prev) => [newShift, ...prev]);
-    syncClosedShiftToSupabase(newShift);
+    syncClosedShiftWithStatus(newShift);
   };
 
   return (
@@ -1378,6 +1490,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpense,
         returnTransaction,
         refreshDataFromSupabase: loadFromSupabase,
+        syncUnsyncedItems,
         resetDemoData,
         dbStatus,
         testDbConnection,

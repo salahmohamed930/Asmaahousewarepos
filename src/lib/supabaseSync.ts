@@ -106,40 +106,66 @@ export async function syncProductToSupabase(product: Product) {
 
 export async function syncTransactionToSupabase(transaction: Transaction): Promise<{ success: boolean; error?: any }> {
   try {
-    const payloadWithSplit: any = {
+    const payload: any = {
       id: transaction.id,
       receipt_number: transaction.receiptNumber,
-      grand_total: transaction.grandTotal,
+      timestamp: new Date(transaction.timestamp).toISOString(),
       subtotal: transaction.subtotal,
-      discount_amount: transaction.discountTotal,
+      discount_total: transaction.discountTotal,
+      tax_total: transaction.taxTotal,
+      grand_total: transaction.grandTotal,
       payment_method: transaction.paymentMethod,
-      customer_id: transaction.customerId,
-      associate_id: transaction.primaryAssociateId,
-      items: transaction.items,
+      payment_details: transaction.paymentDetails || null,
+      customer_id: transaction.customerId || null,
+      customer_name: transaction.customerName || null,
+      primary_associate_id: transaction.primaryAssociateId,
+      primary_associate_name: transaction.primaryAssociateName,
+      split_associates: transaction.splitAssociates || null,
+      commissions: transaction.commissions || null,
+      notes: transaction.notes || null,
+      status: transaction.status || 'مكتملة',
+      original_cart: transaction.originalCart || null,
+      amount_paid: transaction.amountPaid || 0,
+      amount_deferred: transaction.amountDeferred || 0,
       split_payments: transaction.splitPayments || null,
-      created_at: new Date(transaction.timestamp).toISOString(),
     };
 
-    const { error } = await supabase.from('transactions').upsert(payloadWithSplit);
+    const { error } = await supabase.from('transactions').upsert(payload);
     if (error) {
-      // Fallback if split_payments column doesn't exist in Supabase yet
-      const { error: fallbackError } = await supabase.from('transactions').upsert({
-        id: transaction.id,
-        receipt_number: transaction.receiptNumber,
-        grand_total: transaction.grandTotal,
-        subtotal: transaction.subtotal,
-        discount_amount: transaction.discountTotal,
-        payment_method: transaction.paymentMethod,
-        customer_id: transaction.customerId,
-        associate_id: transaction.primaryAssociateId,
-        items: transaction.items,
-        created_at: new Date(transaction.timestamp).toISOString(),
-      });
-      if (fallbackError) {
-        console.warn('Supabase transaction fallback sync failed:', fallbackError);
-        return { success: false, error: fallbackError };
+      console.warn('Supabase transactions upsert failed:', error);
+      return { success: false, error };
+    }
+
+    // Synchronize individual transaction items to transaction_items table
+    if (transaction.items && transaction.items.length > 0) {
+      try {
+        // Delete existing items for this transaction to avoid duplicates
+        await supabase.from('transaction_items').delete().eq('transaction_id', transaction.id);
+
+        const itemsPayload = transaction.items.map((item) => ({
+          transaction_id: transaction.id,
+          product_id: item.productId,
+          product_name: item.productName,
+          sku: item.sku,
+          quantity: item.quantity,
+          price_tier: item.priceTier || 'cash',
+          unit_price: item.unitPrice,
+          total_price: item.totalPrice,
+          assigned_associate_id: item.assignedAssociateId || null,
+        }));
+
+        const { error: itemsError } = await supabase.from('transaction_items').insert(itemsPayload);
+        if (itemsError) {
+          console.warn('Supabase transaction_items insert failed:', itemsError);
+          // Return false so we can re-sync later
+          return { success: false, error: itemsError };
+        }
+      } catch (itemErr) {
+        console.warn('Error during transaction_items sync:', itemErr);
+        return { success: false, error: itemErr };
       }
     }
+
     return { success: true };
   } catch (err) {
     console.warn('Supabase transaction sync error:', err);

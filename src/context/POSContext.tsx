@@ -481,24 +481,54 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 5. Fetch transactions from Supabase
       try {
         const { data: txData } = await supabase.from('transactions').select('*');
+        const { data: itemsData } = await supabase.from('transaction_items').select('*');
+
+        const itemsByTxId = new Map<string, any[]>();
+        if (itemsData && itemsData.length > 0) {
+          itemsData.forEach((item: any) => {
+            const txId = item.transaction_id;
+            if (txId) {
+              if (!itemsByTxId.has(txId)) {
+                itemsByTxId.set(txId, []);
+              }
+              itemsByTxId.get(txId)!.push({
+                productId: item.product_id,
+                productName: item.product_name,
+                sku: item.sku,
+                quantity: Number(item.quantity ?? 1),
+                priceTier: item.price_tier || 'cash',
+                unitPrice: Number(item.unit_price ?? 0),
+                totalPrice: Number(item.total_price ?? 0),
+                assignedAssociateId: item.assigned_associate_id || undefined,
+              });
+            }
+          });
+        }
+
         if (txData && txData.length > 0) {
           const mappedTxs: Transaction[] = txData.map((t: any) => ({
             id: t.id,
-            receiptNumber: t.receipt_number || t.receiptNumber || '0000',
-            timestamp: t.created_at || t.timestamp || new Date().toISOString(),
-            items: Array.isArray(t.items) ? t.items : JSON.parse(t.items || '[]'),
-            subtotal: Number(t.subtotal ?? t.grand_total ?? 0),
-            discountTotal: Number(t.discount_amount ?? t.discountTotal ?? 0),
-            taxTotal: Number(t.tax_total ?? t.taxTotal ?? 0),
+            receiptNumber: t.receipt_number || '0000',
+            timestamp: t.timestamp || new Date().toISOString(),
+            items: itemsByTxId.get(t.id) || [],
+            subtotal: Number(t.subtotal ?? 0),
+            discountTotal: Number(t.discount_total ?? 0),
+            taxTotal: Number(t.tax_total ?? 0),
             grandTotal: Number(t.grand_total ?? 0),
             paymentMethod: t.payment_method || 'كاش',
-            paymentDetails: t.payment_details || t.paymentDetails || '',
-            customerId: t.customer_id || t.customerId || undefined,
-            customerName: t.customerName || '',
-            primaryAssociateId: t.associate_id || t.primaryAssociateId || 'system',
-            primaryAssociateName: t.primaryAssociateName || 'موظف',
-            commissions: Array.isArray(t.commissions) ? t.commissions : JSON.parse(t.commissions || '[]'),
+            paymentDetails: t.payment_details || '',
+            customerId: t.customer_id || undefined,
+            customerName: t.customer_name || '',
+            primaryAssociateId: t.primary_associate_id || 'system',
+            primaryAssociateName: t.primary_associate_name || 'موظف',
+            splitAssociates: t.split_associates || [],
+            commissions: t.commissions || [],
+            notes: t.notes || '',
             status: t.status || 'مكتملة',
+            amountPaid: Number(t.amount_paid ?? 0),
+            amountDeferred: Number(t.amount_deferred ?? 0),
+            splitPayments: t.split_payments || [],
+            originalCart: t.original_cart || [],
             isSynced: true,
           }));
 

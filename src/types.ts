@@ -27,6 +27,7 @@ export interface Associate {
   hourlyRate: number;
   isClockedIn: boolean;
   clockInTime?: string;
+  advancesBalance?: number; // إجمالي السلف المستحقة على الموظف
 }
 
 export interface Product {
@@ -229,5 +230,9 @@ export interface POSExpense {
   timestamp: string;
   associateId?: string;
   associateName?: string;
+  linkedSupplierId?: string;
+  linkedSupplierName?: string;
+  linkedAssociateId?: string;
+  linkedAssociateName?: string;
 }
 

@@ -41,6 +41,8 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     clearCart,
     holdCart,
     getCartItemDiscountAmount,
+    activeHeldTransactionId,
+    transactions,
   } = usePOS();
 
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -530,6 +532,27 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             </div>
           </div>
 
+          {activeHeldTransactionId && (
+            <div className="p-2 bg-amber-950/80 border border-amber-800/80 rounded-xl flex items-center justify-between text-xs text-amber-200 animate-pulse">
+              <div className="flex items-center space-x-1.5 space-x-reverse font-bold text-[11px]">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  جاري استكمال الفاتورة المعلقة (
+                  {transactions.find((t) => t.id === activeHeldTransactionId)?.receiptNumber || 'معلقة'}
+                  )
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={clearCart}
+                className="text-[10px] text-amber-400 hover:text-rose-400 underline font-bold"
+                title="إلغاء وتفريغ السلة"
+              >
+                إلغاء
+              </button>
+            </div>
+          )}
+
           <div className="flex space-x-1.5 space-x-reverse pt-0.5">
             {cart.length > 0 && (
               <button
@@ -551,7 +574,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                   }
                   try {
                     holdCart('فاتورة معلقة للعميل');
-                    alert('✅ تم تعليق الفاتورة وحفظها بنجاح في القائمة.');
+                    alert(activeHeldTransactionId ? '✅ تم تحديث الفاتورة المعلقة بنجاح.' : '✅ تم تعليق الفاتورة وحفظها بنجاح في القائمة.');
                   } catch (e: any) {
                     alert(`خطأ: ${e.message}`);
                   }
@@ -564,7 +587,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 title={selectedCustomer ? "تعليق الفاتورة وحفظها" : "يجب اختيار عميل أولاً لتعليق الفاتورة"}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>تعليق</span>
+                <span>{activeHeldTransactionId ? 'تحديث المعلقة' : 'تعليق'}</span>
               </button>
             )}
 

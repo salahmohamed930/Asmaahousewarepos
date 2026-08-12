@@ -50,6 +50,7 @@ interface POSContextType {
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
+  activeHeldTransactionId: string | null;
   activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts';
   globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
   taxRate: number;
@@ -176,6 +177,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [splitAssociates, setSplitAssociates] = useState<SplitAssociate[]>([]);
+  const [activeHeldTransactionId, setActiveHeldTransactionId] = useState<string | null>(null);
   const [globalPriceTier, setGlobalPriceTierState] = useState<PriceTier>('cash');
   const [taxRate] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
@@ -806,6 +808,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCart([]);
     setSelectedCustomer(null);
     setSplitAssociates([]);
+    setActiveHeldTransactionId(null);
   };
 
   const getItemUnitPrice = (item: CartItem): number => {
@@ -924,10 +927,22 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    const receiptNumber = `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
+    const targetTxId = activeHeldTransactionId || `tx_${Date.now()}`;
+    let receiptNumber = `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    if (activeHeldTransactionId) {
+      const existingHeld = transactions.find((t) => t.id === activeHeldTransactionId);
+      if (existingHeld?.receiptNumber) {
+        if (existingHeld.receiptNumber.startsWith('HLD-')) {
+          receiptNumber = existingHeld.receiptNumber.replace('HLD-', 'RCP-ASM-');
+        } else {
+          receiptNumber = existingHeld.receiptNumber;
+        }
+      }
+    }
 
     const newTransaction: Transaction = {
-      id: `tx_${Date.now()}`,
+      id: targetTxId,
       receiptNumber,
       timestamp: new Date().toISOString(),
       items: transactionItems,
@@ -997,7 +1012,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
-    setTransactions((prev) => [newTransaction, ...prev]);
+    if (activeHeldTransactionId) {
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === activeHeldTransactionId ? newTransaction : t))
+      );
+    } else {
+      setTransactions((prev) => [newTransaction, ...prev]);
+    }
+
     syncTransactionWithStatus(newTransaction);
     clearCart();
 
@@ -1049,6 +1071,41 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const primaryAssocId = currentAssociate?.id || 'system';
     const primaryAssocName = currentAssociate?.name || 'النظام';
 
+    if (activeHeldTransactionId) {
+      // Update existing held transaction
+      setTransactions((prev) =>
+        prev.map((t) => {
+          if (t.id === activeHeldTransactionId) {
+            const updated: Transaction = {
+              ...t,
+              timestamp: new Date().toISOString(),
+              items: transactionItems,
+              subtotal,
+              discountTotal,
+              grandTotal,
+              customerId: selectedCustomer?.id,
+              customerName: selectedCustomer?.name,
+              primaryAssociateId: primaryAssocId,
+              primaryAssociateName: primaryAssocName,
+              splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
+              notes: notes || 'تحديث الفاتورة المعلقة',
+              status: 'معلقة',
+              originalCart: JSON.parse(JSON.stringify(cart)),
+            };
+            try {
+              syncTransactionWithStatus(updated);
+            } catch (e) {
+              console.error(e);
+            }
+            return updated;
+          }
+          return t;
+        })
+      );
+      clearCart();
+      return;
+    }
+
     const receiptNumber = `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newHeldTransaction: Transaction = {
@@ -1079,9 +1136,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error(e);
     }
 
-    setCart([]);
-    setSelectedCustomer(null);
-    setSplitAssociates([]);
+    clearCart();
   };
 
   const restoreHeldTransaction = (transactionId: string) => {
@@ -1149,12 +1204,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSplitAssociates([]);
     }
 
-    setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    setActiveHeldTransactionId(transactionId);
     setActiveTab('register');
   };
 
   const deleteTransaction = (transactionId: string) => {
     setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    if (activeHeldTransactionId === transactionId) {
+      setActiveHeldTransactionId(null);
+    }
   };
 
   const returnTransaction = (transactionId: string) => {
@@ -1221,6 +1279,36 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setExpenses((prev) => [newExpense, ...prev]);
     syncExpenseToSupabase(newExpense);
+
+    // If payment to a supplier, record supplier payment transaction
+    if (expenseData.category === 'دفعة لمورد' && expenseData.linkedSupplierId) {
+      recordSupplierTransaction({
+        supplierId: expenseData.linkedSupplierId,
+        supplierName: expenseData.linkedSupplierName || '',
+        type: 'payment',
+        amount: expenseData.amount,
+        referenceNumber: newExpense.id,
+        notes: expenseData.description || 'دفعة مسجلة عبر المصروفات اليومية',
+        associateName: currentAssociate?.name || 'النظام',
+      });
+    }
+
+    // If salary advance to employee, record/increment advances balance
+    if (expenseData.category === 'سلفة لموظف' && expenseData.linkedAssociateId) {
+      setAssociates((prev) =>
+        prev.map((a) => {
+          if (a.id === expenseData.linkedAssociateId) {
+            const updated = {
+              ...a,
+              advancesBalance: (a.advancesBalance || 0) + expenseData.amount,
+            };
+            syncAssociateToSupabase(updated);
+            return updated;
+          }
+          return a;
+        })
+      );
+    }
   };
 
   const deleteExpense = (id: string) => {
@@ -1471,6 +1559,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cart,
         selectedCustomer,
         splitAssociates,
+        activeHeldTransactionId,
         activeTab,
         globalPriceTier,
         taxRate,

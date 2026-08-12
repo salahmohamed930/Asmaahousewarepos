@@ -199,6 +199,7 @@ export async function syncAssociateToSupabase(associate: Associate) {
       pin: associate.pin,
       role: associate.role,
       email: associate.email,
+      advances_balance: associate.advancesBalance || 0,
       updated_at: new Date().toISOString(),
     });
   } catch (err) {
@@ -255,6 +256,10 @@ export async function syncExpenseToSupabase(expense: POSExpense) {
       timestamp: expense.timestamp,
       associate_id: expense.associateId,
       associate_name: expense.associateName,
+      linked_supplier_id: expense.linkedSupplierId,
+      linked_supplier_name: expense.linkedSupplierName,
+      linked_associate_id: expense.linkedAssociateId,
+      linked_associate_name: expense.linkedAssociateName,
     });
   } catch (err) {
     console.warn('Supabase expense sync:', err);

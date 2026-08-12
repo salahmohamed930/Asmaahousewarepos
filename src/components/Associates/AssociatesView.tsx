@@ -204,6 +204,15 @@ export const AssociatesView: React.FC = () => {
     printWindow.document.close();
   };
 
+  const handleSettleAdvances = (assoc: Associate) => {
+    if (window.confirm(`هل أنت متأكد من تسوية وسداد كافة السلف المسجلة على الموظف ${assoc.name}؟`)) {
+      updateAssociate({
+        ...assoc,
+        advancesBalance: 0,
+      });
+    }
+  };
+
   const [formData, setFormData] = useState<{
     name: string;
     username: string;
@@ -541,27 +550,53 @@ export const AssociatesView: React.FC = () => {
                 </div>
 
                 {/* Performance Stats Metrics */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-stone-950 border border-stone-800 rounded-2xl p-3">
-                    <span className="text-[10px] text-stone-400 uppercase font-bold block mb-0.5">
-                      إجمالي المبيعات
-                    </span>
-                    <span className="font-mono font-extrabold text-stone-100 text-sm">
-                      {stats.totalSales.toLocaleString()} ج.م
-                    </span>
-                    <span className="text-[10px] text-stone-400 block font-mono">
+                <div className="grid grid-cols-3 gap-1.5 text-xs">
+                  <div className="bg-stone-950 border border-stone-800 rounded-2xl p-2.5 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-stone-400 uppercase font-bold block mb-0.5">
+                        إجمالي المبيعات
+                      </span>
+                      <span className="font-mono font-extrabold text-stone-100 text-xs">
+                        {stats.totalSales.toLocaleString()} ج.م
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-stone-500 block font-mono mt-1">
                       ({stats.salesCount} فاتورة)
                     </span>
                   </div>
 
-                  <div className="bg-stone-950 border border-stone-800 rounded-2xl p-3">
-                    <span className="text-[10px] text-amber-400 uppercase font-bold block mb-0.5">
-                      عمولة البائع
-                    </span>
-                    <span className="font-mono font-extrabold text-amber-400 text-sm">
-                      +{stats.totalCommission.toFixed(1)} ج.م
-                    </span>
-                    <span className="text-[10px] text-stone-400 block">مستحقة الصرف</span>
+                  <div className="bg-stone-950 border border-stone-800 rounded-2xl p-2.5 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-amber-400 uppercase font-bold block mb-0.5">
+                        عمولة البائع
+                      </span>
+                      <span className="font-mono font-extrabold text-amber-400 text-xs">
+                        +{stats.totalCommission.toFixed(1)} ج.م
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-stone-500 block mt-1">مستحقة الصرف</span>
+                  </div>
+
+                  <div className="bg-stone-950 border border-stone-800 rounded-2xl p-2.5 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[9px] text-sky-400 uppercase font-bold block mb-0.5">
+                        السلف والذمم
+                      </span>
+                      <span className="font-mono font-extrabold text-sky-400 text-xs">
+                        {(assoc.advancesBalance || 0).toLocaleString()} ج.م
+                      </span>
+                    </div>
+                    {assoc.advancesBalance && assoc.advancesBalance > 0 ? (
+                      <button
+                        onClick={() => handleSettleAdvances(assoc)}
+                        className="mt-1 text-[8px] bg-sky-950 hover:bg-sky-900 text-sky-300 py-0.5 px-1 rounded border border-sky-800/60 font-bold transition-all text-center w-full"
+                        title="سداد سلفة الموظف"
+                      >
+                        سداد
+                      </button>
+                    ) : (
+                      <span className="text-[9px] text-stone-500 block mt-1">لا يوجد سلف</span>
+                    )}
                   </div>
                 </div>
 

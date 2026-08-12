@@ -38,6 +38,7 @@ export const RegisterView: React.FC = () => {
     transactions,
     voidTransaction,
     restoreHeldTransaction,
+    activeHeldTransactionId,
     deleteTransaction,
     associates,
     currentAssociate,
@@ -47,6 +48,7 @@ export const RegisterView: React.FC = () => {
     addExpense,
     deleteExpense,
     returnTransaction,
+    suppliers,
   } = usePOS();
 
   // Mode state: DEFAULT TO 'history' AS REQUESTED!
@@ -59,6 +61,8 @@ export const RegisterView: React.FC = () => {
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseError, setExpenseError] = useState('');
   const [expenseFilter, setExpenseFilter] = useState('all');
+  const [linkedSupplierId, setLinkedSupplierId] = useState('');
+  const [linkedAssociateId, setLinkedAssociateId] = useState('');
 
   const handleLocalAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,16 +74,25 @@ export const RegisterView: React.FC = () => {
       return;
     }
 
+    const selectedSupplier = suppliers.find((s) => s.id === linkedSupplierId);
+    const selectedAssociate = associates.find((a) => a.id === linkedAssociateId);
+
     addExpense({
       amount: parsedAmount,
       category: expenseCategory,
       description: expenseDescription,
+      linkedSupplierId: expenseCategory === 'دفعة لمورد' ? linkedSupplierId : undefined,
+      linkedSupplierName: expenseCategory === 'دفعة لمورد' ? selectedSupplier?.name : undefined,
+      linkedAssociateId: expenseCategory === 'سلفة لموظف' ? linkedAssociateId : undefined,
+      linkedAssociateName: expenseCategory === 'سلفة لموظف' ? selectedAssociate?.name : undefined,
     });
 
     // Reset fields & close modal
     setExpenseAmount('');
     setExpenseCategory('رواتب وأجور');
     setExpenseDescription('');
+    setLinkedSupplierId('');
+    setLinkedAssociateId('');
     setIsAddExpenseModalOpen(false);
   };
 
@@ -92,6 +105,8 @@ export const RegisterView: React.FC = () => {
 
   const expenseCategoriesList = [
     'رواتب وأجور',
+    'سلفة لموظف',
+    'دفعة لمورد',
     'إيجار',
     'مرافق (كهرباء / مياه)',
     'بضاعة ومستلزمات',
@@ -483,9 +498,15 @@ export const RegisterView: React.FC = () => {
                           {/* الحالة */}
                           <td className="py-1.5 px-3 text-center">
                             {isHeld ? (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800 animate-pulse">
-                                معلقة ⏳
-                              </span>
+                              tx.id === activeHeldTransactionId ? (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-600 text-white border border-amber-400 animate-bounce">
+                                  جاري استكمالها ✏️
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800 animate-pulse">
+                                  معلقة ⏳
+                                </span>
+                              )
                             ) : isVoided ? (
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
                                 ملغاة
@@ -1037,6 +1058,44 @@ export const RegisterView: React.FC = () => {
                 </select>
               </div>
 
+              {expenseCategory === 'دفعة لمورد' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-400 mb-1">المورد المستلم *</label>
+                  <select
+                    required
+                    value={linkedSupplierId}
+                    onChange={(e) => setLinkedSupplierId(e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
+                  >
+                    <option value="">-- اختر المورد لخصم المبلغ من مديونيته --</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} (الرصيد الدائن الحالي: {s.currentBalance.toLocaleString('ar-EG')} ج.م)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {expenseCategory === 'سلفة لموظف' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-400 mb-1">الموظف المستلم *</label>
+                  <select
+                    required
+                    value={linkedAssociateId}
+                    onChange={(e) => setLinkedAssociateId(e.target.value)}
+                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
+                  >
+                    <option value="">-- اختر الموظف لتسجيل السلفة عليه --</option>
+                    {associates.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[11px] font-bold text-stone-400 mb-1">البيان / تفاصيل المصروف</label>
                 <textarea
@@ -1076,13 +1135,15 @@ export const RegisterView: React.FC = () => {
 export default RegisterView;
 
 const ExpensesSubView: React.FC = () => {
-  const { expenses, addExpense, deleteExpense } = usePOS();
+  const { expenses, addExpense, deleteExpense, suppliers, associates } = usePOS();
   
   // Local state for adding expense
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('رواتب وأجور');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  const [subLinkedSupplierId, setSubLinkedSupplierId] = useState('');
+  const [subLinkedAssociateId, setSubLinkedAssociateId] = useState('');
 
   // Filtering state
   const [expenseFilter, setExpenseFilter] = useState('all');
@@ -1097,15 +1158,24 @@ const ExpensesSubView: React.FC = () => {
       return;
     }
 
+    const selectedSupplier = suppliers.find((s) => s.id === subLinkedSupplierId);
+    const selectedAssociate = associates.find((a) => a.id === subLinkedAssociateId);
+
     addExpense({
       amount: parsedAmount,
       category,
       description,
+      linkedSupplierId: category === 'دفعة لمورد' ? subLinkedSupplierId : undefined,
+      linkedSupplierName: category === 'دفعة لمورد' ? selectedSupplier?.name : undefined,
+      linkedAssociateId: category === 'سلفة لموظف' ? subLinkedAssociateId : undefined,
+      linkedAssociateName: category === 'سلفة لموظف' ? selectedAssociate?.name : undefined,
     });
 
     // Reset fields
     setAmount('');
     setDescription('');
+    setSubLinkedSupplierId('');
+    setSubLinkedAssociateId('');
   };
 
   const filteredExpenses = expenses.filter(exp => {
@@ -1117,6 +1187,8 @@ const ExpensesSubView: React.FC = () => {
 
   const categoriesList = [
     'رواتب وأجور',
+    'سلفة لموظف',
+    'دفعة لمورد',
     'إيجار',
     'مرافق (كهرباء / مياه)',
     'بضاعة ومستلزمات',
@@ -1168,6 +1240,44 @@ const ExpensesSubView: React.FC = () => {
               ))}
             </select>
           </div>
+
+          {category === 'دفعة لمورد' && (
+            <div>
+              <label className="block text-[11px] font-bold text-stone-400 mb-1">المورد المستلم *</label>
+              <select
+                required
+                value={subLinkedSupplierId}
+                onChange={(e) => setSubLinkedSupplierId(e.target.value)}
+                className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
+              >
+                <option value="">-- اختر المورد لخصم المبلغ من مديونيته --</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (الرصيد الدائن الحالي: {s.currentBalance.toLocaleString('ar-EG')} ج.م)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {category === 'سلفة لموظف' && (
+            <div>
+              <label className="block text-[11px] font-bold text-stone-400 mb-1">الموظف المستلم *</label>
+              <select
+                required
+                value={subLinkedAssociateId}
+                onChange={(e) => setSubLinkedAssociateId(e.target.value)}
+                className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
+              >
+                <option value="">-- اختر الموظف لتسجيل السلفة عليه --</option>
+                {associates.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-[11px] font-bold text-stone-400 mb-1">البيان / تفاصيل المصروف</label>
@@ -1270,7 +1380,17 @@ const ExpensesSubView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2 px-3 text-stone-100 max-w-xs truncate" title={exp.description}>
-                        {exp.description || 'بلا بيان إضافي'}
+                        <div>{exp.description || 'بلا بيان إضافي'}</div>
+                        {exp.linkedSupplierName && (
+                          <div className="text-[9px] text-emerald-400 font-bold mt-0.5">
+                            المورد: {exp.linkedSupplierName} (تم الخصم من الحساب)
+                          </div>
+                        )}
+                        {exp.linkedAssociateName && (
+                          <div className="text-[9px] text-sky-400 font-bold mt-0.5">
+                            الموظف: {exp.linkedAssociateName} (سلفة مسجلة عليه)
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-center text-[11px] font-bold text-stone-400">
                         {exp.associateName || 'النظام'}

@@ -95,19 +95,21 @@ export const BarcodeItem: React.FC<BarcodeItemProps> = ({
   }, [value, width, height, format, lineColor]);
 
   return (
-    <div className={`flex flex-col items-center justify-center w-full ${className}`}>
+    <div className={`flex flex-col items-center justify-center w-full p-0 m-0 ${className}`}>
       <svg
         ref={svgRef}
-        className="block max-w-full mx-auto"
+        className="block max-w-full mx-auto p-0 m-0"
         style={{
-          minHeight: `${height}px`,
+          height: `${height}px`,
+          maxHeight: `${height}px`,
           shapeRendering: 'crispEdges',
+          display: 'block',
         }}
       />
       {displayValue && (
         <span
-          className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
-          style={{ fontSize: `${fontSize}px` }}
+          className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+          style={{ fontSize: `${fontSize}px`, lineHeight: 1 }}
         >
           {value || '---'}
         </span>

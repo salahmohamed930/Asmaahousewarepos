@@ -862,8 +862,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px` }}
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
                     >
                       {previewProduct.sku || previewProduct.barcode || '000000'}
                     </span>
@@ -967,8 +967,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px` }}
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
                     </span>
@@ -1041,8 +1041,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px` }}
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
                     </span>

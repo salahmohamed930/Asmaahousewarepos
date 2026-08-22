@@ -47,6 +47,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
   const [showInstallmentPrice, setShowInstallmentPrice] = useState<boolean>(true);
+  const [showItemCode, setShowItemCode] = useState<boolean>(true);
   const [storeName, setStoreName] = useState<string>(defaultHeader);
   const [printMode, setPrintMode] = useState<PrintMode>('thermal');
   const [labelPreset, setLabelPreset] = useState<LabelPreset>('1.5x1_horizontal');
@@ -781,6 +782,16 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               <label className="flex items-center space-x-2 space-x-reverse cursor-pointer text-stone-300 select-none">
                 <input
                   type="checkbox"
+                  checked={showItemCode}
+                  onChange={(e) => setShowItemCode(e.target.checked)}
+                  className="rounded border-stone-700 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                />
+                <span className="text-[11px]">إظهار كود الصنف تحت الباركود</span>
+              </label>
+
+              <label className="flex items-center space-x-2 space-x-reverse cursor-pointer text-stone-300 select-none">
+                <input
+                  type="checkbox"
                   checked={showInstallmentPrice}
                   onChange={(e) => setShowInstallmentPrice(e.target.checked)}
                   className="rounded border-stone-700 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
@@ -840,15 +851,23 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   </h4>
                 </div>
 
-                {/* Real Vector SVG Barcode & Number */}
-                <div className="w-full my-0.5 py-0 flex flex-col items-center justify-center overflow-hidden">
+                {/* Real Vector SVG Barcode & Code Underneath */}
+                <div className="w-full my-0.5 py-0 flex flex-col items-center justify-center">
                   <BarcodeItem
                     value={previewProduct.barcode || previewProduct.sku || '000000'}
                     height={config.barcodeHeight}
                     width={config.barcodeWidth}
                     fontSize={config.fontSizeBarcode}
-                    displayValue={true}
+                    displayValue={false}
                   />
+                  {showItemCode && (
+                    <span
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-tight pt-0.5"
+                      style={{ fontSize: `${config.fontSizeBarcode}px` }}
+                    >
+                      {previewProduct.sku || previewProduct.barcode || '000000'}
+                    </span>
+                  )}
                 </div>
 
                 {/* Prices: Exact match to user photo */}
@@ -937,15 +956,23 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   {item.product.name}
                 </div>
 
-                {/* Real SVG Barcode in Print */}
-                <div className="w-full my-0.5 flex flex-col items-center justify-center overflow-hidden">
+                {/* Real SVG Barcode & Code Underneath in Print */}
+                <div className="w-full my-0.5 flex flex-col items-center justify-center">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
                     width={config.barcodeWidth}
                     fontSize={config.fontSizeBarcode}
-                    displayValue={true}
+                    displayValue={false}
                   />
+                  {showItemCode && (
+                    <span
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-tight pt-0.5"
+                      style={{ fontSize: `${config.fontSizeBarcode}px` }}
+                    >
+                      {item.product.sku || item.product.barcode || '000000'}
+                    </span>
+                  )}
                 </div>
 
                 {/* Prices: Exact match to user photo */}
@@ -1003,15 +1030,23 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   {item.product.name}
                 </div>
 
-                {/* Barcode */}
+                {/* Barcode & Code Underneath */}
                 <div className="w-full my-0.5 flex flex-col items-center justify-center">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
                     width={config.barcodeWidth}
                     fontSize={config.fontSizeBarcode}
-                    displayValue={true}
+                    displayValue={false}
                   />
+                  {showItemCode && (
+                    <span
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-tight pt-0.5"
+                      style={{ fontSize: `${config.fontSizeBarcode}px` }}
+                    >
+                      {item.product.sku || item.product.barcode || '000000'}
+                    </span>
+                  )}
                 </div>
 
                 {/* Prices */}

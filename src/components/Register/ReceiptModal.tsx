@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Transaction } from '../../types';
-import { Printer, X, ShoppingBag, Sparkles, User, Hash } from 'lucide-react';
+import { Printer, X, ShoppingBag, Sparkles, User, Hash, FileText, CheckCircle2 } from 'lucide-react';
 import { usePOS } from '../../context/POSContext';
 import { printElementById } from '../../utils/printHelper';
 import { BarcodeItem } from '../Common/BarcodeItem';
@@ -14,7 +14,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   const { associates, settings } = usePOS();
   if (!transaction) return null;
 
-  const printSettings = settings?.printSettings || {
+  const defaultPrintSettings = settings?.printSettings || {
     headerText: 'أسماء للأدوات المنزلية',
     footerText: 'شكرًا لزيارتكم! نسعد دائمًا بخدمتكم.',
     showSellerCode: true,
@@ -23,42 +23,97 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
     receiptType: 'thermal' as const
   };
 
-  const handlePrint = () => {
-    printElementById('printable-receipt', {
-      pageTitle: `فاتورة-${transaction.receiptNumber}`,
-      isThermalReceipt: printSettings.receiptType !== 'a4',
-      pageCssSize: printSettings.receiptType === 'a4' ? 'A4 portrait' : '80mm auto',
-      customStyles: `
-        #printable-receipt {
-          padding: 8px 12px;
-          margin: 0 auto;
-          max-width: ${printSettings.receiptType === 'a4' ? '100%' : '80mm'};
-        }
-      `,
-    });
-  };
+  const [receiptType, setReceiptType] = useState<'thermal' | 'a4'>(
+    defaultPrintSettings.receiptType || 'thermal'
+  );
 
   const primaryAssoc = associates.find(
     (a) => a.id === transaction.primaryAssociateId || a.id === (transaction as any).associateId
   );
   const sellerPinCode = primaryAssoc ? primaryAssoc.pin : '101';
+  const sellerName = primaryAssoc ? primaryAssoc.name : 'الكاشير';
 
   const subtotal = transaction.subtotal || 0;
   const discountTotal = transaction.discountTotal || 0;
   const grandTotal = transaction.grandTotal || subtotal - discountTotal;
+  const isReturn = transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0);
+
+  const handlePrint = () => {
+    printElementById('printable-receipt', {
+      pageTitle: `فاتورة-${transaction.receiptNumber}`,
+      isThermalReceipt: receiptType !== 'a4',
+      pageCssSize: receiptType === 'a4' ? 'A4 portrait' : '80mm auto',
+      customStyles: `
+        *, *::before, *::after {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #ffffff !important;
+          color: #000000 !important;
+        }
+        #printable-receipt {
+          padding: ${receiptType === 'a4' ? '15mm 18mm' : '4mm 6mm'} !important;
+          margin: 0 auto !important;
+          max-width: ${receiptType === 'a4' ? '100%' : '80mm'} !important;
+          width: 100% !important;
+          background: #ffffff !important;
+          color: #000000 !important;
+          font-family: 'Cairo', system-ui, -apple-system, sans-serif !important;
+        }
+        table.receipt-table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin: 4px 0 !important;
+        }
+        table.receipt-table th, table.receipt-table td {
+          border: 1px solid #000000 !important;
+          padding: 4px 6px !important;
+          text-align: right !important;
+          color: #000000 !important;
+        }
+        table.receipt-table th {
+          background-color: #f0f0f0 !important;
+          font-weight: 900 !important;
+        }
+        table.meta-table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin-bottom: 6px !important;
+        }
+        table.meta-table td {
+          border: 1px solid #333333 !important;
+          padding: 3px 6px !important;
+          font-size: 10px !important;
+        }
+        table.totals-table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin-top: 4px !important;
+        }
+        table.totals-table td {
+          border: 1px solid #000000 !important;
+          padding: 4px 6px !important;
+        }
+      `,
+    });
+  };
 
   return (
     <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto dir-rtl">
       <div className={`bg-stone-900 border border-stone-800 rounded-3xl w-full p-6 shadow-2xl relative text-stone-100 my-8 transition-all ${
-        printSettings.receiptType === 'a4' ? 'max-w-4xl' : 'max-w-md'
+        receiptType === 'a4' ? 'max-w-4xl' : 'max-w-xl'
       }`}>
         
-        {/* Style block for perfect physical print scaling without blank page bug */}
+        {/* Style block for Print dialog fallback */}
         <style>{`
           @media print {
             @page {
-              margin: 4mm;
-              size: ${printSettings.receiptType === 'a4' ? 'A4 portrait' : '80mm auto'} !important;
+              margin: ${receiptType === 'a4' ? '10mm' : '2mm'};
+              size: ${receiptType === 'a4' ? 'A4 portrait' : '80mm auto'} !important;
             }
             html, body {
               background: white !important;
@@ -89,13 +144,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               left: auto !important;
               top: auto !important;
               width: 100% !important;
-              max-width: ${printSettings.receiptType === 'a4' ? '100%' : '80mm'} !important;
+              max-width: ${receiptType === 'a4' ? '100%' : '80mm'} !important;
               box-shadow: none !important;
               background: white !important;
               color: black !important;
-              padding: 8px !important;
+              padding: 6px !important;
               margin: 0 auto !important;
               border: none !important;
+            }
+            table.receipt-table th, table.receipt-table td {
+              border: 1px solid #000000 !important;
             }
             .no-print {
               display: none !important;
@@ -104,134 +162,168 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
           }
         `}</style>
 
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 left-4 text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors no-print"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Close Button & Print Mode Toggle Header */}
+        <div className="flex items-center justify-between border-b border-stone-800 pb-4 mb-4 no-print">
+          <div className="flex items-center space-x-3 space-x-reverse">
+            <div className="w-10 h-10 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-stone-100">
+                {isReturn ? 'معاينة إيصال المرتجع' : 'معاينة وطباعة الفاتورة'}
+              </h3>
+              <p className="text-xs text-stone-400 font-mono">
+                فاتورة رقم: #{transaction.receiptNumber}
+              </p>
+            </div>
+          </div>
 
-        {/* Printable Thermal/A4 Receipt Card */}
-        <div id="printable-receipt-wrap" className="w-full">
+          <div className="flex items-center space-x-2 space-x-reverse">
+            {/* Format Switcher */}
+            <div className="bg-stone-950 p-1 rounded-xl border border-stone-800 flex items-center">
+              <button
+                type="button"
+                onClick={() => setReceiptType('thermal')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  receiptType === 'thermal'
+                    ? 'bg-amber-600 text-white shadow'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                إيصال حراري (80mm)
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptType('a4')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  receiptType === 'a4'
+                    ? 'bg-amber-600 text-white shadow'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                فاتورة رسمية (A4)
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="text-stone-400 hover:text-white p-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Printable Thermal / A4 Receipt Card */}
+        <div id="printable-receipt-wrap" className="w-full max-h-[70vh] overflow-y-auto pr-1">
           <div 
             id="printable-receipt" 
-            className={`bg-stone-50 text-stone-900 rounded-2xl p-6 font-sans text-xs shadow-inner mx-auto space-y-4 ${
-              printSettings.receiptType === 'a4' 
-                ? 'w-full max-w-4xl min-h-[600px] border border-stone-300' 
-                : 'max-w-md w-full'
+            className={`bg-white text-black rounded-2xl p-5 font-sans text-xs shadow-2xl mx-auto space-y-3 ${
+              receiptType === 'a4' 
+                ? 'w-full max-w-3xl min-h-[600px] border-2 border-stone-300' 
+                : 'max-w-md w-full border border-stone-200'
             }`}
           >
             
             {/* Receipt Header */}
-            <div className="text-center pb-4 border-b border-dashed border-stone-300 space-y-1">
-              {printSettings.showLogo !== false && (
-                <div className="w-12 h-12 bg-amber-600 text-white rounded-full flex items-center justify-center mx-auto mb-1 shadow-sm">
-                  <ShoppingBag className="w-6 h-6" />
+            <div className="text-center pb-2 border-b-2 border-black space-y-1">
+              {defaultPrintSettings.showLogo !== false && (
+                <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center mx-auto mb-1 shadow-sm">
+                  <ShoppingBag className="w-5 h-5" />
                 </div>
               )}
-              <h1 className="text-lg font-black tracking-tight text-stone-900">
-                {printSettings.headerText || 'أسماء للأدوات المنزلية'}
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-black">
+                {defaultPrintSettings.headerText || 'أسماء للأدوات المنزلية'}
               </h1>
-              <p className="text-[10px] text-stone-500 font-bold">
-                {transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0)
-                  ? 'مرتجع مبيعات رسمي'
-                  : printSettings.receiptType === 'a4'
-                  ? 'فاتورة مبيعات وضمان رسمية (A4)'
-                  : 'فاتورة مبيعات رقمية ورقية'}
-              </p>
-              <p className="text-[11px] text-amber-700 font-mono font-extrabold mt-1">
-                رقم الفاتورة: #{transaction.receiptNumber}
-              </p>
-              <p className="text-[10px] text-stone-500 font-mono">
-                {new Date(transaction.timestamp).toLocaleString('ar-EG')}
-              </p>
-            </div>
-
-            {/* Customer & Seller PIN Meta */}
-            <div className="py-2 border-b border-dashed border-stone-300 space-y-1.5 text-[11px]">
-              <div className="grid grid-cols-2 gap-2">
-                {printSettings.showSellerCode !== false && (
-                  <div className="flex justify-between items-center bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-lg">
-                    <span className="text-stone-500 font-bold">كود البائع:</span>
-                    <span className="font-mono font-extrabold text-amber-800">
-                      كود: {sellerPinCode}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-lg">
-                  <span className="text-stone-500 font-bold">طريقة الدفع:</span>
-                  <span className="font-bold text-stone-800">
-                    {transaction.paymentMethod === 'cash' || transaction.paymentMethod === 'كاش'
-                      ? 'كاش 💵'
-                      : transaction.paymentMethod === 'installment' || transaction.paymentMethod === 'تقسيط شهري'
-                      ? 'تقسيط 📅'
-                      : transaction.paymentMethod === 'دفع متعدد'
-                      ? 'دفع مجزأ / متعدد 🧾'
-                      : transaction.paymentMethod === 'نقاط ولاء'
-                      ? 'نقاط الولاء 🌟'
-                      : 'بطاقة / جملة 💳'}
-                  </span>
-                </div>
+              <div className="inline-block bg-black text-white px-3 py-0.5 rounded-md font-bold text-[11px]">
+                {isReturn
+                  ? 'إيصال مرتجع مبيعات رسمي'
+                  : receiptType === 'a4'
+                  ? 'فاتورة مبيعات وضمان معتمدة (A4)'
+                  : 'فاتورة مبيعات ضريبية ورقية'}
               </div>
-
-              {transaction.customerName && (
-                <div className="flex justify-between items-center bg-stone-100/50 border border-stone-200 px-3 py-1.5 rounded-lg mt-1">
-                  <span className="text-stone-500 font-bold">اسم العميل:</span>
-                  <span className="font-extrabold text-stone-900">
-                    {transaction.customerName}
-                  </span>
-                </div>
-              )}
             </div>
 
-            {/* Line Items */}
-            <div className="py-2 border-b border-dashed border-stone-300">
-              <table className="w-full text-right border-collapse">
+            {/* Meta Table (Structured Data Grid) */}
+            <table className="meta-table w-full border-collapse text-[10px] text-black">
+              <tbody>
+                <tr>
+                  <td className="border border-black bg-stone-100 font-bold w-1/4 p-1.5">رقم الفاتورة:</td>
+                  <td className="border border-black font-mono font-black w-1/4 p-1.5">#{transaction.receiptNumber}</td>
+                  <td className="border border-black bg-stone-100 font-bold w-1/4 p-1.5">التاريخ والوقت:</td>
+                  <td className="border border-black font-mono w-1/4 p-1.5 text-[9.5px]">
+                    {new Date(transaction.timestamp).toLocaleDateString('ar-EG', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border border-black bg-stone-100 font-bold p-1.5">اسم العميل:</td>
+                  <td className="border border-black font-bold p-1.5">
+                    {transaction.customerName || 'عميل نقدي / عام'}
+                  </td>
+                  <td className="border border-black bg-stone-100 font-bold p-1.5">طريقة الدفع:</td>
+                  <td className="border border-black font-bold p-1.5">
+                    {transaction.paymentMethod === 'cash' || transaction.paymentMethod === 'كاش'
+                      ? 'نقداً (كاش)'
+                      : transaction.paymentMethod === 'installment' || transaction.paymentMethod === 'تقسيط شهري'
+                      ? 'تقسيط شهري'
+                      : transaction.paymentMethod === 'دفع متعدد'
+                      ? 'دفع مجزأ'
+                      : transaction.paymentMethod === 'نقاط ولاء'
+                      ? 'نقاط الولاء'
+                      : 'بطاقة / جملة'}
+                  </td>
+                </tr>
+                {defaultPrintSettings.showSellerCode !== false && (
+                  <tr>
+                    <td className="border border-black bg-stone-100 font-bold p-1.5">الكاشير / البائع:</td>
+                    <td className="border border-black font-mono font-bold p-1.5" colSpan={3}>
+                      {sellerName} (كود: {sellerPinCode})
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Line Items Table (Clean Solid Border Grid) */}
+            <div className="w-full overflow-x-auto">
+              <table className="receipt-table w-full border-collapse text-[10px] text-black">
                 <thead>
-                  <tr className="text-[10px] uppercase text-stone-500 border-b border-stone-300 bg-stone-100">
-                    <th className="p-2">الصنف والوصف</th>
-                    <th className="p-2 text-center">الكمية</th>
-                    <th className="p-2 text-center">سعر الوحدة</th>
-                    <th className="p-2 text-left">الإجمالي</th>
+                  <tr className="bg-stone-200 border-b border-black font-black text-black">
+                    <th className="border border-black p-1.5 text-center w-8">م</th>
+                    <th className="border border-black p-1.5 text-right">الصنف والبيان</th>
+                    <th className="border border-black p-1.5 text-center w-12">الكمية</th>
+                    <th className="border border-black p-1.5 text-center w-16">السعر</th>
+                    <th className="border border-black p-1.5 text-left w-20">الإجمالي</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-200">
+                <tbody>
                   {transaction.items.map((item, idx) => (
-                    <tr key={idx} className="text-[11px] hover:bg-stone-100/30">
-                      <td className="p-2 font-bold text-stone-900 leading-tight">
-                        {item.productName}
-                        <span className="block text-[9px] text-stone-400 font-mono mt-0.5">{item.sku}</span>
+                    <tr key={idx} className="border-b border-black">
+                      <td className="border border-black p-1.5 text-center font-mono font-bold text-[10px]">
+                        {idx + 1}
                       </td>
-                      <td className="p-2 text-center font-mono font-bold text-stone-700">{item.quantity}</td>
-                      <td className="p-2 text-center font-mono text-stone-700">
-                        {item.totalPrice !== (item.unitPrice || 0) * item.quantity ? (
-                          <div className="flex flex-col items-center">
-                            <span className="line-through text-[10px] text-stone-400">
-                              {(item.unitPrice || 0).toLocaleString()} ج.م
-                            </span>
-                            <span className="text-emerald-700 font-bold text-[11px]">
-                              {(Math.round((item.totalPrice / item.quantity) * 100) / 100).toLocaleString()} ج.م
-                            </span>
-                          </div>
-                        ) : (
-                          <span>{(item.unitPrice || 0).toLocaleString()} ج.م</span>
+                      <td className="border border-black p-1.5 font-bold leading-tight">
+                        <span className="block text-[10.5px] text-black">{item.productName}</span>
+                        {item.sku && (
+                          <span className="block text-[8.5px] text-stone-600 font-mono">
+                            كود: {item.sku}
+                          </span>
                         )}
                       </td>
-                      <td className="p-2 text-left font-mono font-extrabold text-stone-950">
-                        {item.totalPrice !== (item.unitPrice || 0) * item.quantity ? (
-                          <div className="flex flex-col items-end">
-                            <span className="line-through text-[10px] text-stone-400 font-medium">
-                              {((item.unitPrice || 0) * item.quantity).toLocaleString()} ج.م
-                            </span>
-                            <span className="text-emerald-700 font-black">
-                              {(item.totalPrice || 0).toLocaleString()} ج.م
-                            </span>
-                          </div>
-                        ) : (
-                          <span>{(item.totalPrice || 0).toLocaleString()} ج.م</span>
-                        )}
+                      <td className="border border-black p-1.5 text-center font-mono font-black text-[11px]">
+                        {item.quantity}
+                      </td>
+                      <td className="border border-black p-1.5 text-center font-mono text-[10px]">
+                        {(item.unitPrice || 0).toLocaleString()} ج.م
+                      </td>
+                      <td className="border border-black p-1.5 text-left font-mono font-black text-[11px]">
+                        {(item.totalPrice || 0).toLocaleString()} ج.م
                       </td>
                     </tr>
                   ))}
@@ -239,90 +331,128 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               </table>
             </div>
 
-            {/* Financial Totals */}
-            <div className="py-2 space-y-2 text-xs">
-              <div className="flex justify-between text-stone-600">
-                <span>المجموع الفرعي للأصناف:</span>
-                <span className="font-mono font-bold">{subtotal.toLocaleString()} ج.م</span>
-              </div>
+            {/* Totals Summary Table */}
+            <div className="w-full flex justify-end">
+              <table className="totals-table w-full sm:w-2/3 border-collapse text-[10.5px] text-black mr-auto">
+                <tbody>
+                  <tr>
+                    <td className="border border-black bg-stone-100 font-bold p-1.5 w-1/2">
+                      مجموع الأصناف:
+                    </td>
+                    <td className="border border-black font-mono font-bold p-1.5 text-left w-1/2">
+                      {subtotal.toLocaleString()} ج.م
+                    </td>
+                  </tr>
 
-              {discountTotal > 0 && (
-                <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
-                  <span>إجمالي الخصم الممنوح:</span>
-                  <span className="font-mono font-extrabold">-{discountTotal.toLocaleString()} ج.م</span>
-                </div>
-              )}
+                  {discountTotal > 0 && (
+                    <tr>
+                      <td className="border border-black bg-stone-100 font-bold p-1.5 text-rose-800">
+                        قيمة الخصم الممنوح:
+                      </td>
+                      <td className="border border-black font-mono font-black p-1.5 text-left text-rose-800">
+                        -{discountTotal.toLocaleString()} ج.م
+                      </td>
+                    </tr>
+                  )}
 
-              <div className="flex justify-between text-sm font-black text-stone-950 pt-2 border-t border-stone-300">
-                <span>
-                  {transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0)
-                    ? 'إجمالي قيمة المرتجع المسترد:'
-                    : 'الإجمالي النهائي المستحق:'}
-                </span>
-                <span className="font-mono text-base text-amber-800 font-black">{grandTotal.toLocaleString()} ج.م</span>
-              </div>
+                  <tr className="bg-stone-100 font-black text-black">
+                    <td className="border-2 border-black p-2 text-[11.5px] font-black">
+                      {isReturn ? 'إجمالي المرتجع المسترد:' : 'صافي القيمة المستحقة:'}
+                    </td>
+                    <td className="border-2 border-black p-2 font-mono font-black text-left text-base">
+                      {grandTotal.toLocaleString()} ج.م
+                    </td>
+                  </tr>
 
-              {transaction.splitPayments && transaction.splitPayments.length > 0 ? (
-                <div className="pt-2 border-t border-dashed border-stone-200 mt-2 space-y-1 bg-stone-100/50 p-2.5 rounded-lg border border-stone-200">
-                  <span className="text-[10px] font-bold text-stone-500 block mb-1">تفاصيل الدفع المجزأ:</span>
-                  {transaction.splitPayments.map((p, pIdx) => (
-                    <div key={pIdx} className="flex justify-between text-[11px] text-stone-800 font-medium">
-                      <span>{p.method}:</span>
-                      <span className="font-mono font-bold">{p.amount.toLocaleString()} ج.م</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                transaction.amountPaid !== undefined && transaction.amountPaid !== grandTotal && (
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dotted border-stone-200">
-                    <div className="flex justify-between text-emerald-800 bg-emerald-50/50 border border-emerald-100 px-2 py-1 rounded-md text-[10px] font-bold">
-                      <span>المدفوع:</span>
-                      <span className="font-mono">{(transaction.amountPaid || 0).toLocaleString()} ج.م</span>
-                    </div>
-                    <div className="flex justify-between text-rose-800 bg-rose-50/50 border border-rose-100 px-2 py-1 rounded-md text-[10px] font-bold">
-                      <span>المتبقي مديونية:</span>
-                      <span className="font-mono">{(transaction.amountDeferred || 0).toLocaleString()} ج.م</span>
-                    </div>
-                  </div>
-                )
-              )}
+                  {/* Split payments / Amount Paid / Deferred */}
+                  {transaction.amountPaid !== undefined && transaction.amountPaid !== grandTotal && (
+                    <>
+                      <tr>
+                        <td className="border border-black bg-stone-50 font-bold p-1 text-[9.5px]">
+                          المدفوع نقداً:
+                        </td>
+                        <td className="border border-black font-mono font-bold p-1 text-left text-[10px]">
+                          {(transaction.amountPaid || 0).toLocaleString()} ج.م
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="border border-black bg-stone-50 font-bold p-1 text-[9.5px]">
+                          المتبقي أجل / مديونية:
+                        </td>
+                        <td className="border border-black font-mono font-black p-1 text-left text-rose-700 text-[10px]">
+                          {(transaction.amountDeferred || 0).toLocaleString()} ج.م
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
             </div>
 
-            {/* Custom Footer Text */}
-            {printSettings.footerText && (
-              <div className="text-center pt-3 border-t border-dashed border-stone-300 text-[10px] text-stone-500 font-bold leading-relaxed">
-                {printSettings.footerText}
+            {/* Split payments breakdown if available */}
+            {transaction.splitPayments && transaction.splitPayments.length > 0 && (
+              <table className="w-full border border-black border-collapse text-[9.5px]">
+                <thead>
+                  <tr className="bg-stone-100 border-b border-black">
+                    <th className="border border-black p-1 text-right" colSpan={2}>
+                      تفاصيل الدفع المجزأ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transaction.splitPayments.map((p, pIdx) => (
+                    <tr key={pIdx}>
+                      <td className="border border-black p-1">{p.method}</td>
+                      <td className="border border-black p-1 font-mono font-bold text-left">
+                        {p.amount.toLocaleString()} ج.م
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Custom Footer Message */}
+            {defaultPrintSettings.footerText && (
+              <div className="text-center pt-2 border-t border-black text-[9.5px] font-bold text-stone-800">
+                {defaultPrintSettings.footerText}
               </div>
             )}
 
-            {/* Custom QR Code option */}
-            {printSettings.showQRCode !== false && (
-              <div className="flex flex-col items-center justify-center pt-3 border-t border-dashed border-stone-300">
-                <div className="w-16 h-16 bg-white border border-stone-200 p-1 rounded-lg flex items-center justify-center">
-                  <svg className="w-full h-full text-stone-900" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2,2 H8 V8 H2 Z M4,4 V6 H6 V4 Z M16,2 H22 V8 H16 Z M18,4 V6 H20 V4 Z M2,16 H8 V22 H2 Z M4,18 V20 H6 V18 Z M10,10 H14 V14 H10 Z M12,2 H14 V4 H12 Z M10,6 H12 V8 H10 Z M14,16 H16 V18 H14 Z M10,18 H12 V20 H10 Z M12,20 H14 V22 H12 Z M16,10 H18 V12 H16 Z M18,12 H20 V14 H18 Z M20,16 H22 V18 H20 Z M18,20 H20 V22 H18 Z" />
-                  </svg>
-                </div>
-                <span className="text-[8px] text-stone-400 mt-1 font-bold">فاتورة مبيعات معتمدة رقمياً</span>
-              </div>
-            )}
+            {/* Barcode & QR code of Receipt */}
+            <div className="pt-2 border-t border-dotted border-black flex flex-col items-center justify-center space-y-1">
+              <BarcodeItem
+                value={transaction.receiptNumber || '000000'}
+                height={18}
+                width={1.2}
+                fontSize={8}
+                displayValue={true}
+              />
+              {defaultPrintSettings.showQRCode !== false && (
+                <span className="text-[7.5px] text-stone-600 font-bold">
+                  فاتورة إلكترونية معتمدة بنظام نقطة البيع
+                </span>
+              )}
+            </div>
 
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Modal Actions */}
         <div className="mt-5 flex items-center space-x-2 space-x-reverse no-print">
           <button
             onClick={handlePrint}
-            className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse transition-colors shadow-lg"
+            className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse transition-colors shadow-lg active:scale-98"
           >
             <Printer className="w-4 h-4" />
-            <span>طباعة الفاتورة</span>
+            <span>
+              {receiptType === 'a4' ? 'طباعة فاتورة A4 داخل جدول' : 'طباعة الإيصال الحراري داخل جدول'}
+            </span>
           </button>
-
+          
           <button
             onClick={onClose}
-            className="py-3 px-5 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-2xl text-xs font-bold transition-colors"
+            className="px-5 py-3 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-2xl text-xs font-bold transition-colors"
           >
             إغلاق
           </button>

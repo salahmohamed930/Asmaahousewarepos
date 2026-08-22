@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Product } from '../../types';
-import { Printer, X, Tag, Info, Layers, RefreshCw, AlertTriangle, Check, Sliders } from 'lucide-react';
+import { Printer, X, Tag, Info, Layers, RefreshCw, AlertTriangle, Check, Sliders, Eye } from 'lucide-react';
 import { BarcodeItem } from '../Common/BarcodeItem';
 import { printElementById } from '../../utils/printHelper';
 
@@ -12,13 +12,16 @@ interface ProductLabelModalProps {
 }
 
 type PrintMode = 'thermal' | 'sheet';
-type LabelSize =
-  | 'thermal_1.5x1'
-  | 'thermal_2x1'
-  | 'thermal_50x30'
-  | 'thermal_1x1.5'
-  | 'sheet_a4_3col'
-  | 'sheet_a4_2col';
+type LabelPreset =
+  | '1.5x1_horizontal' // 38mm x 25mm (1.5" x 1")
+  | '1x1.5_vertical'   // 25mm x 38mm (1" x 1.5")
+  | '40x25'            // 40mm x 25mm
+  | '40x30'            // 40mm x 30mm
+  | '2x1'              // 50mm x 25mm (2" x 1")
+  | '50x30'            // 50mm x 30mm
+  | 'sheet_a4_3col'    // A4 3 columns
+  | 'sheet_a4_2col'    // A4 2 columns
+  | 'custom';          // User defined mm
 
 export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   product,
@@ -39,16 +42,21 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   const [bulkUniformCount, setBulkUniformCount] = useState<number>(1);
 
   const [showStoreName, setShowStoreName] = useState<boolean>(true);
+  const [showInstallmentPrice, setShowInstallmentPrice] = useState<boolean>(true);
   const [storeName, setStoreName] = useState<string>('أسماء للأدوات المنزلية');
   const [printMode, setPrintMode] = useState<PrintMode>('thermal');
-  const [labelSize, setLabelSize] = useState<LabelSize>('thermal_1.5x1');
+  const [labelPreset, setLabelPreset] = useState<LabelPreset>('1.5x1_horizontal');
 
-  // Initialize counts safely to 1 per product (preventing sudden massive warehouse stock prints!)
+  // Custom fine-tuning dimensions (in mm)
+  const [customWidthMm, setCustomWidthMm] = useState<number>(38);
+  const [customHeightMm, setCustomHeightMm] = useState<number>(25);
+  const [barcodeHeightScale, setBarcodeHeightScale] = useState<number>(14);
+
+  // Initialize counts safely to 1 per product (preventing sudden massive warehouse stock prints)
   useEffect(() => {
     if (isOpen && targetProducts.length > 0) {
       const initialCounts: Record<string, number> = {};
       targetProducts.forEach((p) => {
-        // Safe default: 1 sticker per item (user can easily change or click 'حسب رصيد المخزن')
         initialCounts[p.id] = 1;
       });
       setProductCounts(initialCounts);
@@ -65,66 +73,141 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
   // Dimension helpers
   const getLabelConfig = () => {
-    switch (labelSize) {
-      case 'thermal_1.5x1':
+    switch (labelPreset) {
+      case '1.5x1_horizontal': // 38mm x 25mm (1.5" x 1")
         return {
           mode: 'thermal' as PrintMode,
           pageCssSize: '38mm 25mm',
           width: '38mm',
           height: '25mm',
-          barcodeHeight: 18,
-          barcodeWidth: 1.2,
-          labelName: 'رول حراري 1.5 × 1 بوصة (38mm × 25mm)',
+          widthMm: 38,
+          heightMm: 25,
+          barcodeHeight: 12,
+          barcodeWidth: 1.05,
+          fontSizeTitle: '7.5px',
+          fontSizePrice: '8px',
+          fontSizeBarcode: 6.5,
+          labelName: '1.5 × 1 بوصة (38mm × 25mm) - أفقي شائع',
         };
-      case 'thermal_2x1':
-        return {
-          mode: 'thermal' as PrintMode,
-          pageCssSize: '50mm 25mm',
-          width: '50mm',
-          height: '25mm',
-          barcodeHeight: 22,
-          barcodeWidth: 1.3,
-          labelName: 'رول حراري 2 × 1 بوصة (50mm × 25mm)',
-        };
-      case 'thermal_50x30':
-        return {
-          mode: 'thermal' as PrintMode,
-          pageCssSize: '50mm 30mm',
-          width: '50mm',
-          height: '30mm',
-          barcodeHeight: 26,
-          barcodeWidth: 1.4,
-          labelName: 'رول حراري 50mm × 30mm',
-        };
-      case 'thermal_1x1.5':
+      case '1x1.5_vertical': // 25mm x 38mm (1" x 1.5")
         return {
           mode: 'thermal' as PrintMode,
           pageCssSize: '25mm 38mm',
           width: '25mm',
           height: '38mm',
-          barcodeHeight: 20,
+          widthMm: 25,
+          heightMm: 38,
+          barcodeHeight: 14,
+          barcodeWidth: 0.95,
+          fontSizeTitle: '7px',
+          fontSizePrice: '7.5px',
+          fontSizeBarcode: 6,
+          labelName: '1 × 1.5 بوصة (25mm × 38mm) - رأسي / طولي',
+        };
+      case '40x25':
+        return {
+          mode: 'thermal' as PrintMode,
+          pageCssSize: '40mm 25mm',
+          width: '40mm',
+          height: '25mm',
+          widthMm: 40,
+          heightMm: 25,
+          barcodeHeight: 13,
           barcodeWidth: 1.1,
-          labelName: 'رول حراري 1 × 1.5 بوصة (طولي)',
+          fontSizeTitle: '8px',
+          fontSizePrice: '8.5px',
+          fontSizeBarcode: 7,
+          labelName: 'رول حراري 40mm × 25mm',
+        };
+      case '40x30':
+        return {
+          mode: 'thermal' as PrintMode,
+          pageCssSize: '40mm 30mm',
+          width: '40mm',
+          height: '30mm',
+          widthMm: 40,
+          heightMm: 30,
+          barcodeHeight: 16,
+          barcodeWidth: 1.15,
+          fontSizeTitle: '8.5px',
+          fontSizePrice: '9px',
+          fontSizeBarcode: 7,
+          labelName: 'رول حراري 40mm × 30mm',
+        };
+      case '2x1': // 50mm x 25mm
+        return {
+          mode: 'thermal' as PrintMode,
+          pageCssSize: '50mm 25mm',
+          width: '50mm',
+          height: '25mm',
+          widthMm: 50,
+          heightMm: 25,
+          barcodeHeight: 14,
+          barcodeWidth: 1.25,
+          fontSizeTitle: '8.5px',
+          fontSizePrice: '9px',
+          fontSizeBarcode: 7,
+          labelName: '2 × 1 بوصة (50mm × 25mm)',
+        };
+      case '50x30':
+        return {
+          mode: 'thermal' as PrintMode,
+          pageCssSize: '50mm 30mm',
+          width: '50mm',
+          height: '30mm',
+          widthMm: 50,
+          heightMm: 30,
+          barcodeHeight: 18,
+          barcodeWidth: 1.3,
+          fontSizeTitle: '9px',
+          fontSizePrice: '9.5px',
+          fontSizeBarcode: 7.5,
+          labelName: 'رول حراري 50mm × 30mm',
+        };
+      case 'custom':
+        return {
+          mode: 'thermal' as PrintMode,
+          pageCssSize: `${customWidthMm}mm ${customHeightMm}mm`,
+          width: `${customWidthMm}mm`,
+          height: `${customHeightMm}mm`,
+          widthMm: customWidthMm,
+          heightMm: customHeightMm,
+          barcodeHeight: barcodeHeightScale,
+          barcodeWidth: Math.max(0.9, (customWidthMm / 38) * 1.05),
+          fontSizeTitle: customHeightMm < 26 ? '7px' : '8.5px',
+          fontSizePrice: customHeightMm < 26 ? '7.5px' : '9px',
+          fontSizeBarcode: customHeightMm < 26 ? 6 : 7,
+          labelName: `مقاس مخصص (${customWidthMm}mm × ${customHeightMm}mm)`,
         };
       case 'sheet_a4_3col':
         return {
           mode: 'sheet' as PrintMode,
           pageCssSize: 'A4 portrait',
           width: '100%',
-          height: '32mm',
-          barcodeHeight: 24,
-          barcodeWidth: 1.3,
-          labelName: 'ورق A4 مقسم (3 أعمدة - 38mm × 25mm)',
+          height: '30mm',
+          widthMm: 65,
+          heightMm: 30,
+          barcodeHeight: 16,
+          barcodeWidth: 1.2,
+          fontSizeTitle: '9px',
+          fontSizePrice: '9.5px',
+          fontSizeBarcode: 7.5,
+          labelName: 'ورق A4 مقسم (3 أعمدة - 65mm × 30mm)',
         };
       case 'sheet_a4_2col':
         return {
           mode: 'sheet' as PrintMode,
           pageCssSize: 'A4 portrait',
           width: '100%',
-          height: '42mm',
-          barcodeHeight: 30,
-          barcodeWidth: 1.5,
-          labelName: 'ورق A4 مقسم (عمودين - كبير)',
+          height: '40mm',
+          widthMm: 95,
+          heightMm: 40,
+          barcodeHeight: 22,
+          barcodeWidth: 1.4,
+          fontSizeTitle: '10px',
+          fontSizePrice: '11px',
+          fontSizeBarcode: 8.5,
+          labelName: 'ورق A4 مقسم (عمودين - 95mm × 40mm)',
         };
       default:
         return {
@@ -132,9 +215,14 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           pageCssSize: '38mm 25mm',
           width: '38mm',
           height: '25mm',
-          barcodeHeight: 18,
-          barcodeWidth: 1.2,
-          labelName: 'رول حراري قياسي',
+          widthMm: 38,
+          heightMm: 25,
+          barcodeHeight: 12,
+          barcodeWidth: 1.05,
+          fontSizeTitle: '7.5px',
+          fontSizePrice: '8px',
+          fontSizeBarcode: 6.5,
+          labelName: '1.5 × 1 بوصة (38mm × 25mm)',
         };
     }
   };
@@ -160,26 +248,38 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           size: ${config.pageCssSize} !important;
           margin: 0 !important;
         }
-        body {
+        *, *::before, *::after {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        html, body {
           margin: 0 !important;
           padding: 0 !important;
           background: #ffffff !important;
+          color: #000000 !important;
+          width: 100% !important;
         }
         .label-sticker-thermal {
           width: ${config.width} !important;
+          max-width: ${config.width} !important;
           height: ${config.height} !important;
           max-height: ${config.height} !important;
+          min-height: ${config.height} !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
           page-break-after: always !important;
           break-after: page !important;
           overflow: hidden !important;
           box-sizing: border-box !important;
-          padding: 1.5mm 2mm !important;
+          padding: 0.6mm 1mm !important;
           display: flex !important;
           flex-direction: column !important;
           justify-content: space-between !important;
+          align-items: center !important;
           text-align: center !important;
+          background: #ffffff !important;
+          color: #000000 !important;
         }
         .label-sticker-thermal:last-child {
           page-break-after: avoid !important;
@@ -294,12 +394,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-extrabold text-stone-100">
-                {isBulk ? 'طباعة ملصقات الباركود والأسعار (مجموعة)' : 'طباعة ملصق السعر والباركود'}
+                {isBulk ? 'طباعة ملصقات الباركود والأسعار (مجموعة)' : 'إعداد وطباعة ملصق السعر والباركود'}
               </h3>
               <p className="text-xs text-stone-400">
                 {isBulk
                   ? `الأصناف المحددة: ${targetProducts.length} صنف — إجمالي الملصقات: ${totalPrintCount} ملصق`
-                  : `إعداد طباعة ملصق الصنف: ${previewProduct.name}`}
+                  : `الصنف: ${previewProduct.name} | مقاس: ${config.labelName}`}
               </p>
             </div>
           </div>
@@ -319,7 +419,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               type="button"
               onClick={() => {
                 setPrintMode('thermal');
-                if (!labelSize.startsWith('thermal')) setLabelSize('thermal_1.5x1');
+                if (labelPreset.startsWith('sheet')) setLabelPreset('1.5x1_horizontal');
               }}
               className={`p-3 rounded-xl border text-xs font-bold transition-all text-right flex items-center justify-between ${
                 printMode === 'thermal'
@@ -328,8 +428,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               }`}
             >
               <div>
-                <span className="block text-sm font-extrabold">طابعة رول حراري (Thermal)</span>
-                <span className="text-[10px] text-stone-400">طابعة بكرات ملصقات (Xprinter / Zebra / Dymo)</span>
+                <span className="block text-sm font-extrabold">طابعة رول حراري (Thermal Roll)</span>
+                <span className="text-[10px] text-stone-400">بكرات الملصقات (1.5×1 بوصة / 38×25mm / Zebra / Xprinter)</span>
               </div>
               <Printer className="w-5 h-5 shrink-0" />
             </button>
@@ -338,7 +438,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               type="button"
               onClick={() => {
                 setPrintMode('sheet');
-                if (!labelSize.startsWith('sheet')) setLabelSize('sheet_a4_3col');
+                if (!labelPreset.startsWith('sheet')) setLabelPreset('sheet_a4_3col');
               }}
               className={`p-3 rounded-xl border text-xs font-bold transition-all text-right flex items-center justify-between ${
                 printMode === 'sheet'
@@ -347,14 +447,14 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               }`}
             >
               <div>
-                <span className="block text-sm font-extrabold">ورق A4 / طابعة عادية (Sheet)</span>
-                <span className="text-[10px] text-stone-400">طباعة شبكة ملصقات متجاورة على ورق A4</span>
+                <span className="block text-sm font-extrabold">ورق A4 / طابعة عادية (A4 Sheet)</span>
+                <span className="text-[10px] text-stone-400">شبكة ملصقات مقسمة على ورق ليزر أو حبر A4</span>
               </div>
               <Tag className="w-5 h-5 shrink-0" />
             </button>
           </div>
 
-          {/* Quick Count Control Panel (Prevents Accidental Giant Prints) */}
+          {/* Quick Count Control Panel */}
           <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800/80 pb-2.5">
               <div className="flex items-center space-x-2 space-x-reverse">
@@ -532,52 +632,132 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               <div className="p-2.5 bg-amber-950/50 border border-amber-700/60 rounded-xl flex items-center space-x-2 space-x-reverse text-amber-200 text-xs">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
-                  تنبيه: سيتم إرسال <strong className="text-amber-300 font-black font-mono">{totalPrintCount} ملصق</strong> إلى الطابعة. يرجى التأكد من توفر بكرة ملصقات كافية.
+                  تنبيه: سيتم إرسال <strong className="text-amber-300 font-black font-mono">{totalPrintCount} ملصق</strong> إلى الطابعة.
                 </span>
               </div>
             )}
           </div>
 
-          {/* Controls Bar: Size & Store Name */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-stone-950 border border-stone-800 p-4 rounded-2xl text-xs">
-            {/* Label Size Dropdown */}
-            <div>
-              <label className="block text-stone-300 font-bold mb-1.5">مقاس الملصق والورق</label>
-              <select
-                value={labelSize}
-                onChange={(e) => {
-                  const val = e.target.value as LabelSize;
-                  setLabelSize(val);
-                  setPrintMode(val.startsWith('thermal') ? 'thermal' : 'sheet');
-                }}
-                className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
-              >
-                {printMode === 'thermal' ? (
-                  <>
-                    <option value="thermal_1.5x1">رول حراري 1.5 × 1 بوصة (38mm × 25mm) - الشائع</option>
-                    <option value="thermal_2x1">رول حراري 2 × 1 بوصة (50mm × 25mm)</option>
-                    <option value="thermal_50x30">رول حراري 50mm × 30mm</option>
-                    <option value="thermal_1x1.5">رول حراري 1 × 1.5 بوصة (طولي 25×38mm)</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="sheet_a4_3col">ورق A4 مقسم (3 أعمدة - 38mm × 25mm)</option>
-                    <option value="sheet_a4_2col">ورق A4 مقسم (عمودين - 50mm × 30mm)</option>
-                  </>
-                )}
-              </select>
+          {/* Controls Bar: Size & Presets */}
+          <div className="bg-stone-950 border border-stone-800 p-4 rounded-2xl space-y-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Label Preset Selection */}
+              <div>
+                <label className="block text-stone-300 font-bold mb-1.5 flex items-center justify-between">
+                  <span>مقاس الملصق والورق</span>
+                  <span className="text-[10px] text-amber-400 font-mono">
+                    {config.widthMm}mm × {config.heightMm}mm
+                  </span>
+                </label>
+                <select
+                  value={labelPreset}
+                  onChange={(e) => {
+                    const val = e.target.value as LabelPreset;
+                    setLabelPreset(val);
+                    if (val.startsWith('sheet')) {
+                      setPrintMode('sheet');
+                    } else {
+                      setPrintMode('thermal');
+                    }
+                  }}
+                  className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                >
+                  {printMode === 'thermal' ? (
+                    <>
+                      <option value="1.5x1_horizontal">
+                        🎯 1.5 × 1 بوصة (38mm × 25mm) - المقاس الأكثر شيوعاً
+                      </option>
+                      <option value="1x1.5_vertical">
+                        📐 1 × 1.5 بوصة (25mm × 38mm) - مقاس طولي رأسي
+                      </option>
+                      <option value="40x25">40mm × 25mm (رول ملصقات 4 سم)</option>
+                      <option value="40x30">40mm × 30mm</option>
+                      <option value="2x1">2 × 1 بوصة (50mm × 25mm)</option>
+                      <option value="50x30">50mm × 30mm</option>
+                      <option value="custom">⚙️ تحديد مقاس مخصص يدويًا (بالمليمتر)...</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="sheet_a4_3col">ورق A4 مقسم (3 أعمدة - 65mm × 30mm)</option>
+                      <option value="sheet_a4_2col">ورق A4 مقسم (عمودين - 95mm × 40mm)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Store Name Input */}
+              <div>
+                <label className="block text-stone-300 font-bold mb-1.5">اسم المتجر بالملصق</label>
+                <input
+                  type="text"
+                  value={storeName}
+                  onChange={(e) => setStoreName(e.target.value)}
+                  placeholder="أسماء للأدوات المنزلية"
+                  className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 font-bold focus:outline-none focus:border-amber-500"
+                />
+              </div>
             </div>
 
-            {/* Header Text */}
-            <div>
-              <label className="block text-stone-300 font-bold mb-1.5">اسم المتجر بالملصق</label>
-              <input
-                type="text"
-                value={storeName}
-                onChange={(e) => setStoreName(e.target.value)}
-                placeholder="أسماء للأدوات المنزلية"
-                className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 font-bold focus:outline-none focus:border-amber-500"
-              />
+            {/* Custom Millimeter Adjuster (When 'custom' is selected or for fine-tuning) */}
+            {labelPreset === 'custom' && (
+              <div className="bg-stone-900/80 p-3 rounded-xl border border-amber-500/40 grid grid-cols-3 gap-2 animate-fade-in">
+                <div>
+                  <label className="block text-[11px] text-stone-400 mb-1">العرض (Width mm):</label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={120}
+                    value={customWidthMm}
+                    onChange={(e) => setCustomWidthMm(Math.max(15, parseInt(e.target.value) || 38))}
+                    className="w-full bg-stone-950 border border-stone-700 rounded-lg px-2 py-1 text-center font-mono font-bold text-amber-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-stone-400 mb-1">الارتفاع (Height mm):</label>
+                  <input
+                    type="number"
+                    min={15}
+                    max={150}
+                    value={customHeightMm}
+                    onChange={(e) => setCustomHeightMm(Math.max(15, parseInt(e.target.value) || 25))}
+                    className="w-full bg-stone-950 border border-stone-700 rounded-lg px-2 py-1 text-center font-mono font-bold text-amber-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-stone-400 mb-1">طول الباركود (px):</label>
+                  <input
+                    type="number"
+                    min={8}
+                    max={40}
+                    value={barcodeHeightScale}
+                    onChange={(e) => setBarcodeHeightScale(Math.max(8, parseInt(e.target.value) || 14))}
+                    className="w-full bg-stone-950 border border-stone-700 rounded-lg px-2 py-1 text-center font-mono font-bold text-amber-300"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Quick Display Toggles */}
+            <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-stone-900">
+              <label className="flex items-center space-x-2 space-x-reverse cursor-pointer text-stone-300 select-none">
+                <input
+                  type="checkbox"
+                  checked={showStoreName}
+                  onChange={(e) => setShowStoreName(e.target.checked)}
+                  className="rounded border-stone-700 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                />
+                <span className="text-[11px]">إظهار اسم المتجر أعلى الملصق</span>
+              </label>
+
+              <label className="flex items-center space-x-2 space-x-reverse cursor-pointer text-stone-300 select-none">
+                <input
+                  type="checkbox"
+                  checked={showInstallmentPrice}
+                  onChange={(e) => setShowInstallmentPrice(e.target.checked)}
+                  className="rounded border-stone-700 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                />
+                <span className="text-[11px]">إظهار سعر التقسيط بجانب الكاش</span>
+              </label>
             </div>
           </div>
 
@@ -585,10 +765,9 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           <div className="bg-amber-950/20 border border-amber-800/40 p-3 rounded-2xl flex items-start space-x-2.5 space-x-reverse text-xs text-amber-200">
             <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-0.5 text-[11px]">
-              <p className="font-bold text-amber-300">إرشادات الطباعة الدقيقة:</p>
+              <p className="font-bold text-amber-300">ملاحظة لضبط طباعة ملصقات 1*1.5 بوصة بدون ترحيل:</p>
               <p className="text-stone-300">
-                في نافذة إعدادات طباعة المتصفح (Chrome / Edge): تأكد من ضبط الهوامش (Margins) على{' '}
-                <strong className="text-amber-400 underline">بدون / None</strong> لطباعة كل ملصق في ملصقه بدقة 100%.
+                في نافذة الطباعة: اضبط الهوامش على <strong className="text-amber-300 underline">None / بلا هوامش</strong>، واختر مقاس الورق في الطابعة المطابق لـ <strong className="text-amber-300 font-mono">38mm × 25mm</strong> (أو 1.5×1 in) لتخرج كل قطعة بدقة متناهية.
               </p>
             </div>
           </div>
@@ -597,81 +776,69 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-stone-300 flex items-center space-x-1.5 space-x-reverse">
-                <Tag className="w-4 h-4 text-amber-400" />
+                <Eye className="w-4 h-4 text-amber-400" />
                 <span>
                   معاينة حية للملصق: <strong className="text-amber-300">{previewProduct.name}</strong>
                 </span>
               </span>
               <span className="text-[11px] text-stone-400">
-                سيتم إنتاج <strong className="text-amber-400 font-mono">{totalPrintCount}</strong> ملصق
+                الأبعاد الفيزيائية: <strong className="text-amber-400 font-mono">{config.widthMm}mm × {config.heightMm}mm</strong>
               </span>
             </div>
 
             {/* Sticker Preview Box */}
-            <div className="bg-stone-950 p-6 rounded-3xl border border-stone-800 flex justify-center">
+            <div className="bg-stone-950 p-6 rounded-3xl border border-stone-800 flex justify-center items-center">
               <div
-                className="bg-white text-black rounded-xl p-2 shadow-2xl border-2 border-stone-300 flex flex-col justify-between text-center select-none space-y-1 transition-all overflow-hidden box-border"
+                className="bg-white text-black rounded-lg p-1.5 shadow-2xl border-2 border-stone-400 flex flex-col justify-between items-center text-center select-none space-y-0.5 transition-all overflow-hidden box-border"
                 style={{
-                  width:
-                    labelSize === 'thermal_1.5x1' || labelSize === 'sheet_a4_3col'
-                      ? '220px'
-                      : labelSize === 'thermal_2x1' || labelSize === 'sheet_a4_2col'
-                      ? '260px'
-                      : labelSize === 'thermal_50x30'
-                      ? '240px'
-                      : '180px',
-                  height:
-                    labelSize === 'thermal_1.5x1' || labelSize === 'sheet_a4_3col'
-                      ? '140px'
-                      : labelSize === 'thermal_2x1'
-                      ? '140px'
-                      : labelSize === 'thermal_50x30' || labelSize === 'sheet_a4_2col'
-                      ? '160px'
-                      : '220px',
+                  width: `${Math.max(140, Math.min(320, config.widthMm * 4.2))}px`,
+                  height: `${Math.max(100, Math.min(260, config.heightMm * 4.2))}px`,
                 }}
               >
                 {/* Store Header */}
                 {showStoreName && (
-                  <div className="border-b border-black/20 pb-0.5">
-                    <h5 className="font-black tracking-wide text-black uppercase text-[9px] leading-none">
+                  <div className="w-full border-b border-black/25 pb-0.5">
+                    <h5 className="font-black tracking-wide text-black uppercase text-[8px] leading-tight truncate">
                       {storeName}
                     </h5>
                   </div>
                 )}
 
                 {/* Product Name */}
-                <div>
-                  <h4 className="font-black text-black leading-tight line-clamp-1 px-1 text-[11px]">
+                <div className="w-full px-0.5">
+                  <h4 className="font-black text-black leading-tight line-clamp-1 text-[10px]">
                     {previewProduct.name}
                   </h4>
                 </div>
 
                 {/* Real Vector SVG Barcode */}
-                <div className="my-0.5 py-0.5 flex flex-col items-center justify-center">
+                <div className="w-full my-0.5 py-0 flex flex-col items-center justify-center overflow-hidden">
                   <BarcodeItem
                     value={previewProduct.barcode || previewProduct.sku || '000000'}
                     height={config.barcodeHeight}
                     width={config.barcodeWidth}
-                    fontSize={8}
+                    fontSize={config.fontSizeBarcode}
                     displayValue={true}
                   />
                 </div>
 
-                {/* Prices: Cash & Installment */}
-                <div className="border-t border-black/30 pt-0.5 grid grid-cols-2 gap-1 font-black text-[9px] dir-rtl">
-                  <div className="bg-stone-100 p-0.5 rounded border border-black/10 text-right">
+                {/* Prices */}
+                <div className="w-full border-t border-black/25 pt-0.5 grid grid-cols-2 gap-1 font-black text-[8.5px] dir-rtl">
+                  <div className={`bg-stone-100 p-0.5 rounded border border-black/10 ${!showInstallmentPrice ? 'col-span-2 text-center' : 'text-right'}`}>
                     <span className="text-stone-600 block leading-none text-[6.5px]">كاش:</span>
-                    <span className="font-mono font-black text-black text-[10px]">
+                    <span className="font-mono font-black text-black text-[9.5px]">
                       {(previewProduct.priceCash || 0).toLocaleString()} ج.م
                     </span>
                   </div>
 
-                  <div className="bg-stone-100 p-0.5 rounded border border-black/10 text-left">
-                    <span className="text-stone-600 block leading-none text-[6.5px]">تقسيط:</span>
-                    <span className="font-mono font-black text-black text-[10px]">
-                      {(previewProduct.priceInstallment || 0).toLocaleString()} ج.م #
-                    </span>
-                  </div>
+                  {showInstallmentPrice && (
+                    <div className="bg-stone-100 p-0.5 rounded border border-black/10 text-left">
+                      <span className="text-stone-600 block leading-none text-[6.5px]">تقسيط:</span>
+                      <span className="font-mono font-black text-black text-[9.5px]">
+                        {(previewProduct.priceInstallment || 0).toLocaleString()} ج.م #
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -714,12 +881,14 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
             {allPrintItems.map((item, idx) => (
               <div
                 key={item.key}
-                className="label-sticker-thermal bg-white text-black flex flex-col justify-between text-center overflow-hidden box-border"
+                className="label-sticker-thermal bg-white text-black flex flex-col justify-between items-center text-center overflow-hidden box-border"
                 style={{
                   width: config.width,
+                  maxWidth: config.width,
                   height: config.height,
                   maxHeight: config.height,
-                  padding: '1mm 1.5mm',
+                  minHeight: config.height,
+                  padding: '0.6mm 1mm',
                   boxSizing: 'border-box',
                   pageBreakAfter: idx < allPrintItems.length - 1 ? 'always' : 'avoid',
                   breakAfter: idx < allPrintItems.length - 1 ? 'page' : 'avoid',
@@ -728,36 +897,47 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 }}
               >
                 {showStoreName && (
-                  <div className="font-extrabold border-b border-black/40 pb-0.5 uppercase leading-none text-[6.5px]">
+                  <div
+                    className="font-black border-b border-black/40 pb-0.5 uppercase leading-none w-full truncate"
+                    style={{ fontSize: '6.5px' }}
+                  >
                     {storeName}
                   </div>
                 )}
 
-                <div className="font-black line-clamp-1 leading-tight text-[7.5px] px-0.5">
+                <div
+                  className="font-black line-clamp-1 leading-tight w-full px-0.5"
+                  style={{ fontSize: config.fontSizeTitle }}
+                >
                   {item.product.name}
                 </div>
 
                 {/* Real SVG Barcode in Print */}
-                <div className="my-0.2 flex flex-col items-center justify-center">
+                <div className="w-full my-0.1 flex flex-col items-center justify-center overflow-hidden">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
                     width={config.barcodeWidth}
-                    fontSize={6.5}
+                    fontSize={config.fontSizeBarcode}
                     displayValue={true}
                   />
                 </div>
 
                 {/* Prices */}
-                <div className="border-t border-black/40 pt-0.5 grid grid-cols-2 gap-1 font-extrabold leading-none text-[6.5px]">
-                  <div className="text-right">
-                    <span className="text-[5px] block">كاش:</span>
+                <div
+                  className="w-full border-t border-black/40 pt-0.5 grid grid-cols-2 gap-0.5 font-extrabold leading-none"
+                  style={{ fontSize: config.fontSizePrice }}
+                >
+                  <div className={`text-right ${!showInstallmentPrice ? 'col-span-2 text-center' : ''}`}>
+                    <span className="text-[5.5px] block font-normal">كاش:</span>
                     <span className="font-mono font-black">{item.product.priceCash} ج.م</span>
                   </div>
-                  <div className="text-left">
-                    <span className="text-[5px] block">تقسيط:</span>
-                    <span className="font-mono font-black">{item.product.priceInstallment} ج.م #</span>
-                  </div>
+                  {showInstallmentPrice && (
+                    <div className="text-left">
+                      <span className="text-[5.5px] block font-normal">تقسيط:</span>
+                      <span className="font-mono font-black">{item.product.priceInstallment} ج.م #</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -766,13 +946,13 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           /* Sheet A4 Grid Mode: Multiple stickers per page in grid */
           <div
             className={`grid ${
-              labelSize === 'sheet_a4_2col' ? 'grid-cols-2 gap-3' : 'grid-cols-3 gap-2'
+              labelPreset === 'sheet_a4_2col' ? 'grid-cols-2 gap-3' : 'grid-cols-3 gap-2'
             } p-3 w-full bg-white text-black`}
           >
             {allPrintItems.map((item) => (
               <div
                 key={item.key}
-                className="bg-white text-black border border-black/80 p-2 rounded flex flex-col justify-between text-center overflow-hidden box-border"
+                className="bg-white text-black border border-black/80 p-2 rounded flex flex-col justify-between items-center text-center overflow-hidden box-border"
                 style={{
                   height: config.height,
                   maxHeight: config.height,
@@ -782,36 +962,38 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 }}
               >
                 {showStoreName && (
-                  <div className="font-extrabold border-b border-black/30 pb-0.5 uppercase leading-none text-[8px]">
+                  <div className="font-extrabold border-b border-black/30 pb-0.5 uppercase leading-none text-[8px] w-full truncate">
                     {storeName}
                   </div>
                 )}
 
-                <div className="font-black line-clamp-1 leading-tight text-[10px]">
+                <div className="font-black line-clamp-1 leading-tight text-[10px] w-full">
                   {item.product.name}
                 </div>
 
                 {/* Barcode */}
-                <div className="my-0.5 flex flex-col items-center justify-center">
+                <div className="w-full my-0.5 flex flex-col items-center justify-center">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
                     width={config.barcodeWidth}
-                    fontSize={7.5}
+                    fontSize={config.fontSizeBarcode}
                     displayValue={true}
                   />
                 </div>
 
                 {/* Prices */}
-                <div className="border-t border-black/30 pt-0.5 grid grid-cols-2 gap-1 font-extrabold leading-none text-[9px]">
-                  <div className="text-right">
+                <div className="w-full border-t border-black/30 pt-0.5 grid grid-cols-2 gap-1 font-extrabold leading-none text-[9px]">
+                  <div className={`text-right ${!showInstallmentPrice ? 'col-span-2 text-center' : ''}`}>
                     <span className="text-[7px] block">كاش:</span>
                     <span className="font-mono font-black">{item.product.priceCash} ج.م</span>
                   </div>
-                  <div className="text-left">
-                    <span className="text-[7px] block">تقسيط:</span>
-                    <span className="font-mono font-black">{item.product.priceInstallment} ج.م #</span>
-                  </div>
+                  {showInstallmentPrice && (
+                    <div className="text-left">
+                      <span className="text-[7px] block">تقسيط:</span>
+                      <span className="font-mono font-black">{item.product.priceInstallment} ج.م #</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

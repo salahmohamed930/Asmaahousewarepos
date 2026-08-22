@@ -862,6 +862,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         priceTier: item.selectedPriceTier || globalPriceTier,
         unitPrice,
         totalPrice: lineNetTotal,
+        discountAmount: lineDiscount,
+        discountPercent: item.discountPercent || 0,
         assignedAssociateId: item.assignedAssociateId,
       };
     });
@@ -1067,6 +1069,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         priceTier: item.selectedPriceTier || globalPriceTier,
         unitPrice,
         totalPrice: lineNetTotal,
+        discountAmount: lineDiscount,
+        discountPercent: item.discountPercent || 0,
         assignedAssociateId: item.assignedAssociateId,
       };
     });

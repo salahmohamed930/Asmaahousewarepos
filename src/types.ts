@@ -121,6 +121,8 @@ export interface TransactionItem {
   priceTier: PriceTier;
   unitPrice: number;
   totalPrice: number;
+  discountAmount?: number;
+  discountPercent?: number;
   assignedAssociateId?: string;
 }
 

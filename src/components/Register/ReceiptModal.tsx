@@ -328,29 +328,39 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               <table className="receipt-items-table w-full border-collapse text-[10px] text-black font-black">
                 <thead>
                   <tr className="bg-stone-200/90 font-black border-y-2 border-black text-black">
-                    <th className="py-1 px-1 text-right w-[46%] font-black">الصنف</th>
-                    <th className="py-1 px-1 text-center w-[18%] font-black">السعر</th>
-                    <th className="py-1 px-1 text-center w-[16%] font-black">الكميه</th>
-                    <th className="py-1 px-1 text-left w-[20%] font-black">الاجمالي</th>
+                    <th className="py-1 px-1 text-right w-[38%] font-black">الصنف</th>
+                    <th className="py-1 px-1 text-center w-[16%] font-black">السعر</th>
+                    <th className="py-1 px-1 text-center w-[14%] font-black">الكميه</th>
+                    <th className="py-1 px-1 text-center w-[14%] font-black">الخصم</th>
+                    <th className="py-1 px-1 text-left w-[18%] font-black">الاجمالي</th>
                   </tr>
                 </thead>
                 <tbody className="font-black">
-                  {transaction.items.map((item, idx) => (
-                    <tr key={idx} className="leading-tight">
-                      <td className="py-1 px-1 text-right align-top font-black text-[10px] text-black">
-                        {item.productName}
-                      </td>
-                      <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
-                        {formatPrice(item.unitPrice)}
-                      </td>
-                      <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
-                        {formatPrice(item.quantity)}
-                      </td>
-                      <td className="py-1 px-1 text-left align-top font-mono font-black text-[10px] text-black">
-                        {formatPrice(item.totalPrice)}
-                      </td>
-                    </tr>
-                  ))}
+                  {transaction.items.map((item, idx) => {
+                    const itemDiscount = item.discountAmount !== undefined
+                      ? item.discountAmount
+                      : Math.max(0, (item.unitPrice * item.quantity) - item.totalPrice);
+
+                    return (
+                      <tr key={idx} className="leading-tight">
+                        <td className="py-1 px-1 text-right align-top font-black text-[10px] text-black">
+                          {item.productName}
+                        </td>
+                        <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
+                          {formatPrice(item.unitPrice)}
+                        </td>
+                        <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
+                          {formatPrice(item.quantity)}
+                        </td>
+                        <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
+                          {itemDiscount > 0 ? formatPrice(itemDiscount) : '0'}
+                        </td>
+                        <td className="py-1 px-1 text-left align-top font-mono font-black text-[10px] text-black">
+                          {formatPrice(item.totalPrice)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

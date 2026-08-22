@@ -100,7 +100,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
           background: #ffffff !important;
           color: #000000 !important;
           font-family: 'Cairo', system-ui, -apple-system, sans-serif !important;
-          font-size: ${receiptType === 'a4' ? '11px' : '9.5px'} !important;
+          font-size: ${receiptType === 'a4' ? '11.5px' : '10px'} !important;
+          font-weight: 800 !important;
         }
         #printable-receipt {
           padding: ${receiptType === 'a4' ? '12mm 15mm' : '2mm 3mm'} !important;
@@ -110,23 +111,27 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
           background: #ffffff !important;
           color: #000000 !important;
           font-family: 'Cairo', system-ui, -apple-system, sans-serif !important;
-          font-size: ${receiptType === 'a4' ? '11px' : '9.5px'} !important;
+          font-size: ${receiptType === 'a4' ? '11.5px' : '10px'} !important;
+          font-weight: 800 !important;
           line-height: 1.35 !important;
         }
         table.receipt-items-table {
           width: 100% !important;
           border-collapse: collapse !important;
           margin: 6px 0 !important;
+          font-weight: 800 !important;
         }
         table.receipt-items-table thead tr {
-          background-color: #e5e7eb !important;
-          border-top: 1px solid #000000 !important;
-          border-bottom: 1px solid #000000 !important;
+          background-color: #d1d5db !important;
+          border-top: 1.5px solid #000000 !important;
+          border-bottom: 1.5px solid #000000 !important;
+          font-weight: 900 !important;
         }
         table.receipt-items-table th, table.receipt-items-table td {
           padding: 3px 2px !important;
           color: #000000 !important;
-          font-size: ${receiptType === 'a4' ? '10.5px' : '9px'} !important;
+          font-size: ${receiptType === 'a4' ? '11px' : '9.5px'} !important;
+          font-weight: 800 !important;
         }
       `,
     });
@@ -152,7 +157,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               padding: 0 !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
-              font-size: ${receiptType === 'a4' ? '11px' : '9.5px'} !important;
+              font-size: ${receiptType === 'a4' ? '11.5px' : '10px'} !important;
+              font-weight: 800 !important;
               font-family: 'Cairo', system-ui, sans-serif !important;
             }
             body * {
@@ -183,20 +189,24 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               padding: 4px !important;
               margin: 0 auto !important;
               border: none !important;
-              font-size: ${receiptType === 'a4' ? '11px' : '9.5px'} !important;
+              font-size: ${receiptType === 'a4' ? '11.5px' : '10px'} !important;
+              font-weight: 800 !important;
             }
             table.receipt-items-table {
               border-collapse: collapse !important;
               width: 100% !important;
+              font-weight: 800 !important;
             }
             table.receipt-items-table thead tr {
-              background-color: #e5e7eb !important;
-              border-top: 1px solid #000000 !important;
-              border-bottom: 1px solid #000000 !important;
+              background-color: #d1d5db !important;
+              border-top: 1.5px solid #000000 !important;
+              border-bottom: 1.5px solid #000000 !important;
+              font-weight: 900 !important;
             }
             table.receipt-items-table th, table.receipt-items-table td {
               padding: 3px 2px !important;
-              font-size: ${receiptType === 'a4' ? '10.5px' : '9px'} !important;
+              font-size: ${receiptType === 'a4' ? '11px' : '9.5px'} !important;
+              font-weight: 800 !important;
             }
             .no-print {
               display: none !important;
@@ -263,8 +273,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
             id="printable-receipt" 
             className={`bg-white text-black rounded-2xl p-5 font-sans shadow-2xl mx-auto space-y-2.5 ${
               receiptType === 'a4' 
-                ? 'w-full max-w-3xl min-h-[600px] border-2 border-stone-300 text-[11px]' 
-                : 'max-w-md w-full border border-stone-200 text-[9.5px]'
+                ? 'w-full max-w-3xl min-h-[600px] border-2 border-stone-300 text-[11.5px] font-extrabold' 
+                : 'max-w-md w-full border border-stone-200 text-[10px] font-extrabold'
             }`}
           >
             
@@ -274,69 +284,69 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 {defaultPrintSettings.headerText || 'أسماء للأدوات المنزليه'}
               </h1>
               {defaultPrintSettings.address && (
-                <p className="text-[9.5px] text-black font-semibold leading-tight">
+                <p className="text-[10px] text-black font-extrabold leading-tight">
                   {defaultPrintSettings.address}
                 </p>
               )}
               {defaultPrintSettings.phoneNumbers && (
-                <p className="text-[10px] text-black font-mono font-bold leading-tight" dir="ltr">
+                <p className="text-[10.5px] text-black font-mono font-black leading-tight" dir="ltr">
                   {defaultPrintSettings.phoneNumbers}
                 </p>
               )}
             </div>
 
             {/* 2. Metadata Section (Right-aligned key-value list with colons) */}
-            <div className="text-[10px] leading-relaxed space-y-1 font-bold text-black text-right pt-1">
+            <div className="text-[10.5px] leading-relaxed space-y-1 font-black text-black text-right pt-1">
               <div>
-                <span>رقم الفاتوره : </span>
-                <span className="font-mono font-bold text-black">{transaction.receiptNumber}</span>
+                <span className="font-extrabold">رقم الفاتوره : </span>
+                <span className="font-mono font-black text-black">{transaction.receiptNumber}</span>
               </div>
               <div>
-                <span>نوع الفاتوره : </span>
-                <span className="font-bold text-black">{getPaymentTypeName(transaction.paymentMethod)}</span>
+                <span className="font-extrabold">نوع الفاتوره : </span>
+                <span className="font-black text-black">{getPaymentTypeName(transaction.paymentMethod)}</span>
               </div>
               <div>
-                <span>حالة الفاتوره : </span>
-                <span className="font-bold text-black">{isReturn ? 'مرتجع' : 'بيع'}</span>
+                <span className="font-extrabold">حالة الفاتوره : </span>
+                <span className="font-black text-black">{isReturn ? 'مرتجع' : 'بيع'}</span>
               </div>
               <div>
-                <span>تاريخ الفاتوره : </span>
-                <span className="font-mono font-bold text-black">{formatReceiptDate(transaction.timestamp)}</span>
+                <span className="font-extrabold">تاريخ الفاتوره : </span>
+                <span className="font-mono font-black text-black">{formatReceiptDate(transaction.timestamp)}</span>
               </div>
               <div>
-                <span>الساعه : </span>
-                <span className="font-mono font-bold text-black">{formatReceiptTime(transaction.timestamp)}</span>
+                <span className="font-extrabold">الساعه : </span>
+                <span className="font-mono font-black text-black">{formatReceiptTime(transaction.timestamp)}</span>
               </div>
               <div>
-                <span>اسم الكاشير : </span>
-                <span className="font-bold text-black">{sellerName}</span>
+                <span className="font-extrabold">اسم الكاشير : </span>
+                <span className="font-black text-black">{sellerName}</span>
               </div>
             </div>
 
             {/* 3. Items Section (Shaded header, no vertical lines, clean columns) */}
             <div className="w-full my-1">
-              <table className="receipt-items-table w-full border-collapse text-[9.5px] text-black font-bold">
+              <table className="receipt-items-table w-full border-collapse text-[10px] text-black font-black">
                 <thead>
-                  <tr className="bg-stone-200/90 font-black border-y border-black text-black">
+                  <tr className="bg-stone-200/90 font-black border-y-2 border-black text-black">
                     <th className="py-1 px-1 text-right w-[46%] font-black">الصنف</th>
                     <th className="py-1 px-1 text-center w-[18%] font-black">السعر</th>
                     <th className="py-1 px-1 text-center w-[16%] font-black">الكميه</th>
                     <th className="py-1 px-1 text-left w-[20%] font-black">الاجمالي</th>
                   </tr>
                 </thead>
-                <tbody className="font-bold">
+                <tbody className="font-black">
                   {transaction.items.map((item, idx) => (
                     <tr key={idx} className="leading-tight">
-                      <td className="py-1 px-1 text-right align-top font-bold text-[9.5px] text-black">
+                      <td className="py-1 px-1 text-right align-top font-black text-[10px] text-black">
                         {item.productName}
                       </td>
-                      <td className="py-1 px-1 text-center align-top font-mono text-[9.5px] text-black">
+                      <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
                         {formatPrice(item.unitPrice)}
                       </td>
-                      <td className="py-1 px-1 text-center align-top font-mono text-[9.5px] text-black">
+                      <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black">
                         {formatPrice(item.quantity)}
                       </td>
-                      <td className="py-1 px-1 text-left align-top font-mono font-black text-[9.5px] text-black">
+                      <td className="py-1 px-1 text-left align-top font-mono font-black text-[10px] text-black">
                         {formatPrice(item.totalPrice)}
                       </td>
                     </tr>
@@ -346,23 +356,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
             </div>
 
             {/* 4. Totals Summary (Right-aligned, matching the image format) */}
-            <div className="pt-2 text-[11px] font-bold text-black text-right space-y-1">
+            <div className="pt-2 text-[11.5px] font-black text-black text-right space-y-1">
               <div>
-                <span>الاجمالي : </span>
+                <span className="font-extrabold">الاجمالي : </span>
                 <span className="font-mono font-black">{formatPrice(grandTotal)}</span>
               </div>
               {discountTotal > 0 && (
                 <div>
-                  <span>الخصم : </span>
+                  <span className="font-extrabold">الخصم : </span>
                   <span className="font-mono font-black">{formatPrice(discountTotal)}</span>
                 </div>
               )}
               <div>
-                <span>المدفوع : </span>
+                <span className="font-extrabold">المدفوع : </span>
                 <span className="font-mono font-black">{formatPrice(transaction.amountPaid ?? grandTotal)}</span>
               </div>
               <div>
-                <span>المتبقي : </span>
+                <span className="font-extrabold">المتبقي : </span>
                 <span className="font-mono font-black">{formatPrice(transaction.amountDeferred ?? 0)}</span>
               </div>
             </div>
@@ -372,8 +382,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               {/* Facebook QR Code */}
               {defaultPrintSettings.showQRCode !== false && (
                 <div className="flex flex-col items-start space-y-1">
-                  <span className="text-[10px] font-bold text-black font-sans">FaceBook</span>
-                  <div className="p-0.5 bg-white border border-black/30 rounded">
+                  <span className="text-[10px] font-black text-black font-sans">FaceBook</span>
+                  <div className="p-0.5 bg-white border border-black rounded">
                     <QRCodeSVG
                       value={defaultPrintSettings.facebookUrl || 'https://facebook.com'}
                       size={68}
@@ -384,11 +394,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               )}
 
               {/* Thank You Note */}
-              <div className="text-center font-bold text-black space-y-0.5 pb-1">
-                <p className="text-[11px] font-bold leading-tight">
+              <div className="text-center font-black text-black space-y-0.5 pb-1">
+                <p className="text-[11.5px] font-black leading-tight">
                   {defaultPrintSettings.footerText || 'شكرا و دائما فى خدمتكم'}
                 </p>
-                <p className="text-[10px] font-sans font-bold leading-tight" dir="ltr">
+                <p className="text-[10.5px] font-sans font-black leading-tight" dir="ltr">
                   {defaultPrintSettings.footerSubText || 'visit us again'}
                 </p>
               </div>

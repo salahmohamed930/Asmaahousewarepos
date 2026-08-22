@@ -102,8 +102,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 16,
-          barcodeWidth: 1.3,
+          barcodeHeight: 17,
+          barcodeWidth: 1.4,
           fontSizeHeader: '8.5px',
           fontSizeTitle: '10px',
           fontSizePrice: '11px',
@@ -118,8 +118,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '38mm',
           widthMm: 25,
           heightMm: 38,
-          barcodeHeight: 22,
-          barcodeWidth: 1.15,
+          barcodeHeight: 24,
+          barcodeWidth: 1.25,
           fontSizeHeader: '8.5px',
           fontSizeTitle: '9.5px',
           fontSizePrice: '11px',
@@ -134,8 +134,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 40,
           heightMm: 25,
-          barcodeHeight: 17,
-          barcodeWidth: 1.35,
+          barcodeHeight: 18,
+          barcodeWidth: 1.45,
           fontSizeHeader: '9px',
           fontSizeTitle: '10.5px',
           fontSizePrice: '11.5px',
@@ -150,8 +150,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 40,
           heightMm: 30,
-          barcodeHeight: 20,
-          barcodeWidth: 1.4,
+          barcodeHeight: 22,
+          barcodeWidth: 1.5,
           fontSizeHeader: '9.5px',
           fontSizeTitle: '11px',
           fontSizePrice: '12px',
@@ -166,8 +166,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 50,
           heightMm: 25,
-          barcodeHeight: 18,
-          barcodeWidth: 1.55,
+          barcodeHeight: 19,
+          barcodeWidth: 1.65,
           fontSizeHeader: '9.5px',
           fontSizeTitle: '11px',
           fontSizePrice: '12.5px',
@@ -182,8 +182,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 50,
           heightMm: 30,
-          barcodeHeight: 22,
-          barcodeWidth: 1.6,
+          barcodeHeight: 24,
+          barcodeWidth: 1.7,
           fontSizeHeader: '10px',
           fontSizeTitle: '12px',
           fontSizePrice: '13px',
@@ -198,8 +198,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: `${customHeightMm}mm`,
           widthMm: customWidthMm,
           heightMm: customHeightMm,
-          barcodeHeight: Math.max(14, barcodeHeightScale),
-          barcodeWidth: Math.max(1.1, (customWidthMm / 38) * 1.3),
+          barcodeHeight: Math.max(16, barcodeHeightScale),
+          barcodeWidth: Math.max(1.2, (customWidthMm / 38) * 1.4),
           fontSizeHeader: customHeightMm < 26 ? '8.5px' : '9.5px',
           fontSizeTitle: customHeightMm < 26 ? '10px' : '11.5px',
           fontSizePrice: customHeightMm < 26 ? '11.5px' : '13px',
@@ -214,8 +214,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 65,
           heightMm: 30,
-          barcodeHeight: 20,
-          barcodeWidth: 1.4,
+          barcodeHeight: 22,
+          barcodeWidth: 1.5,
           fontSizeHeader: '9.5px',
           fontSizeTitle: '12px',
           fontSizePrice: '13px',
@@ -230,8 +230,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '40mm',
           widthMm: 95,
           heightMm: 40,
-          barcodeHeight: 26,
-          barcodeWidth: 1.7,
+          barcodeHeight: 28,
+          barcodeWidth: 1.8,
           fontSizeHeader: '11px',
           fontSizeTitle: '13px',
           fontSizePrice: '14px',
@@ -246,8 +246,8 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 16,
-          barcodeWidth: 1.3,
+          barcodeHeight: 17,
+          barcodeWidth: 1.4,
           fontSizeHeader: '8.5px',
           fontSizeTitle: '10px',
           fontSizePrice: '11px',
@@ -838,7 +838,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 {/* Store Header (Optional) */}
                 {showStoreName && (
                   <div className="w-full border-b border-black/30 pb-0.5">
-                    <h5 className="font-bold tracking-wide text-black text-[9px] leading-tight truncate">
+                    <h5 className="font-black tracking-wide text-black text-[9.5px] leading-tight truncate">
                       {storeName}
                     </h5>
                   </div>
@@ -846,13 +846,13 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
                 {/* Product Name */}
                 <div className="w-full px-0.5 pt-0.5">
-                  <h4 className="font-bold text-black leading-tight text-[11px] line-clamp-1">
+                  <h4 className="font-black text-black leading-tight text-[11px] line-clamp-1">
                     {previewProduct.name}
                   </h4>
                 </div>
 
-                {/* Real Vector SVG Barcode & Code Underneath */}
-                <div className="w-full my-0.5 py-0 flex flex-col items-center justify-center">
+                {/* Real Vector SVG Barcode & Code Underneath (tight spacing) */}
+                <div className="w-full my-0 py-0 flex flex-col items-center justify-center space-y-0">
                   <BarcodeItem
                     value={previewProduct.barcode || previewProduct.sku || '000000'}
                     height={config.barcodeHeight}
@@ -862,7 +862,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-tight pt-0.5"
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
                       style={{ fontSize: `${config.fontSizeBarcode}px` }}
                     >
                       {previewProduct.sku || previewProduct.barcode || '000000'}
@@ -871,7 +871,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices: Exact match to user photo */}
-                <div className="w-full flex flex-col items-center justify-center font-bold text-black leading-tight space-y-0.5 pb-0.5">
+                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5">
                   <div className="text-[12px] font-black text-black">
                     <span>السعر : </span>
                     <span className="font-mono mx-1">{formatStickerPrice(previewProduct.priceCash)}</span>
@@ -942,7 +942,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               >
                 {showStoreName && (
                   <div
-                    className="font-bold border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
+                    className="font-black border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
                     style={{ fontSize: config.fontSizeHeader }}
                   >
                     {storeName}
@@ -950,14 +950,14 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 )}
 
                 <div
-                  className="font-bold line-clamp-1 leading-tight w-full px-0.5"
+                  className="font-black line-clamp-1 leading-tight w-full px-0.5"
                   style={{ fontSize: config.fontSizeTitle }}
                 >
                   {item.product.name}
                 </div>
 
-                {/* Real SVG Barcode & Code Underneath in Print */}
-                <div className="w-full my-0.5 flex flex-col items-center justify-center">
+                {/* Real SVG Barcode & Code Underneath in Print (tight spacing) */}
+                <div className="w-full my-0 flex flex-col items-center justify-center space-y-0">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
@@ -967,7 +967,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-tight pt-0.5"
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
                       style={{ fontSize: `${config.fontSizeBarcode}px` }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
@@ -976,7 +976,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices: Exact match to user photo */}
-                <div className="w-full flex flex-col items-center justify-center font-bold text-black leading-tight space-y-0.5 pb-0.5">
+                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5">
                   <div style={{ fontSize: config.fontSizePrice }}>
                     <span>السعر : </span>
                     <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
@@ -985,7 +985,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
-                      className="font-mono font-bold text-black"
+                      className="font-mono font-black text-black"
                       style={{ fontSize: `calc(${config.fontSizePrice} - 1px)` }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}
@@ -1016,7 +1016,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               >
                 {showStoreName && (
                   <div
-                    className="font-bold border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
+                    className="font-black border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
                     style={{ fontSize: config.fontSizeHeader }}
                   >
                     {storeName}
@@ -1024,14 +1024,14 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 )}
 
                 <div
-                  className="font-bold line-clamp-1 leading-tight w-full px-0.5"
+                  className="font-black line-clamp-1 leading-tight w-full px-0.5"
                   style={{ fontSize: config.fontSizeTitle }}
                 >
                   {item.product.name}
                 </div>
 
-                {/* Barcode & Code Underneath */}
-                <div className="w-full my-0.5 flex flex-col items-center justify-center">
+                {/* Barcode & Code Underneath (tight spacing) */}
+                <div className="w-full my-0 flex flex-col items-center justify-center space-y-0">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
@@ -1041,7 +1041,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-tight pt-0.5"
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-0.5"
                       style={{ fontSize: `${config.fontSizeBarcode}px` }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
@@ -1050,7 +1050,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices */}
-                <div className="w-full flex flex-col items-center justify-center font-bold text-black leading-tight space-y-0.5 pb-0.5">
+                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5">
                   <div style={{ fontSize: config.fontSizePrice }}>
                     <span>السعر : </span>
                     <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
@@ -1059,7 +1059,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
-                      className="font-mono font-bold text-black"
+                      className="font-mono font-black text-black"
                       style={{ fontSize: `calc(${config.fontSizePrice} - 1px)` }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}

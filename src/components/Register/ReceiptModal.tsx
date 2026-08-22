@@ -2,6 +2,8 @@ import React from 'react';
 import { Transaction } from '../../types';
 import { Printer, X, ShoppingBag, Sparkles, User, Hash } from 'lucide-react';
 import { usePOS } from '../../context/POSContext';
+import { printElementById } from '../../utils/printHelper';
+import { BarcodeItem } from '../Common/BarcodeItem';
 
 interface ReceiptModalProps {
   transaction: Transaction | null;
@@ -12,8 +14,28 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   const { associates, settings } = usePOS();
   if (!transaction) return null;
 
+  const printSettings = settings?.printSettings || {
+    headerText: 'أسماء للأدوات المنزلية',
+    footerText: 'شكرًا لزيارتكم! نسعد دائمًا بخدمتكم.',
+    showSellerCode: true,
+    showQRCode: true,
+    showLogo: true,
+    receiptType: 'thermal' as const
+  };
+
   const handlePrint = () => {
-    window.print();
+    printElementById('printable-receipt', {
+      pageTitle: `فاتورة-${transaction.receiptNumber}`,
+      isThermalReceipt: printSettings.receiptType !== 'a4',
+      pageCssSize: printSettings.receiptType === 'a4' ? 'A4 portrait' : '80mm auto',
+      customStyles: `
+        #printable-receipt {
+          padding: 8px 12px;
+          margin: 0 auto;
+          max-width: ${printSettings.receiptType === 'a4' ? '100%' : '80mm'};
+        }
+      `,
+    });
   };
 
   const primaryAssoc = associates.find(
@@ -25,52 +47,59 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   const discountTotal = transaction.discountTotal || 0;
   const grandTotal = transaction.grandTotal || subtotal - discountTotal;
 
-  const printSettings = settings?.printSettings || {
-    headerText: 'أسماء للأدوات المنزلية',
-    footerText: 'شكرًا لزيارتكم! نسعد دائمًا بخدمتكم.',
-    showSellerCode: true,
-    showQRCode: true,
-    showLogo: true,
-    receiptType: 'thermal' as const
-  };
-
   return (
     <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto dir-rtl">
       <div className={`bg-stone-900 border border-stone-800 rounded-3xl w-full p-6 shadow-2xl relative text-stone-100 my-8 transition-all ${
         printSettings.receiptType === 'a4' ? 'max-w-4xl' : 'max-w-md'
       }`}>
         
-        {/* Style block for perfect physical print scaling */}
+        {/* Style block for perfect physical print scaling without blank page bug */}
         <style>{`
           @media print {
-            body {
+            @page {
+              margin: 4mm;
+              size: ${printSettings.receiptType === 'a4' ? 'A4 portrait' : '80mm auto'} !important;
+            }
+            html, body {
               background: white !important;
               color: black !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
             }
-            /* Hide absolute everything else */
-            body > * {
-              display: none !important;
+            body * {
+              visibility: hidden !important;
             }
-            /* Show only the target receipt wrapper and force full height/width */
             #printable-receipt-wrap, #printable-receipt-wrap * {
-              display: block !important;
               visibility: visible !important;
             }
-            #printable-receipt {
+            #printable-receipt-wrap {
               position: absolute !important;
               left: 0 !important;
               top: 0 !important;
               width: 100% !important;
-              max-width: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: white !important;
+              display: block !important;
+            }
+            #printable-receipt {
+              position: relative !important;
+              left: auto !important;
+              top: auto !important;
+              width: 100% !important;
+              max-width: ${printSettings.receiptType === 'a4' ? '100%' : '80mm'} !important;
               box-shadow: none !important;
               background: white !important;
               color: black !important;
-              padding: 10px !important;
-              margin: 0 !important;
+              padding: 8px !important;
+              margin: 0 auto !important;
               border: none !important;
             }
             .no-print {
               display: none !important;
+              visibility: hidden !important;
             }
           }
         `}</style>

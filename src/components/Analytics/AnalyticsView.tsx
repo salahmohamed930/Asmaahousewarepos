@@ -23,6 +23,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { ClosedShift, Transaction } from '../../types';
+import { printElementById } from '../../utils/printHelper';
 
 export const AnalyticsView: React.FC = () => {
   const {
@@ -1381,9 +1382,22 @@ export const AnalyticsView: React.FC = () => {
             <div className="flex gap-2.5 pt-2">
               <button
                 onClick={() => {
-                  window.print();
+                  printElementById('shift-print-receipt', {
+                    pageTitle: `محضر-إغلاق-وردية-${selectedShiftToPrint.associateName}`,
+                    isThermalReceipt: true,
+                    pageCssSize: '80mm auto',
+                    customStyles: `
+                      #shift-print-receipt {
+                        padding: 10px 14px;
+                        max-width: 80mm;
+                        margin: 0 auto;
+                        font-family: monospace;
+                        font-size: 11px;
+                      }
+                    `,
+                  });
                 }}
-                className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse"
+                className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold flex items-center justify-center space-x-2 space-x-reverse shadow-lg shadow-amber-950/40"
               >
                 <Printer className="w-4 h-4" />
                 <span>طباعة المحضر</span>

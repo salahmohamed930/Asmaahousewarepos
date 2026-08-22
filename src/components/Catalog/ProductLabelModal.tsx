@@ -41,11 +41,19 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   const [selectedPreviewId, setSelectedPreviewId] = useState<string>('');
   const [bulkUniformCount, setBulkUniformCount] = useState<number>(1);
 
-  const [showStoreName, setShowStoreName] = useState<boolean>(true);
+  const [showStoreName, setShowStoreName] = useState<boolean>(false);
   const [showInstallmentPrice, setShowInstallmentPrice] = useState<boolean>(true);
   const [storeName, setStoreName] = useState<string>('أسماء للأدوات المنزلية');
   const [printMode, setPrintMode] = useState<PrintMode>('thermal');
   const [labelPreset, setLabelPreset] = useState<LabelPreset>('1.5x1_horizontal');
+
+  // Format price helper matching thermal barcode sticker standard (e.g., "520.0")
+  const formatStickerPrice = (val: number | string | undefined): string => {
+    if (val === undefined || val === null || val === '') return '0.0';
+    const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/,/g, ''));
+    if (isNaN(num)) return String(val);
+    return Number.isInteger(num) ? `${num}.0` : num.toFixed(1);
+  };
 
   // Custom fine-tuning dimensions (in mm)
   const [customWidthMm, setCustomWidthMm] = useState<number>(38);
@@ -82,11 +90,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 12,
-          barcodeWidth: 1.05,
-          fontSizeTitle: '7.5px',
-          fontSizePrice: '8px',
-          fontSizeBarcode: 6.5,
+          barcodeHeight: 10,
+          barcodeWidth: 1.0,
+          fontSizeHeader: '8px',
+          fontSizeTitle: '10px',
+          fontSizePrice: '11.5px',
+          fontSizeBarcode: 7.5,
           labelName: '1.5 × 1 بوصة (38mm × 25mm) - أفقي شائع',
         };
       case '1x1.5_vertical': // 25mm x 38mm (1" x 1.5")
@@ -97,11 +106,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '38mm',
           widthMm: 25,
           heightMm: 38,
-          barcodeHeight: 14,
+          barcodeHeight: 12,
           barcodeWidth: 0.95,
-          fontSizeTitle: '7px',
-          fontSizePrice: '7.5px',
-          fontSizeBarcode: 6,
+          fontSizeHeader: '8px',
+          fontSizeTitle: '9.5px',
+          fontSizePrice: '11px',
+          fontSizeBarcode: 7,
           labelName: '1 × 1.5 بوصة (25mm × 38mm) - رأسي / طولي',
         };
       case '40x25':
@@ -112,11 +122,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 40,
           heightMm: 25,
-          barcodeHeight: 13,
-          barcodeWidth: 1.1,
-          fontSizeTitle: '8px',
-          fontSizePrice: '8.5px',
-          fontSizeBarcode: 7,
+          barcodeHeight: 11,
+          barcodeWidth: 1.05,
+          fontSizeHeader: '8.5px',
+          fontSizeTitle: '10.5px',
+          fontSizePrice: '12px',
+          fontSizeBarcode: 8,
           labelName: 'رول حراري 40mm × 25mm',
         };
       case '40x30':
@@ -127,11 +138,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 40,
           heightMm: 30,
-          barcodeHeight: 16,
-          barcodeWidth: 1.15,
-          fontSizeTitle: '8.5px',
-          fontSizePrice: '9px',
-          fontSizeBarcode: 7,
+          barcodeHeight: 13,
+          barcodeWidth: 1.1,
+          fontSizeHeader: '9px',
+          fontSizeTitle: '11px',
+          fontSizePrice: '12.5px',
+          fontSizeBarcode: 8,
           labelName: 'رول حراري 40mm × 30mm',
         };
       case '2x1': // 50mm x 25mm
@@ -142,11 +154,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 50,
           heightMm: 25,
-          barcodeHeight: 14,
-          barcodeWidth: 1.25,
-          fontSizeTitle: '8.5px',
-          fontSizePrice: '9px',
-          fontSizeBarcode: 7,
+          barcodeHeight: 12,
+          barcodeWidth: 1.2,
+          fontSizeHeader: '9px',
+          fontSizeTitle: '11px',
+          fontSizePrice: '13px',
+          fontSizeBarcode: 8,
           labelName: '2 × 1 بوصة (50mm × 25mm)',
         };
       case '50x30':
@@ -157,11 +170,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 50,
           heightMm: 30,
-          barcodeHeight: 18,
-          barcodeWidth: 1.3,
-          fontSizeTitle: '9px',
-          fontSizePrice: '9.5px',
-          fontSizeBarcode: 7.5,
+          barcodeHeight: 15,
+          barcodeWidth: 1.25,
+          fontSizeHeader: '9.5px',
+          fontSizeTitle: '12px',
+          fontSizePrice: '13.5px',
+          fontSizeBarcode: 8.5,
           labelName: 'رول حراري 50mm × 30mm',
         };
       case 'custom':
@@ -174,9 +188,10 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           heightMm: customHeightMm,
           barcodeHeight: barcodeHeightScale,
           barcodeWidth: Math.max(0.9, (customWidthMm / 38) * 1.05),
-          fontSizeTitle: customHeightMm < 26 ? '7px' : '8.5px',
-          fontSizePrice: customHeightMm < 26 ? '7.5px' : '9px',
-          fontSizeBarcode: customHeightMm < 26 ? 6 : 7,
+          fontSizeHeader: customHeightMm < 26 ? '8px' : '9px',
+          fontSizeTitle: customHeightMm < 26 ? '10px' : '11.5px',
+          fontSizePrice: customHeightMm < 26 ? '11.5px' : '13px',
+          fontSizeBarcode: customHeightMm < 26 ? 7.5 : 8.5,
           labelName: `مقاس مخصص (${customWidthMm}mm × ${customHeightMm}mm)`,
         };
       case 'sheet_a4_3col':
@@ -187,11 +202,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 65,
           heightMm: 30,
-          barcodeHeight: 16,
+          barcodeHeight: 14,
           barcodeWidth: 1.2,
-          fontSizeTitle: '9px',
-          fontSizePrice: '9.5px',
-          fontSizeBarcode: 7.5,
+          fontSizeHeader: '9.5px',
+          fontSizeTitle: '12px',
+          fontSizePrice: '13px',
+          fontSizeBarcode: 8.5,
           labelName: 'ورق A4 مقسم (3 أعمدة - 65mm × 30mm)',
         };
       case 'sheet_a4_2col':
@@ -202,11 +218,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '40mm',
           widthMm: 95,
           heightMm: 40,
-          barcodeHeight: 22,
-          barcodeWidth: 1.4,
-          fontSizeTitle: '10px',
-          fontSizePrice: '11px',
-          fontSizeBarcode: 8.5,
+          barcodeHeight: 18,
+          barcodeWidth: 1.35,
+          fontSizeHeader: '11px',
+          fontSizeTitle: '13.5px',
+          fontSizePrice: '14.5px',
+          fontSizeBarcode: 9.5,
           labelName: 'ورق A4 مقسم (عمودين - 95mm × 40mm)',
         };
       default:
@@ -217,11 +234,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 12,
-          barcodeWidth: 1.05,
-          fontSizeTitle: '7.5px',
-          fontSizePrice: '8px',
-          fontSizeBarcode: 6.5,
+          barcodeHeight: 10,
+          barcodeWidth: 1.0,
+          fontSizeHeader: '8px',
+          fontSizeTitle: '10px',
+          fontSizePrice: '11.5px',
+          fontSizeBarcode: 7.5,
           labelName: '1.5 × 1 بوصة (38mm × 25mm)',
         };
     }
@@ -789,29 +807,29 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
             {/* Sticker Preview Box */}
             <div className="bg-stone-950 p-6 rounded-3xl border border-stone-800 flex justify-center items-center">
               <div
-                className="bg-white text-black rounded-lg p-1.5 shadow-2xl border-2 border-stone-400 flex flex-col justify-between items-center text-center select-none space-y-0.5 transition-all overflow-hidden box-border"
+                className="bg-white text-black rounded-lg p-2.5 shadow-2xl border border-stone-300 flex flex-col justify-between items-center text-center select-none space-y-0.5 transition-all overflow-hidden box-border"
                 style={{
-                  width: `${Math.max(140, Math.min(320, config.widthMm * 4.2))}px`,
-                  height: `${Math.max(100, Math.min(260, config.heightMm * 4.2))}px`,
+                  width: `${Math.max(160, Math.min(320, config.widthMm * 4.4))}px`,
+                  height: `${Math.max(110, Math.min(240, config.heightMm * 4.4))}px`,
                 }}
               >
-                {/* Store Header */}
+                {/* Store Header (Optional) */}
                 {showStoreName && (
-                  <div className="w-full border-b border-black/25 pb-0.5">
-                    <h5 className="font-black tracking-wide text-black uppercase text-[8px] leading-tight truncate">
+                  <div className="w-full border-b border-black/30 pb-0.5">
+                    <h5 className="font-bold tracking-wide text-black text-[9px] leading-tight truncate">
                       {storeName}
                     </h5>
                   </div>
                 )}
 
                 {/* Product Name */}
-                <div className="w-full px-0.5">
-                  <h4 className="font-black text-black leading-tight line-clamp-1 text-[10px]">
+                <div className="w-full px-0.5 pt-0.5">
+                  <h4 className="font-bold text-black leading-tight text-[11px] line-clamp-1">
                     {previewProduct.name}
                   </h4>
                 </div>
 
-                {/* Real Vector SVG Barcode */}
+                {/* Real Vector SVG Barcode & Number */}
                 <div className="w-full my-0.5 py-0 flex flex-col items-center justify-center overflow-hidden">
                   <BarcodeItem
                     value={previewProduct.barcode || previewProduct.sku || '000000'}
@@ -822,21 +840,17 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                 </div>
 
-                {/* Prices */}
-                <div className="w-full border-t border-black/25 pt-0.5 grid grid-cols-2 gap-1 font-black text-[8.5px] dir-rtl">
-                  <div className={`bg-stone-100 p-0.5 rounded border border-black/10 ${!showInstallmentPrice ? 'col-span-2 text-center' : 'text-right'}`}>
-                    <span className="text-stone-600 block leading-none text-[6.5px]">كاش:</span>
-                    <span className="font-mono font-black text-black text-[9.5px]">
-                      {(previewProduct.priceCash || 0).toLocaleString()} ج.م
-                    </span>
+                {/* Prices: Exact match to user photo */}
+                <div className="w-full flex flex-col items-center justify-center font-bold text-black leading-tight space-y-0.5 pb-0.5">
+                  <div className="text-[12px] font-black text-black">
+                    <span>السعر : </span>
+                    <span className="font-mono mx-1">{formatStickerPrice(previewProduct.priceCash)}</span>
+                    <span>ج</span>
                   </div>
 
-                  {showInstallmentPrice && (
-                    <div className="bg-stone-100 p-0.5 rounded border border-black/10 text-left">
-                      <span className="text-stone-600 block leading-none text-[6.5px]">تقسيط:</span>
-                      <span className="font-mono font-black text-black text-[9.5px]">
-                        {(previewProduct.priceInstallment || 0).toLocaleString()} ج.م #
-                      </span>
+                  {showInstallmentPrice && (previewProduct.priceInstallment !== undefined && previewProduct.priceInstallment !== null) && (
+                    <div className="text-[11px] font-mono font-black text-black">
+                      #{formatStickerPrice(previewProduct.priceInstallment)}
                     </div>
                   )}
                 </div>
@@ -888,7 +902,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   height: config.height,
                   maxHeight: config.height,
                   minHeight: config.height,
-                  padding: '0.6mm 1mm',
+                  padding: '0.8mm 1.2mm',
                   boxSizing: 'border-box',
                   pageBreakAfter: idx < allPrintItems.length - 1 ? 'always' : 'avoid',
                   breakAfter: idx < allPrintItems.length - 1 ? 'page' : 'avoid',
@@ -898,22 +912,22 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               >
                 {showStoreName && (
                   <div
-                    className="font-black border-b border-black/40 pb-0.5 uppercase leading-none w-full truncate"
-                    style={{ fontSize: '6.5px' }}
+                    className="font-bold border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
+                    style={{ fontSize: config.fontSizeHeader }}
                   >
                     {storeName}
                   </div>
                 )}
 
                 <div
-                  className="font-black line-clamp-1 leading-tight w-full px-0.5"
+                  className="font-bold line-clamp-1 leading-tight w-full px-0.5"
                   style={{ fontSize: config.fontSizeTitle }}
                 >
                   {item.product.name}
                 </div>
 
                 {/* Real SVG Barcode in Print */}
-                <div className="w-full my-0.1 flex flex-col items-center justify-center overflow-hidden">
+                <div className="w-full my-0.5 flex flex-col items-center justify-center overflow-hidden">
                   <BarcodeItem
                     value={item.product.barcode || item.product.sku || '000000'}
                     height={config.barcodeHeight}
@@ -923,19 +937,20 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                 </div>
 
-                {/* Prices */}
-                <div
-                  className="w-full border-t border-black/40 pt-0.5 grid grid-cols-2 gap-0.5 font-extrabold leading-none"
-                  style={{ fontSize: config.fontSizePrice }}
-                >
-                  <div className={`text-right ${!showInstallmentPrice ? 'col-span-2 text-center' : ''}`}>
-                    <span className="text-[5.5px] block font-normal">كاش:</span>
-                    <span className="font-mono font-black">{item.product.priceCash} ج.م</span>
+                {/* Prices: Exact match to user photo */}
+                <div className="w-full flex flex-col items-center justify-center font-bold text-black leading-tight space-y-0.5 pb-0.5">
+                  <div style={{ fontSize: config.fontSizePrice }}>
+                    <span>السعر : </span>
+                    <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
+                    <span>ج</span>
                   </div>
-                  {showInstallmentPrice && (
-                    <div className="text-left">
-                      <span className="text-[5.5px] block font-normal">تقسيط:</span>
-                      <span className="font-mono font-black">{item.product.priceInstallment} ج.م #</span>
+
+                  {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
+                    <div
+                      className="font-mono font-bold text-black"
+                      style={{ fontSize: `calc(${config.fontSizePrice} - 1px)` }}
+                    >
+                      #{formatStickerPrice(item.product.priceInstallment)}
                     </div>
                   )}
                 </div>
@@ -952,7 +967,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
             {allPrintItems.map((item) => (
               <div
                 key={item.key}
-                className="bg-white text-black border border-black/80 p-2 rounded flex flex-col justify-between items-center text-center overflow-hidden box-border"
+                className="bg-white text-black border border-stone-400 p-2 rounded flex flex-col justify-between items-center text-center overflow-hidden box-border"
                 style={{
                   height: config.height,
                   maxHeight: config.height,
@@ -962,12 +977,18 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 }}
               >
                 {showStoreName && (
-                  <div className="font-extrabold border-b border-black/30 pb-0.5 uppercase leading-none text-[8px] w-full truncate">
+                  <div
+                    className="font-bold border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
+                    style={{ fontSize: config.fontSizeHeader }}
+                  >
                     {storeName}
                   </div>
                 )}
 
-                <div className="font-black line-clamp-1 leading-tight text-[10px] w-full">
+                <div
+                  className="font-bold line-clamp-1 leading-tight w-full px-0.5"
+                  style={{ fontSize: config.fontSizeTitle }}
+                >
                   {item.product.name}
                 </div>
 
@@ -983,15 +1004,19 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices */}
-                <div className="w-full border-t border-black/30 pt-0.5 grid grid-cols-2 gap-1 font-extrabold leading-none text-[9px]">
-                  <div className={`text-right ${!showInstallmentPrice ? 'col-span-2 text-center' : ''}`}>
-                    <span className="text-[7px] block">كاش:</span>
-                    <span className="font-mono font-black">{item.product.priceCash} ج.م</span>
+                <div className="w-full flex flex-col items-center justify-center font-bold text-black leading-tight space-y-0.5 pb-0.5">
+                  <div style={{ fontSize: config.fontSizePrice }}>
+                    <span>السعر : </span>
+                    <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
+                    <span>ج</span>
                   </div>
-                  {showInstallmentPrice && (
-                    <div className="text-left">
-                      <span className="text-[7px] block">تقسيط:</span>
-                      <span className="font-mono font-black">{item.product.priceInstallment} ج.م #</span>
+
+                  {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
+                    <div
+                      className="font-mono font-bold text-black"
+                      style={{ fontSize: `calc(${config.fontSizePrice} - 1px)` }}
+                    >
+                      #{formatStickerPrice(item.product.priceInstallment)}
                     </div>
                   )}
                 </div>

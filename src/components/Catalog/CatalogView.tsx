@@ -22,7 +22,16 @@ import {
 } from 'lucide-react';
 
 export const CatalogView: React.FC = () => {
-  const { products, addProduct, updateProduct, refreshDataFromSupabase, settings } = usePOS();
+  const {
+    products,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    bulkDeleteProducts,
+    clearAllProducts,
+    refreshDataFromSupabase,
+    settings,
+  } = usePOS();
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
@@ -307,6 +316,26 @@ export const CatalogView: React.FC = () => {
     setIsBulkModalOpen(false);
   };
 
+  const handleDeleteProduct = async (p: Product) => {
+    if (window.confirm(`هل أنت متأكد من حذف الصنف "${p.name}"؟ سيتم حذفه من قاعدة البيانات أيضاً.`)) {
+      await deleteProduct(p.id);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (window.confirm(`هل أنت متأكد من حذف ${selectedProductIds.length} صنف محدد؟ سيتم حذفها نهائياً من قاعدة البيانات.`)) {
+      await bulkDeleteProducts(selectedProductIds);
+      setSelectedProductIds([]);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (window.confirm('تنبيه هام: هل أنت متأكد من مسح وتفريغ جميع الأصناف بالكامل؟\nسيتم تفريغ السجل المحلي ومسح الأصناف في قاعدة البيانات.')) {
+      await clearAllProducts();
+      setSelectedProductIds([]);
+    }
+  };
+
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -337,7 +366,7 @@ export const CatalogView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 space-x-reverse">
+        <div className="flex items-center space-x-2 space-x-reverse flex-wrap gap-y-2">
           <button
             onClick={async () => {
               setIsRefreshing(true);
@@ -351,6 +380,17 @@ export const CatalogView: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>{isRefreshing ? 'جاري المزامنة...' : 'مزامنة من قاعدة البيانات'}</span>
           </button>
+
+          {products.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="py-2 px-3.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-all"
+              title="مسح وتفريغ جميع الأصناف"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>تفريغ كافة الأصناف</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -593,6 +633,14 @@ export const CatalogView: React.FC = () => {
                             <Edit className="w-3 h-3" />
                             <span>تعديل</span>
                           </button>
+                          <button
+                            onClick={() => handleDeleteProduct(p)}
+                            className="px-2 py-0.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                            title="حذف الصنف نهائياً"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>حذف</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -600,10 +648,32 @@ export const CatalogView: React.FC = () => {
                 })}
               </tbody>
             </table>
+            {filteredProducts.length === 0 && (
+              <div className="py-12 text-center text-stone-400 space-y-2">
+                <Package className="w-10 h-10 mx-auto text-stone-600 stroke-1" />
+                <p className="text-sm font-bold text-stone-300">لا توجد أصناف معروضة حالياً</p>
+                <p className="text-xs text-stone-500">
+                  {products.length === 0 
+                    ? 'قاعدة البيانات فارغة من الأصناف. يمكنك إضافة أصناف جديدة بالضغط على "إضافة صنف جديد" أو "إضافة أصناف متعددة".'
+                    : 'لا توجد نتائج تطابق البحث أو التصنيف المحدد.'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       ) : (
         /* Grid Layout Cards */
+        filteredProducts.length === 0 ? (
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl py-12 text-center text-stone-400 space-y-2">
+            <Package className="w-10 h-10 mx-auto text-stone-600 stroke-1" />
+            <p className="text-sm font-bold text-stone-300">لا توجد أصناف معروضة حالياً</p>
+            <p className="text-xs text-stone-500">
+              {products.length === 0 
+                ? 'قاعدة البيانات فارغة من الأصناف. يمكنك إضافة أصناف جديدة بالضغط على "إضافة صنف جديد".'
+                : 'لا توجد نتائج تطابق البحث أو التصنيف المحدد.'}
+            </p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
           {filteredProducts.map((p) => {
             const isLow = p.stock <= 5;
@@ -686,21 +756,29 @@ export const CatalogView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                <div className="grid grid-cols-3 gap-1 pt-1">
                   <button
                     onClick={() => setLabelProduct(p)}
-                    className="py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                    className="py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
                     title="طباعة ملصق السعر والباركود"
                   >
-                    <Printer className="w-3 h-3" />
+                    <Printer className="w-2.5 h-2.5" />
                     <span>ملصق</span>
                   </button>
                   <button
                     onClick={() => handleOpenEdit(p)}
-                    className="py-1 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                    className="py-1 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
                   >
-                    <Edit className="w-3 h-3" />
+                    <Edit className="w-2.5 h-2.5" />
                     <span>تعديل</span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProduct(p)}
+                    className="py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                    title="حذف الصنف"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                    <span>حذف</span>
                   </button>
                 </div>
 
@@ -708,6 +786,7 @@ export const CatalogView: React.FC = () => {
             );
           })}
         </div>
+        )
       )}
 
       {/* Add/Edit Product Modal */}
@@ -1062,6 +1141,15 @@ export const CatalogView: React.FC = () => {
             >
               <Edit className="w-3.5 h-3.5 text-stone-400" />
               <span>تعديل جماعي</span>
+            </button>
+
+            <button
+              onClick={handleBulkDelete}
+              className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold rounded-xl transition-colors flex items-center space-x-1.5 space-x-reverse"
+              title="حذف الأصناف المحددة نهائياً"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>حذف المحدد ({selectedProductIds.length})</span>
             </button>
 
             <button

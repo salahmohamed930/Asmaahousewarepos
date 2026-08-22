@@ -26,13 +26,13 @@ export const SettingsView: React.FC = () => {
     testDbConnection,
     transactions,
     closedShifts,
-    syncUnsyncedItems
+    syncUnsyncedItems,
+    refreshDataFromSupabase,
+    clearAllProducts,
   } = usePOS();
   const [newCategory, setNewCategory] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const [dbUrl, setDbUrl] = useState(settings.supabaseUrl || '');
-  const [dbAnonKey, setDbAnonKey] = useState(settings.supabaseAnonKey || '');
   const [diagnosticResult, setDiagnosticResult] = useState<{ success?: boolean; msg?: string } | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
@@ -41,49 +41,27 @@ export const SettingsView: React.FC = () => {
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  const handleSaveDatabase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUrl = dbUrl.trim();
-    const cleanKey = dbAnonKey.trim();
-
-    if (!cleanUrl || !cleanKey) {
-      alert('الرجاء إدخال رابط قاعدة البيانات ومفتاح الـ anon بشكل صحيح.');
-      return;
-    }
-
-    updateSettings({
-      supabaseUrl: cleanUrl,
-      supabaseAnonKey: cleanKey,
-    });
-    
-    triggerSuccess('تم حفظ إعدادات قاعدة البيانات المخصصة وجاري محاولة الاتصال...');
-  };
-
-  const handleResetDatabase = () => {
-    if (confirm('هل أنت متأكد من إلغاء الربط المخصص والعودة لقاعدة البيانات الافتراضية؟')) {
-      updateSettings({
-        supabaseUrl: undefined,
-        supabaseAnonKey: undefined,
-      });
-      setDbUrl('');
-      setDbAnonKey('');
-      setDiagnosticResult(null);
-      triggerSuccess('تمت إعادة ضبط قاعدة البيانات إلى الافتراضية بنجاح.');
-    }
-  };
-
   const handleDiagnoseConnection = async () => {
     setIsDiagnosing(true);
     setDiagnosticResult(null);
     try {
       const res = await testDbConnection();
       if (res.success) {
-        setDiagnosticResult({ success: true, msg: 'اتصال سليم! تمكن النظام من الاتصال بقاعدة البيانات وقراءة الجداول.' });
+        setDiagnosticResult({
+          success: true,
+          msg: 'الاتصال بقاعدة البيانات يعمل بنجاح! تم التحقق من الجداول ومزامنة السيرفر.',
+        });
       } else {
-        setDiagnosticResult({ success: false, msg: `فشل الاتصال: ${res.errorMessage || 'تأكد من صحة المفاتيح والجداول.'}` });
+        setDiagnosticResult({
+          success: false,
+          msg: `فشل الاتصال: ${res.errorMessage || 'تعذر الوصول إلى قاعدة بيانات Supabase. يرجى التحقق من الشبكة.'}`,
+        });
       }
     } catch (err: any) {
-      setDiagnosticResult({ success: false, msg: `حدث خطأ أثناء الفحص: ${err?.message || String(err)}` });
+      setDiagnosticResult({
+        success: false,
+        msg: `خطأ غير متوقع: ${err?.message || String(err)}`,
+      });
     } finally {
       setIsDiagnosing(false);
     }
@@ -440,18 +418,18 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* SECTION 6: Supabase Database Settings & Diagnostics */}
+          {/* SECTION 6: Supabase Database Status & Diagnostics (Locked Configuration) */}
           <div className="bg-stone-900 border border-stone-800 rounded-2xl p-4 shadow-md">
             <h2 className="text-sm font-black text-amber-500 mb-3 flex items-center space-x-2 space-x-reverse">
               <Database className="w-4 h-4 text-amber-500" />
-              <span>الربط مع قاعدة بيانات Supabase</span>
+              <span>قاعدة البيانات السحابية (Supabase)</span>
             </h2>
-            <p className="text-[11px] text-stone-400 mb-4">
-              يمكنك ربط تطبيق الكاشير بقاعدة بيانات Supabase الخاصة بك لضمان الحفظ والمزامنة السحابية الدائمة والمباشرة للمنتجات والموظفين والمبيعات.
+            <p className="text-[11px] text-stone-400 mb-3">
+              التطبيق مقترن مباشرة مع قاعدة البيانات السحابية المركزية المعتمدة للمؤسسة. يتم عرض واستدعاء البيانات الفعلية المخزنة فقط.
             </p>
 
             {/* Current Status Banner */}
-            <div className={`p-3 rounded-xl border mb-4 text-xs ${
+            <div className={`p-3 rounded-xl border mb-3 text-xs ${
               dbStatus.isChecking
                 ? 'bg-amber-950/30 border-amber-800/60 text-amber-300'
                 : dbStatus.isConnected
@@ -461,7 +439,7 @@ export const SettingsView: React.FC = () => {
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-bold flex items-center space-x-1.5 space-x-reverse">
                   <Database className="w-3.5 h-3.5" />
-                  <span>حالة الاتصال الحالية:</span>
+                  <span>حالة الاتصال السحابي:</span>
                 </span>
                 <span className="font-mono px-2 py-0.5 rounded text-[10px] bg-stone-950 font-bold">
                   {dbStatus.isChecking ? 'جاري الفحص...' : dbStatus.isConnected ? 'متصل بنجاح' : 'غير متصل / خطأ'}
@@ -469,77 +447,29 @@ export const SettingsView: React.FC = () => {
               </div>
               <p className="text-[10px] leading-relaxed">
                 {dbStatus.isChecking
-                  ? 'جاري محاولة الاتصال بقاعدة البيانات وفحص سلامة المزامنة...'
+                  ? 'جاري فحص الاتصال ومطابقة البيانات مع السيرفر السحابي...'
                   : dbStatus.isConnected
-                    ? 'الربط نشط حالياً. جميع العمليات والمبيعات تتم مزامنتها تلقائياً بالخلفية.'
-                    : `تنبيه: لا توجد استجابة من قاعدة البيانات. تفاصيل الخطأ: ${dbStatus.errorMessage || 'فشل الاتصال. تأكد من إعدادات الجداول أو الاتصال بالشبكة.'}`}
+                    ? 'الربط السحابي نشط ومعتمد. لا يسمح بتغيير قاعدة البيانات لضمان دقة وسلامة القيود.'
+                    : `تنبيه: لا توجد استجابة من قاعدة البيانات. تفاصيل الخطأ: ${dbStatus.errorMessage || 'فشل الاتصال. يرجى التحقق من اتصال الإنترنت.'}`}
               </p>
             </div>
 
-            {/* Config Form */}
-            <form onSubmit={handleSaveDatabase} className="space-y-4">
-              <div>
-                <label className="block text-stone-400 text-xs mb-1 font-bold">رابط قاعدة البيانات (Supabase URL):</label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://xxxx.supabase.co"
-                  value={dbUrl}
-                  onChange={(e) => setDbUrl(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-mono font-bold text-left"
-                  dir="ltr"
-                />
-              </div>
-
-              <div>
-                <label className="block text-stone-400 text-xs mb-1 font-bold">مفتاح الوصول العام (Anon/Public API Key):</label>
-                <textarea
-                  required
-                  rows={2}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  value={dbAnonKey}
-                  onChange={(e) => setDbAnonKey(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-mono text-[10px] leading-normal text-left"
-                  dir="ltr"
-                />
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>حفظ وإعادة الاتصال</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDiagnoseConnection}
-                  disabled={isDiagnosing}
-                  className="px-4 py-2 bg-stone-800 hover:bg-stone-750 text-stone-200 border border-stone-700/60 rounded-xl text-xs font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50"
-                >
-                  <RotateCcw className={`w-3.5 h-3.5 ${isDiagnosing ? 'animate-spin' : ''}`} />
-                  <span>{isDiagnosing ? 'جاري الفحص...' : 'فحص الاتصال (Test)'}</span>
-                </button>
-              </div>
-
-              {/* Reset to Default Button */}
-              {dbStatus.isCustom && (
-                <button
-                  type="button"
-                  onClick={handleResetDatabase}
-                  className="w-full mt-2 px-3 py-1.5 bg-stone-950 hover:bg-rose-950/20 text-stone-400 hover:text-rose-400 border border-stone-850 hover:border-rose-900 rounded-xl text-[10px] font-bold transition-colors"
-                >
-                  إعادة تعيين إلى قاعدة البيانات الافتراضية
-                </button>
-              )}
-            </form>
+            {/* Test Connection Button */}
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={handleDiagnoseConnection}
+                disabled={isDiagnosing || dbStatus.isChecking}
+                className="w-full px-4 py-2 bg-stone-800 hover:bg-stone-750 text-stone-200 border border-stone-700/60 rounded-xl text-xs font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isDiagnosing ? 'animate-spin' : ''}`} />
+                <span>{isDiagnosing ? 'جاري فحص الاتصال...' : 'اختبار الاتصال بقاعدة البيانات'}</span>
+              </button>
+            </div>
 
             {/* Diagnostic Result */}
             {diagnosticResult && (
-              <div className={`mt-3 p-2.5 rounded-lg border text-[11px] font-bold flex items-start space-x-1.5 space-x-reverse ${
+              <div className={`mb-3 p-2.5 rounded-lg border text-[11px] font-bold flex items-start space-x-1.5 space-x-reverse ${
                 diagnosticResult.success
                   ? 'bg-emerald-950/50 border-emerald-900/60 text-emerald-400'
                   : 'bg-rose-950/50 border-rose-900/60 text-rose-400'
@@ -550,7 +480,7 @@ export const SettingsView: React.FC = () => {
             )}
 
             {/* Sync Queue Monitor */}
-            <div className="mt-4 pt-4 border-t border-stone-850">
+            <div className="mt-3 pt-3 border-t border-stone-850">
               <h3 className="text-xs font-bold text-stone-300 mb-2 flex items-center space-x-1.5 space-x-reverse">
                 <Sliders className="w-3.5 h-3.5 text-amber-500" />
                 <span>مراقبة حالة مزامنة البيانات</span>
@@ -592,7 +522,7 @@ export const SettingsView: React.FC = () => {
                   return (
                     <div className="space-y-2">
                       <div className="bg-rose-950/20 border border-rose-900/40 p-2 rounded-xl text-[10px] text-rose-300 leading-relaxed font-bold">
-                        تنبيه: هناك ({totalP}) سجلات (فواتير/ورديات) معلقة ومحفوظة محلياً فقط ولم ترفع إلى قاعدة البيانات السحابية بعد.
+                        تنبيه: هناك ({totalP}) عمليات معلقة في الذاكرة لم ترفع إلى السحابة بعد.
                       </div>
                       <button
                         type="button"
@@ -616,11 +546,41 @@ export const SettingsView: React.FC = () => {
                   return (
                     <div className="bg-emerald-950/20 border border-emerald-900/40 p-2.5 rounded-xl text-[10px] text-emerald-400 leading-relaxed font-bold flex items-center space-x-2 space-x-reverse">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                      <span>جميع البيانات متزامنة ومحفوظة سحابياً بنجاح! ✨</span>
+                      <span>جميع البيانات مطابقة ومتزامنة مع قاعدة البيانات السحابية. ✨</span>
                     </div>
                   );
                 }
               })()}
+
+              <div className="mt-3 pt-3 border-t border-stone-850 space-y-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await refreshDataFromSupabase();
+                    triggerSuccess(`تمت المزامنة بنجاح! تم تحميل البيانات الفعلية من قاعدة البيانات.`);
+                  }}
+                  className="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+                  <span>تحديث وجلب البيانات مباشرة من Supabase</span>
+                </button>
+
+                {products.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm('هل أنت متأكد من مسح كافة الأصناف بالكامل من قاعدة البيانات؟')) {
+                        await clearAllProducts();
+                        triggerSuccess('تم تفريغ ومسح جميع الأصناف من قاعدة البيانات بنجاح.');
+                      }
+                    }}
+                    className="w-full py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>مسح وتفريغ قائمة الأصناف من قاعدة البيانات ({products.length} صنف)</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

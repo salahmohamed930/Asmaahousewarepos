@@ -19,9 +19,7 @@ import {
 } from '../types';
 import {
   INITIAL_ASSOCIATES,
-  INITIAL_PRODUCTS,
   INITIAL_CUSTOMERS,
-  INITIAL_TRANSACTIONS,
   INITIAL_SUPPLIERS,
   INITIAL_SUPPLIER_TRANSACTIONS,
 } from '../data/initialData';
@@ -36,7 +34,8 @@ import {
   syncExpenseToSupabase,
   checkSupabaseConnection,
 } from '../lib/supabaseSync';
-import { supabase, updateSupabaseClient, getSupabaseKeys } from '../lib/supabase';
+import { supabase, FIXED_SUPABASE_CONFIG } from '../lib/supabase';
+
 
 
 interface POSContextType {
@@ -104,6 +103,9 @@ interface POSContextType {
   // Catalog & Customer Management
   addProduct: (prod: Omit<Product, 'id'>) => void;
   updateProduct: (prod: Product) => void;
+  deleteProduct: (productId: string) => Promise<void>;
+  bulkDeleteProducts: (productIds: string[]) => Promise<void>;
+  clearAllProducts: () => Promise<void>;
   bulkUpdateProducts: (productIds: string[], updates: Partial<Product>) => void;
   addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Customer;
   updateCustomer: (cust: Customer) => void;
@@ -144,7 +146,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_products`);
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
@@ -154,7 +156,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_transactions`);
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [closedShifts, setClosedShifts] = useState<ClosedShift[]>(() => {
@@ -274,18 +276,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isChecking: boolean;
     errorMessage?: string;
     isCustom: boolean;
-  }>(() => {
-    try {
-      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
-      const parsed = saved ? JSON.parse(saved) : null;
-      return {
-        isConnected: false,
-        isChecking: true,
-        isCustom: !!(parsed?.supabaseUrl && parsed?.supabaseAnonKey),
-      };
-    } catch {
-      return { isConnected: false, isChecking: true, isCustom: false };
-    }
+  }>({
+    isConnected: false,
+    isChecking: true,
+    isCustom: false,
   });
 
   const testDbConnection = async () => {
@@ -303,31 +297,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateSettings = (newSettings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => {
     setSettings((prev) => {
       const resolved = typeof newSettings === 'function' ? newSettings(prev) : { ...prev, ...newSettings };
-      
-      // If custom Supabase settings were changed, update the client
-      if (resolved.supabaseUrl !== prev.supabaseUrl || resolved.supabaseAnonKey !== prev.supabaseAnonKey) {
-        if (resolved.supabaseUrl && resolved.supabaseAnonKey) {
-          updateSupabaseClient(resolved.supabaseUrl, resolved.supabaseAnonKey);
-          setDbStatus((p) => ({ ...p, isCustom: true }));
-          setTimeout(() => {
-            testDbConnection();
-            loadFromSupabase();
-          }, 100);
-        } else if (!resolved.supabaseUrl && !resolved.supabaseAnonKey) {
-          // Revert to default keys
-          const keys = getSupabaseKeys();
-          updateSupabaseClient(keys.url, keys.anonKey);
-          setDbStatus((p) => ({ ...p, isCustom: false }));
-          setTimeout(() => {
-            testDbConnection();
-            loadFromSupabase();
-          }, 100);
-        }
-      }
-      
       return resolved;
     });
   };
+
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_associates`, JSON.stringify(associates));
@@ -356,42 +329,49 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         errorMessage: undefined,
       }));
 
-      if (prodData && prodData.length > 0) {
-        const mappedProducts: Product[] = prodData.map((p: any) => ({
-          id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
-          name: p.name || 'منتج',
-          sku: String(p.sku ?? p.id ?? 'SKU-000'),
-          barcode: String(p.barcode || p.sku || p.id || '000000'),
-          category: p.category || 'عام',
-          priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
-          priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
-          priceWholesale: Number(p.priceWholesale ?? p.wholesale_price ?? p.price_wholesale ?? p.wholesalePrice ?? 0),
-          cost: Number(p.cost ?? p.cost_price ?? p.cost_cash ?? p.purchase_price ?? p.buy_price ?? 0),
-          stock: Number(
-            p.stock_quantity ??
-            p.quantity ??
-            p.qty ??
-            p.stock ??
-            p.stock_qty ??
-            p.quantity_in_stock ??
-            p.inventory ??
-            p.count ??
-            p.amount ??
-            0
-          ),
-          image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
-          description: p.description || '',
-          barcodes: Array.isArray(p.barcodes) 
-            ? p.barcodes.map(String) 
-            : typeof p.barcodes === 'string' 
-              ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-              : typeof p.alternative_barcodes === 'string'
-                ? p.alternative_barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-                : Array.isArray(p.alternative_barcodes)
-                  ? p.alternative_barcodes.map(String)
-                  : [],
-        }));
-        setProducts(mappedProducts);
+      if (prodData && Array.isArray(prodData)) {
+        if (prodData.length > 0) {
+          const mappedProducts: Product[] = prodData.map((p: any) => ({
+            id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
+            name: p.name || 'منتج',
+            sku: String(p.sku ?? p.id ?? 'SKU-000'),
+            barcode: String(p.barcode || p.sku || p.id || '000000'),
+            category: p.category || 'عام',
+            priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
+            priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
+            priceWholesale: Number(p.priceWholesale ?? p.wholesale_price ?? p.price_wholesale ?? p.wholesalePrice ?? 0),
+            cost: Number(p.cost ?? p.cost_price ?? p.cost_cash ?? p.purchase_price ?? p.buy_price ?? 0),
+            stock: Number(
+              p.stock_quantity ??
+              p.quantity ??
+              p.qty ??
+              p.stock ??
+              p.stock_qty ??
+              p.quantity_in_stock ??
+              p.inventory ??
+              p.count ??
+              p.amount ??
+              0
+            ),
+            image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
+            description: p.description || '',
+            barcodes: Array.isArray(p.barcodes) 
+              ? p.barcodes.map(String) 
+              : typeof p.barcodes === 'string' 
+                ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+                : typeof p.alternative_barcodes === 'string'
+                  ? p.alternative_barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+                  : Array.isArray(p.alternative_barcodes)
+                    ? p.alternative_barcodes.map(String)
+                    : [],
+          }));
+          setProducts(mappedProducts);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(mappedProducts));
+        } else {
+          // Table in Supabase is empty (0 products) - sync empty state
+          setProducts([]);
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify([]));
+        }
       }
 
       // 2. Fetch associates from Supabase
@@ -544,8 +524,6 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             prev.forEach((tx) => {
               if (!tx.isSynced) {
                 map.set(tx.id, { ...tx, isSynced: false });
-              } else {
-                map.set(tx.id, { ...tx, isSynced: true });
               }
             });
             return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -553,6 +531,51 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } catch (txErr) {
         console.warn('Transactions table might be missing or not created yet in Supabase:', txErr);
+      }
+
+      // 6. Fetch suppliers from Supabase
+      try {
+        const { data: supData } = await supabase.from('suppliers').select('*');
+        if (supData && supData.length > 0) {
+          const mappedSuppliers: Supplier[] = supData.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            companyName: s.company_name || '',
+            phone: s.phone || '',
+            email: s.email || '',
+            address: s.address || '',
+            category: s.category || '',
+            currentBalance: Number(s.current_balance ?? 0),
+            notes: s.notes || '',
+            taxNumber: s.tax_number || '',
+          }));
+          setSuppliers(mappedSuppliers);
+        }
+      } catch (supErr) {
+        console.warn('Suppliers table check error:', supErr);
+      }
+
+      // 7. Fetch expenses from Supabase
+      try {
+        const { data: expData } = await supabase.from('expenses').select('*');
+        if (expData && expData.length > 0) {
+          const mappedExpenses: POSExpense[] = expData.map((e: any) => ({
+            id: e.id,
+            amount: Number(e.amount ?? 0),
+            category: e.category || 'أخرى',
+            description: e.description || '',
+            timestamp: e.timestamp || new Date().toISOString(),
+            associateId: e.associate_id,
+            associateName: e.associate_name,
+            linkedSupplierId: e.linked_supplier_id,
+            linkedSupplierName: e.linked_supplier_name,
+            linkedAssociateId: e.linked_associate_id,
+            linkedAssociateName: e.linked_associate_name,
+          }));
+          setExpenses(mappedExpenses);
+        }
+      } catch (expErr) {
+        console.warn('Expenses table check error:', expErr);
       }
     } catch (err: any) {
       console.warn('Supabase initial fetch skipped or table pending:', err);
@@ -1385,6 +1408,34 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syncProductToSupabase(prod);
   };
 
+  const deleteProduct = async (productId: string) => {
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    try {
+      await supabase.from('products').delete().or(`id.eq.${productId},sku.eq.${productId},barcode.eq.${productId}`);
+    } catch (err) {
+      console.warn('Could not delete product from Supabase:', err);
+    }
+  };
+
+  const bulkDeleteProducts = async (productIds: string[]) => {
+    setProducts((prev) => prev.filter((p) => !productIds.includes(p.id)));
+    try {
+      await supabase.from('products').delete().in('id', productIds);
+    } catch (err) {
+      console.warn('Could not bulk delete products from Supabase:', err);
+    }
+  };
+
+  const clearAllProducts = async () => {
+    setProducts([]);
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify([]));
+    try {
+      await supabase.from('products').delete().neq('id', '___non_existent___');
+    } catch (err) {
+      console.warn('Could not clear products from Supabase:', err);
+    }
+  };
+
   const bulkUpdateProducts = (productIds: string[], updates: Partial<Product>) => {
     setProducts((prev) =>
       prev.map((p) => {
@@ -1527,23 +1578,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const resetDemoData = () => {
+  const resetDemoData = async () => {
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_associates`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_products`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_customers`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_transactions`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_suppliers`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
-
-    setAssociates(INITIAL_ASSOCIATES);
-    setProducts(INITIAL_PRODUCTS);
-    setCustomers(INITIAL_CUSTOMERS);
-    setTransactions(INITIAL_TRANSACTIONS);
-    setSuppliers(INITIAL_SUPPLIERS);
-    setSupplierTransactions(INITIAL_SUPPLIER_TRANSACTIONS);
-    setCurrentAssociateState(INITIAL_ASSOCIATES[0]);
     clearCart();
+    await loadFromSupabase();
   };
+
 
   const closeShift = (shiftData: Omit<ClosedShift, 'id'>) => {
     const newShift: ClosedShift = {
@@ -1602,6 +1647,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAssociate,
         addProduct,
         updateProduct,
+        deleteProduct,
+        bulkDeleteProducts,
+        clearAllProducts,
         bulkUpdateProducts,
         addCustomer,
         updateCustomer,

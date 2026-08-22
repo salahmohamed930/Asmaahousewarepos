@@ -3,6 +3,7 @@ import { Product } from '../../types';
 import { Printer, X, Tag, Info, Layers, RefreshCw, AlertTriangle, Check, Sliders, Eye } from 'lucide-react';
 import { BarcodeItem } from '../Common/BarcodeItem';
 import { printElementById } from '../../utils/printHelper';
+import { usePOS } from '../../context/POSContext';
 
 interface ProductLabelModalProps {
   product?: Product | null;
@@ -29,6 +30,9 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { settings } = usePOS();
+  const defaultHeader = settings?.printSettings?.headerText || 'أسماء للأدوات المنزليه';
+
   const isBulk = !!(products && products.length > 0);
 
   const targetProducts = useMemo(() => {
@@ -41,9 +45,9 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   const [selectedPreviewId, setSelectedPreviewId] = useState<string>('');
   const [bulkUniformCount, setBulkUniformCount] = useState<number>(1);
 
-  const [showStoreName, setShowStoreName] = useState<boolean>(false);
+  const [showStoreName, setShowStoreName] = useState<boolean>(true);
   const [showInstallmentPrice, setShowInstallmentPrice] = useState<boolean>(true);
-  const [storeName, setStoreName] = useState<string>('أسماء للأدوات المنزلية');
+  const [storeName, setStoreName] = useState<string>(defaultHeader);
   const [printMode, setPrintMode] = useState<PrintMode>('thermal');
   const [labelPreset, setLabelPreset] = useState<LabelPreset>('1.5x1_horizontal');
 
@@ -58,7 +62,14 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   // Custom fine-tuning dimensions (in mm)
   const [customWidthMm, setCustomWidthMm] = useState<number>(38);
   const [customHeightMm, setCustomHeightMm] = useState<number>(25);
-  const [barcodeHeightScale, setBarcodeHeightScale] = useState<number>(14);
+  const [barcodeHeightScale, setBarcodeHeightScale] = useState<number>(18);
+
+  // Keep store name synced if settings load later
+  useEffect(() => {
+    if (settings?.printSettings?.headerText) {
+      setStoreName(settings.printSettings.headerText);
+    }
+  }, [settings?.printSettings?.headerText]);
 
   // Initialize counts safely to 1 per product (preventing sudden massive warehouse stock prints)
   useEffect(() => {
@@ -90,12 +101,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 10,
-          barcodeWidth: 1.0,
-          fontSizeHeader: '8px',
+          barcodeHeight: 16,
+          barcodeWidth: 1.3,
+          fontSizeHeader: '8.5px',
           fontSizeTitle: '10px',
-          fontSizePrice: '11.5px',
-          fontSizeBarcode: 7.5,
+          fontSizePrice: '11px',
+          fontSizeBarcode: 8.5,
           labelName: '1.5 × 1 بوصة (38mm × 25mm) - أفقي شائع',
         };
       case '1x1.5_vertical': // 25mm x 38mm (1" x 1.5")
@@ -106,12 +117,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '38mm',
           widthMm: 25,
           heightMm: 38,
-          barcodeHeight: 12,
-          barcodeWidth: 0.95,
-          fontSizeHeader: '8px',
+          barcodeHeight: 22,
+          barcodeWidth: 1.15,
+          fontSizeHeader: '8.5px',
           fontSizeTitle: '9.5px',
           fontSizePrice: '11px',
-          fontSizeBarcode: 7,
+          fontSizeBarcode: 8.5,
           labelName: '1 × 1.5 بوصة (25mm × 38mm) - رأسي / طولي',
         };
       case '40x25':
@@ -122,12 +133,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 40,
           heightMm: 25,
-          barcodeHeight: 11,
-          barcodeWidth: 1.05,
-          fontSizeHeader: '8.5px',
+          barcodeHeight: 17,
+          barcodeWidth: 1.35,
+          fontSizeHeader: '9px',
           fontSizeTitle: '10.5px',
-          fontSizePrice: '12px',
-          fontSizeBarcode: 8,
+          fontSizePrice: '11.5px',
+          fontSizeBarcode: 9,
           labelName: 'رول حراري 40mm × 25mm',
         };
       case '40x30':
@@ -138,12 +149,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 40,
           heightMm: 30,
-          barcodeHeight: 13,
-          barcodeWidth: 1.1,
-          fontSizeHeader: '9px',
+          barcodeHeight: 20,
+          barcodeWidth: 1.4,
+          fontSizeHeader: '9.5px',
           fontSizeTitle: '11px',
-          fontSizePrice: '12.5px',
-          fontSizeBarcode: 8,
+          fontSizePrice: '12px',
+          fontSizeBarcode: 9.5,
           labelName: 'رول حراري 40mm × 30mm',
         };
       case '2x1': // 50mm x 25mm
@@ -154,12 +165,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 50,
           heightMm: 25,
-          barcodeHeight: 12,
-          barcodeWidth: 1.2,
-          fontSizeHeader: '9px',
+          barcodeHeight: 18,
+          barcodeWidth: 1.55,
+          fontSizeHeader: '9.5px',
           fontSizeTitle: '11px',
-          fontSizePrice: '13px',
-          fontSizeBarcode: 8,
+          fontSizePrice: '12.5px',
+          fontSizeBarcode: 9.5,
           labelName: '2 × 1 بوصة (50mm × 25mm)',
         };
       case '50x30':
@@ -170,12 +181,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 50,
           heightMm: 30,
-          barcodeHeight: 15,
-          barcodeWidth: 1.25,
-          fontSizeHeader: '9.5px',
+          barcodeHeight: 22,
+          barcodeWidth: 1.6,
+          fontSizeHeader: '10px',
           fontSizeTitle: '12px',
-          fontSizePrice: '13.5px',
-          fontSizeBarcode: 8.5,
+          fontSizePrice: '13px',
+          fontSizeBarcode: 10,
           labelName: 'رول حراري 50mm × 30mm',
         };
       case 'custom':
@@ -186,12 +197,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: `${customHeightMm}mm`,
           widthMm: customWidthMm,
           heightMm: customHeightMm,
-          barcodeHeight: barcodeHeightScale,
-          barcodeWidth: Math.max(0.9, (customWidthMm / 38) * 1.05),
-          fontSizeHeader: customHeightMm < 26 ? '8px' : '9px',
+          barcodeHeight: Math.max(14, barcodeHeightScale),
+          barcodeWidth: Math.max(1.1, (customWidthMm / 38) * 1.3),
+          fontSizeHeader: customHeightMm < 26 ? '8.5px' : '9.5px',
           fontSizeTitle: customHeightMm < 26 ? '10px' : '11.5px',
           fontSizePrice: customHeightMm < 26 ? '11.5px' : '13px',
-          fontSizeBarcode: customHeightMm < 26 ? 7.5 : 8.5,
+          fontSizeBarcode: customHeightMm < 26 ? 8.5 : 9.5,
           labelName: `مقاس مخصص (${customWidthMm}mm × ${customHeightMm}mm)`,
         };
       case 'sheet_a4_3col':
@@ -202,12 +213,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '30mm',
           widthMm: 65,
           heightMm: 30,
-          barcodeHeight: 14,
-          barcodeWidth: 1.2,
+          barcodeHeight: 20,
+          barcodeWidth: 1.4,
           fontSizeHeader: '9.5px',
           fontSizeTitle: '12px',
           fontSizePrice: '13px',
-          fontSizeBarcode: 8.5,
+          fontSizeBarcode: 9.5,
           labelName: 'ورق A4 مقسم (3 أعمدة - 65mm × 30mm)',
         };
       case 'sheet_a4_2col':
@@ -218,12 +229,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '40mm',
           widthMm: 95,
           heightMm: 40,
-          barcodeHeight: 18,
-          barcodeWidth: 1.35,
+          barcodeHeight: 26,
+          barcodeWidth: 1.7,
           fontSizeHeader: '11px',
-          fontSizeTitle: '13.5px',
-          fontSizePrice: '14.5px',
-          fontSizeBarcode: 9.5,
+          fontSizeTitle: '13px',
+          fontSizePrice: '14px',
+          fontSizeBarcode: 10.5,
           labelName: 'ورق A4 مقسم (عمودين - 95mm × 40mm)',
         };
       default:
@@ -234,12 +245,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 10,
-          barcodeWidth: 1.0,
-          fontSizeHeader: '8px',
+          barcodeHeight: 16,
+          barcodeWidth: 1.3,
+          fontSizeHeader: '8.5px',
           fontSizeTitle: '10px',
-          fontSizePrice: '11.5px',
-          fontSizeBarcode: 7.5,
+          fontSizePrice: '11px',
+          fontSizeBarcode: 8.5,
           labelName: '1.5 × 1 بوصة (38mm × 25mm)',
         };
     }

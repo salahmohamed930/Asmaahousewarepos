@@ -95,6 +95,7 @@ export interface Customer {
   preferredAssociateId?: string;
   loyaltyPoints: number;
   totalSpent: number;
+  tier?: string;
   avatar?: string;
   isCreditEligible?: boolean; // مؤهل للشراء الآجل
   creditLimit?: number;       // حد الائتمان / سقف المديونية

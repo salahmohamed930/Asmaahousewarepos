@@ -1,112 +1,758 @@
-import { supabase } from './supabase';
-import { Product, Customer, Transaction, Associate, ClosedShift, Supplier, SupplierTransaction, POSExpense } from '../types';
+import { supabase, getSupabaseKeys } from './supabase';
+import {
+  Product,
+  Customer,
+  Transaction,
+  Associate,
+  ClosedShift,
+  Supplier,
+  SupplierTransaction,
+  POSExpense,
+  ProductDiscount,
+} from '../types';
 
 /**
- * Sync POS Data with Supabase Database
- * Project URL: https://ilyxhubihdqjbvkkpalx.supabase.co
+ * Single Source of Truth - Supabase API Layer
+ * Performs database queries & mutations directly with complete error handling & console logging.
  */
 
-export async function checkSupabaseConnection(): Promise<{ success: boolean; errorMessage?: string }> {
+// --- 1. Connection Check ---
+export async function checkSupabaseConnection(): Promise<{
+  success: boolean;
+  url: string;
+  hasKey: boolean;
+  isCorrectProject: boolean;
+  details?: string;
+  errorMessage?: string;
+}> {
+  const keys = getSupabaseKeys();
+  const url = keys.url;
+  const hasKey = keys.hasKey;
+  const targetProjectUrl = 'https://ilyxhubihdqjbvkkpalx.supabase.co';
+  const isCorrectProject = url.trim().toLowerCase() === targetProjectUrl.toLowerCase();
+
+  if (!url) {
+    return {
+      success: false,
+      url,
+      hasKey,
+      isCorrectProject,
+      errorMessage: 'رابط Supabase غير معرف (Missing VITE_SUPABASE_URL)',
+    };
+  }
+
+  if (!hasKey) {
+    return {
+      success: false,
+      url,
+      hasKey,
+      isCorrectProject,
+      errorMessage: 'مفتاح Supabase غير موجود (Missing VITE_SUPABASE_ANON_KEY)',
+    };
+  }
+
   try {
-    const { error } = await supabase.from('products').select('*', { count: 'exact', head: true }).limit(1);
+    const { data, error, status, statusText } = await supabase.from('products').select('id').limit(1);
+
     if (error) {
-      return { success: false, errorMessage: error.message };
+      let categorizedError = `[HTTP ${status || 'Error'}] ${error.message}`;
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('fetch')) {
+        categorizedError = `[شبكة] تعذر الاتصال بـ Supabase (Network / Fetch Failure): ${error.message}`;
+      } else if (status === 401 || error.message?.includes('API key') || error.message?.includes('JWT')) {
+        categorizedError = `[صلاحيات] مفتاح Supabase غير صالح أو منتهي (Invalid API Key): ${error.message}`;
+      } else if (status === 403 || error.message?.includes('RLS')) {
+        categorizedError = `[سياسات] تم رفض الطلب بواسطة RLS / Permissions: ${error.message}`;
+      } else if (error.code === 'PGRST204' || error.message?.includes('schema cache') || error.message?.includes('not found')) {
+        categorizedError = `[جدول] الجدول غير موجود في قاعدة البيانات: ${error.message}`;
+      }
+
+      console.warn('[SUPABASE HEALTH CHECK] Failed:', categorizedError);
+      return {
+        success: false,
+        url,
+        hasKey,
+        isCorrectProject,
+        details: `${status} ${statusText}`,
+        errorMessage: categorizedError,
+      };
     }
-    return { success: true };
+
+    console.log(`[SUPABASE HEALTH CHECK] OK - Connected to ${url}. Status: 200 OK (${data?.length ?? 0} rows)`);
+    return {
+      success: true,
+      url,
+      hasKey,
+      isCorrectProject,
+      details: 'الاتصال بالمشروع والجدول ناجح 200 OK',
+    };
   } catch (err: any) {
-    console.warn('Supabase ping error:', err);
-    return { success: false, errorMessage: err?.message || String(err) };
+    const msg = err?.message || String(err);
+    console.warn('[SUPABASE HEALTH CHECK] Exception:', msg);
+    return {
+      success: false,
+      url,
+      hasKey,
+      isCorrectProject,
+      errorMessage: `[استثناء] فشل غير متوقع عند الاتصال: ${msg}`,
+    };
   }
 }
 
-export async function syncClosedShiftToSupabase(shift: ClosedShift): Promise<{ success: boolean; error?: any }> {
-  try {
-    const { error } = await supabase.from('closed_shifts').upsert({
-      id: shift.id,
-      associate_id: shift.associateId,
-      associate_name: shift.associateName,
-      start_time: shift.startTime,
-      end_time: shift.endTime,
-      expected_cash: shift.expectedCash,
-      actual_cash: shift.actualCash,
-      discrepancy: shift.discrepancy,
-      sales_count: shift.salesCount,
-      total_sales: shift.totalSales,
-      total_card: shift.totalCard,
-      total_installment: shift.totalInstallment,
-      total_debt_collected: shift.totalDebtCollected,
-      notes: shift.notes || '',
-      opening_balance: shift.openingBalance || 0,
-      leftover_balance: shift.leftoverBalance || 0,
-      created_at: new Date().toISOString(),
-    });
+// --- MAPPERS ---
 
+export function mapDbProductToProduct(p: any): Product {
+  return {
+    id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}`),
+    name: p.name || 'منتج',
+    sku: String(p.sku ?? p.id ?? 'SKU-000'),
+    barcode: String(p.barcode || p.sku || p.id || '000000'),
+    category: p.category || 'عام',
+    priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
+    priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
+    priceWholesale: Number(p.priceWholesale ?? p.wholesale_price ?? p.price_wholesale ?? p.wholesalePrice ?? 0),
+    cost: Number(p.cost ?? p.cost_price ?? p.cost_cash ?? p.purchase_price ?? p.buy_price ?? 0),
+    stock: Number(
+      p.stock_quantity ??
+      p.quantity ??
+      p.qty ??
+      p.stock ??
+      p.stock_qty ??
+      p.quantity_in_stock ??
+      p.inventory ??
+      0
+    ),
+    image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
+    description: p.description || '',
+    barcodes: Array.isArray(p.barcodes)
+      ? p.barcodes.map(String)
+      : typeof p.barcodes === 'string'
+        ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : typeof p.alternative_barcodes === 'string'
+          ? p.alternative_barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : Array.isArray(p.alternative_barcodes)
+            ? p.alternative_barcodes.map(String)
+            : [],
+  };
+}
+
+export function mapProductToDbPayload(product: Product): any {
+  const payload: any = {
+    name: product.name || 'منتج',
+    category: product.category || 'عام',
+    price: Number(product.priceCash || 0),
+    wholesale_price: Number(product.priceWholesale || 0),
+    price_installment: Number(product.priceInstallment || 0),
+    cost: Number(product.cost || 0),
+    stock_quantity: Number(product.stock || 0),
+    description: product.description || '',
+    image: product.image || '',
+    barcodes: product.barcodes || (product.barcode ? [product.barcode] : []),
+  };
+
+  if (product.id && !isNaN(Number(product.id))) {
+    payload.id = Number(product.id);
+  }
+
+  return payload;
+}
+
+export function mapDbCustomerToCustomer(c: any): Customer {
+  return {
+    id: String(c.id),
+    name: c.name || '',
+    phone: c.phone || '',
+    email: c.email || '',
+    address: c.address || '',
+    totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
+    loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
+    tier: c.tier || 'عادي',
+    isCreditEligible: Boolean(c.is_credit_eligible ?? c.isCreditEligible),
+    creditLimit: Number(c.credit_limit ?? c.creditLimit ?? 0),
+    currentDebt: Number(c.current_debt ?? c.currentDebt ?? 0),
+    notes: c.notes || '',
+  };
+}
+
+export function mapCustomerToDbPayload(customer: Customer): any {
+  return {
+    id: customer.id,
+    name: customer.name,
+    phone: customer.phone || '',
+    email: customer.email || '',
+    address: customer.address || '',
+    total_spent: customer.totalSpent || 0,
+    loyalty_points: customer.loyaltyPoints || 0,
+    tier: customer.tier || 'عادي',
+    is_credit_eligible: Boolean(customer.isCreditEligible),
+    credit_limit: customer.creditLimit || 0,
+    current_debt: customer.currentDebt || 0,
+    notes: customer.notes || '',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapDbSupplierToSupplier(s: any): Supplier {
+  return {
+    id: String(s.id),
+    name: s.name || '',
+    companyName: s.company_name || s.companyName || '',
+    phone: s.phone || '',
+    email: s.email || '',
+    address: s.address || '',
+    category: s.category || '',
+    currentBalance: Number(s.current_balance ?? s.currentBalance ?? 0),
+    notes: s.notes || '',
+    taxNumber: s.tax_number || s.taxNumber || '',
+  };
+}
+
+export function mapSupplierToDbPayload(supplier: Supplier): any {
+  return {
+    id: supplier.id,
+    name: supplier.name,
+    company_name: supplier.companyName || '',
+    phone: supplier.phone || '',
+    email: supplier.email || '',
+    address: supplier.address || '',
+    category: supplier.category || '',
+    current_balance: supplier.currentBalance || 0,
+    notes: supplier.notes || '',
+    tax_number: supplier.taxNumber || '',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapDbSupplierTxToSupplierTx(t: any): SupplierTransaction {
+  return {
+    id: String(t.id),
+    supplierId: String(t.supplier_id ?? t.supplierId),
+    supplierName: t.supplier_name ?? t.supplierName ?? '',
+    type: t.type || 'supply_invoice',
+    amount: Number(t.amount ?? 0),
+    date: t.date || t.created_at || new Date().toISOString(),
+    referenceNumber: t.reference_number ?? t.referenceNumber ?? '',
+    paymentMethod: t.payment_method ?? t.paymentMethod ?? '',
+    notes: t.notes || '',
+    associateName: t.associate_name ?? t.associateName ?? '',
+  };
+}
+
+export function mapSupplierTxToDbPayload(tx: SupplierTransaction): any {
+  return {
+    id: tx.id,
+    supplier_id: tx.supplierId,
+    supplier_name: tx.supplierName,
+    type: tx.type,
+    amount: tx.amount,
+    date: tx.date || new Date().toISOString(),
+    reference_number: tx.referenceNumber || '',
+    payment_method: tx.paymentMethod || '',
+    notes: tx.notes || '',
+    associate_name: tx.associateName || '',
+  };
+}
+
+export function mapDbExpenseToExpense(e: any): POSExpense {
+  return {
+    id: String(e.id),
+    amount: Number(e.amount ?? 0),
+    category: e.category || 'أخرى',
+    description: e.description || '',
+    timestamp: e.timestamp || e.created_at || new Date().toISOString(),
+    associateId: e.associate_id ?? e.associateId,
+    associateName: e.associate_name ?? e.associateName,
+    linkedSupplierId: e.linked_supplier_id ?? e.linkedSupplierId,
+    linkedSupplierName: e.linked_supplier_name ?? e.linkedSupplierName,
+    linkedAssociateId: e.linked_associate_id ?? e.linkedAssociateId,
+    linkedAssociateName: e.linked_associate_name ?? e.linkedAssociateName,
+  };
+}
+
+export function mapExpenseToDbPayload(expense: POSExpense): any {
+  return {
+    id: expense.id,
+    amount: expense.amount,
+    category: expense.category,
+    description: expense.description || '',
+    timestamp: expense.timestamp || new Date().toISOString(),
+    associate_id: expense.associateId || null,
+    associate_name: expense.associateName || null,
+    linked_supplier_id: expense.linkedSupplierId || null,
+    linked_supplier_name: expense.linkedSupplierName || null,
+    linked_associate_id: expense.linkedAssociateId || null,
+    linked_associate_name: expense.linkedAssociateName || null,
+  };
+}
+
+export function mapDbAssociateToAssociate(a: any): Associate {
+  return {
+    id: String(a.id),
+    name: a.name || 'موظف',
+    username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${a.id}`,
+    password: String(a.password || a.pin || '1001'),
+    pin: String(a.pin || a.password || '1001'),
+    role: a.role || 'مسؤول مبيعات',
+    avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    email: a.email || '',
+    phone: a.phone || '',
+    commissionRate: Number(a.commission_rate ?? a.commissionRate ?? 0.05),
+    dailyGoal: Number(a.daily_goal ?? a.dailyGoal ?? 5000),
+    hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
+    advancesBalance: Number(a.advances_balance ?? a.advancesBalance ?? 0),
+    isClockedIn: Boolean(a.is_clocked_in ?? a.isClockedIn ?? false),
+  };
+}
+
+export function mapAssociateToDbPayload(associate: Associate): any {
+  return {
+    id: associate.id,
+    name: associate.name,
+    username: associate.username,
+    password: associate.password || associate.pin || '1001',
+    pin: associate.pin || associate.password || '1001',
+    role: associate.role,
+    email: associate.email || '',
+    phone: associate.phone || '',
+    commission_rate: associate.commissionRate || 0.05,
+    daily_goal: associate.dailyGoal || 5000,
+    hourly_rate: associate.hourlyRate || 25,
+    avatar: associate.avatar || '',
+    advances_balance: associate.advancesBalance || 0,
+    is_clocked_in: Boolean(associate.isClockedIn),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapDbShiftToClosedShift(s: any): ClosedShift {
+  return {
+    id: String(s.id),
+    associateId: s.associate_id ?? s.associateId ?? '',
+    associateName: s.associate_name ?? s.associateName ?? '',
+    startTime: s.start_time ?? s.startTime ?? new Date().toISOString(),
+    endTime: s.end_time ?? s.endTime ?? new Date().toISOString(),
+    expectedCash: Number(s.expected_cash ?? s.expectedCash ?? 0),
+    actualCash: Number(s.actual_cash ?? s.actualCash ?? 0),
+    discrepancy: Number(s.discrepancy ?? 0),
+    salesCount: Number(s.sales_count ?? s.salesCount ?? 0),
+    totalSales: Number(s.total_sales ?? s.totalSales ?? 0),
+    totalCard: Number(s.total_card ?? s.totalCard ?? 0),
+    totalInstallment: Number(s.total_installment ?? s.totalInstallment ?? 0),
+    totalDebtCollected: Number(s.total_debt_collected ?? s.totalDebtCollected ?? 0),
+    notes: s.notes || '',
+    openingBalance: Number(s.opening_balance ?? s.openingBalance ?? 0),
+    leftoverBalance: Number(s.leftover_balance ?? s.leftoverBalance ?? 0),
+    isSynced: true,
+  };
+}
+
+export function mapClosedShiftToDbPayload(shift: ClosedShift): any {
+  return {
+    id: shift.id,
+    associate_id: shift.associateId,
+    associate_name: shift.associateName,
+    start_time: shift.startTime,
+    end_time: shift.endTime,
+    expected_cash: shift.expectedCash,
+    actual_cash: shift.actualCash,
+    discrepancy: shift.discrepancy,
+    sales_count: shift.salesCount,
+    total_sales: shift.totalSales,
+    total_card: shift.totalCard,
+    total_installment: shift.totalInstallment,
+    total_debt_collected: shift.totalDebtCollected,
+    notes: shift.notes || '',
+    opening_balance: shift.openingBalance || 0,
+    leftover_balance: shift.leftoverBalance || 0,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// --- 2. PRODUCTS API ---
+
+export async function fetchProductsFromSupabase(): Promise<{ data: Product[]; error?: any }> {
+  console.log('[SUPABASE] Fetching products...');
+  try {
+    const { data, error } = await supabase.from('products').select('*');
     if (error) {
-      // Fallback with minimal columns if the database has a basic schema
-      const { error: fallbackError } = await supabase.from('closed_shifts').upsert({
-        id: shift.id,
-        associate_id: shift.associateId,
-        associate_name: shift.associateName,
-        start_time: shift.startTime,
-        end_time: shift.endTime,
-        expected_cash: shift.expectedCash,
-        actual_cash: shift.actualCash,
-        discrepancy: shift.discrepancy,
-        sales_count: shift.salesCount,
-        total_sales: shift.totalSales,
-      });
-      if (fallbackError) {
-        console.warn('Supabase closed shift fallback sync failed:', fallbackError);
-        return { success: false, error: fallbackError };
-      }
+      console.warn('[SUPABASE] fetchProductsFromSupabase failed:', error.message || error);
+      return { data: [], error };
     }
-    return { success: true };
-  } catch (err) {
-    console.warn('Supabase closed shift sync error:', err);
+    const products = (data || []).map(mapDbProductToProduct);
+    console.log(`[SUPABASE] Loaded ${products.length} products`);
+    return { data: products };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchProductsFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertProductToSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
+  console.log('[SUPABASE] Inserting product:', product.name);
+  try {
+    const payload = mapProductToDbPayload(product);
+    const { data, error } = await supabase.from('products').insert([payload]).select().single();
+    if (error) {
+      console.error('[SUPABASE ERROR] insertProductToSupabase:', error.message || error);
+      return { success: false, error };
+    }
+    return { success: true, data: mapDbProductToProduct(data) };
+  } catch (err: any) {
+    console.error('[SUPABASE ERROR] insertProductToSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
-export async function syncProductToSupabase(product: Product) {
+export async function updateProductInSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
+  console.log('[SUPABASE] Updating product:', product.id);
   try {
-    const basePayload: any = {
-      id: product.id || product.sku,
-      name: product.name,
-      sku: product.sku || product.id,
-      barcode: product.barcode,
-      category: product.category,
-      price: product.priceCash,
-      cash_price: product.priceCash,
-      wholesale_price: product.priceWholesale,
-      cost_price: product.cost,
-      installment_price: product.priceInstallment,
-      stock_quantity: product.stock,
-      quantity: product.stock,
-      stock: product.stock,
-      image_url: product.image,
-      barcodes: product.barcodes || [],
-      alternative_barcodes: product.barcodes || [],
-      updated_at: new Date().toISOString(),
-    };
+    const payload = mapProductToDbPayload(product);
+    let query = supabase.from('products').update(payload);
 
-    const { error } = await supabase.from('products').upsert(basePayload);
-    if (error) {
-      // Fallback attempt without extra schema variations if strict column matching fails
-      await supabase.from('products').upsert({
-        id: product.id || product.sku,
-        name: product.name,
-        price: product.priceCash,
-        stock_quantity: product.stock,
-      });
+    if (product.id && !isNaN(Number(product.id))) {
+      query = query.eq('id', Number(product.id));
+    } else {
+      query = query.eq('name', product.name);
     }
-  } catch (err) {
-    console.warn('Supabase product sync error:', err);
+
+    const { data, error } = await query.select().single();
+    if (error) {
+      console.error('[SUPABASE ERROR] updateProductInSupabase:', error.message || error);
+      return { success: false, error };
+    }
+    return { success: true, data: mapDbProductToProduct(data) };
+  } catch (err: any) {
+    console.error('[SUPABASE ERROR] updateProductInSupabase exception:', err?.message || String(err));
+    return { success: false, error: err };
   }
 }
 
-export async function syncTransactionToSupabase(transaction: Transaction): Promise<{ success: boolean; error?: any }> {
+export async function deleteProductFromSupabase(productId: string): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Deleting product:', productId);
   try {
-    const payload: any = {
+    let query = supabase.from('products').delete();
+    if (productId && !isNaN(Number(productId))) {
+      query = query.eq('id', Number(productId));
+    } else {
+      query = query.or(`id.eq.${productId},name.eq.${productId}`);
+    }
+
+    const { error } = await query;
+    if (error) {
+      console.error('[SUPABASE ERROR] deleteProductFromSupabase:', error.message || error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[SUPABASE ERROR] deleteProductFromSupabase exception:', err?.message || String(err));
+    return { success: false, error: err };
+  }
+}
+
+export async function bulkDeleteProductsFromSupabase(productIds: string[]): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Bulk deleting products:', productIds.length);
+  try {
+    const numericIds = productIds.map((id) => Number(id)).filter((id) => !isNaN(id));
+    if (numericIds.length === 0) return { success: true };
+
+    const { error } = await supabase.from('products').delete().in('id', numericIds);
+    if (error) {
+      console.error('[SUPABASE ERROR] bulkDeleteProductsFromSupabase:', error.message || error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[SUPABASE ERROR] bulkDeleteProductsFromSupabase exception:', err?.message || String(err));
+    return { success: false, error: err };
+  }
+}
+
+export async function clearAllProductsFromSupabase(): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Clearing all products...');
+  try {
+    const { error } = await supabase.from('products').delete().gt('id', -1);
+    if (error) {
+      console.error('[SUPABASE ERROR] clearAllProductsFromSupabase:', error.message || error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[SUPABASE ERROR] clearAllProductsFromSupabase exception:', err?.message || String(err));
+    return { success: false, error: err };
+  }
+}
+
+// --- 3. CUSTOMERS API ---
+
+export async function fetchCustomersFromSupabase(): Promise<{ data: Customer[]; error?: any }> {
+  console.log('[SUPABASE] Fetching customers...');
+  try {
+    const { data, error } = await supabase.from('customers').select('*');
+    if (error) {
+      console.warn('[SUPABASE] fetchCustomersFromSupabase failed:', error.message || error);
+      return { data: [], error };
+    }
+    const customers = (data || []).map(mapDbCustomerToCustomer);
+    console.log(`[SUPABASE] Loaded ${customers.length} customers`);
+    return { data: customers };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchCustomersFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertCustomerToSupabase(customer: Customer): Promise<{ success: boolean; data?: Customer; error?: any }> {
+  console.log('[SUPABASE] Inserting customer:', customer.id);
+  try {
+    const payload = mapCustomerToDbPayload(customer);
+    const { data, error } = await supabase.from('customers').insert([payload]).select().single();
+    if (error) {
+      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
+      if (upsertErr) {
+        console.error('[SUPABASE ERROR] insertCustomerToSupabase:', upsertErr);
+        return { success: false, error: upsertErr };
+      }
+      return { success: true, data: mapDbCustomerToCustomer(upsertData) };
+    }
+    return { success: true, data: mapDbCustomerToCustomer(data) };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] insertCustomerToSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function updateCustomerInSupabase(customer: Customer): Promise<{ success: boolean; data?: Customer; error?: any }> {
+  console.log('[SUPABASE] Updating customer:', customer.id);
+  try {
+    const payload = mapCustomerToDbPayload(customer);
+    const { data, error } = await supabase.from('customers').update(payload).eq('id', customer.id).select().single();
+    if (error) {
+      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
+      if (upsertErr) {
+        console.error('[SUPABASE ERROR] updateCustomerInSupabase:', upsertErr);
+        return { success: false, error: upsertErr };
+      }
+      return { success: true, data: mapDbCustomerToCustomer(upsertData) };
+    }
+    return { success: true, data: mapDbCustomerToCustomer(data) };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] updateCustomerInSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function deleteCustomerFromSupabase(customerId: string): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Deleting customer:', customerId);
+  try {
+    const { error } = await supabase.from('customers').delete().eq('id', customerId);
+    if (error) {
+      console.error('[SUPABASE ERROR] deleteCustomerFromSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] deleteCustomerFromSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+// --- 4. SUPPLIERS API ---
+
+export async function fetchSuppliersFromSupabase(): Promise<{ data: Supplier[]; error?: any }> {
+  console.log('[SUPABASE] Fetching suppliers...');
+  try {
+    const { data, error } = await supabase.from('suppliers').select('*');
+    if (error) {
+      console.warn('[SUPABASE] fetchSuppliersFromSupabase failed:', error.message || error);
+      return { data: [], error };
+    }
+    const suppliers = (data || []).map(mapDbSupplierToSupplier);
+    console.log(`[SUPABASE] Loaded ${suppliers.length} suppliers`);
+    return { data: suppliers };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchSuppliersFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
+  console.log('[SUPABASE] Inserting supplier:', supplier.id);
+  try {
+    const payload = mapSupplierToDbPayload(supplier);
+    const { data, error } = await supabase.from('suppliers').insert([payload]).select().single();
+    if (error) {
+      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select().single();
+      if (upsertErr) {
+        console.error('[SUPABASE ERROR] insertSupplierToSupabase:', upsertErr);
+        return { success: false, error: upsertErr };
+      }
+      return { success: true, data: mapDbSupplierToSupplier(upsertData) };
+    }
+    return { success: true, data: mapDbSupplierToSupplier(data) };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] insertSupplierToSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function updateSupplierInSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
+  console.log('[SUPABASE] Updating supplier:', supplier.id);
+  try {
+    const payload = mapSupplierToDbPayload(supplier);
+    const { data, error } = await supabase.from('suppliers').update(payload).eq('id', supplier.id).select().single();
+    if (error) {
+      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select().single();
+      if (upsertErr) {
+        console.error('[SUPABASE ERROR] updateSupplierInSupabase:', upsertErr);
+        return { success: false, error: upsertErr };
+      }
+      return { success: true, data: mapDbSupplierToSupplier(upsertData) };
+    }
+    return { success: true, data: mapDbSupplierToSupplier(data) };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] updateSupplierInSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function deleteSupplierFromSupabase(supplierId: string): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Deleting supplier:', supplierId);
+  try {
+    const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
+    if (error) {
+      console.error('[SUPABASE ERROR] deleteSupplierFromSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] deleteSupplierFromSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+// --- 5. SUPPLIER TRANSACTIONS API ---
+
+export async function fetchSupplierTransactionsFromSupabase(): Promise<{ data: SupplierTransaction[]; error?: any }> {
+  console.log('[SUPABASE] Fetching supplier transactions...');
+  try {
+    const { data, error } = await supabase.from('supplier_transactions').select('*');
+    if (error) {
+      console.warn('[SUPABASE] fetchSupplierTransactionsFromSupabase failed:', error.message || error);
+      return { data: [], error };
+    }
+    const txs = (data || []).map(mapDbSupplierTxToSupplierTx);
+    console.log(`[SUPABASE] Loaded ${txs.length} supplier transactions`);
+    return { data: txs };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchSupplierTransactionsFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertSupplierTransactionToSupabase(tx: SupplierTransaction): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Inserting supplier transaction:', tx.id);
+  try {
+    const payload = mapSupplierTxToDbPayload(tx);
+    const { error } = await supabase.from('supplier_transactions').upsert([payload]);
+    if (error) {
+      console.error('[SUPABASE ERROR] insertSupplierTransactionToSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] insertSupplierTransactionToSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+// --- 6. TRANSACTIONS & ITEMS API ---
+
+export async function fetchTransactionsFromSupabase(): Promise<{ data: Transaction[]; error?: any }> {
+  console.log('[SUPABASE] Fetching transactions & items...');
+  try {
+    const { data: txData, error: txError } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    if (txError) {
+      console.warn('[SUPABASE] fetchTransactionsFromSupabase failed:', txError.message || txError);
+      return { data: [], error: txError };
+    }
+
+    const { data: itemsData, error: itemsError } = await supabase.from('transaction_items').select('*');
+    if (itemsError) {
+      console.warn('[SUPABASE] transaction_items select warning:', itemsError);
+    }
+
+    const itemsByTxId: Record<string, any[]> = {};
+    if (itemsData && Array.isArray(itemsData)) {
+      itemsData.forEach((item: any) => {
+        const tid = String(item.transaction_id || item.transactionId);
+        if (!itemsByTxId[tid]) itemsByTxId[tid] = [];
+        itemsByTxId[tid].push({
+          productId: String(item.product_id || item.productId || ''),
+          productName: item.product_name || item.productName || 'منتج',
+          sku: item.sku || '',
+          quantity: Number(item.quantity || 1),
+          priceTier: item.price_tier || item.priceTier || 'cash',
+          unitPrice: Number(item.unit_price || item.unitPrice || 0),
+          totalPrice: Number(item.total_price || item.totalPrice || 0),
+          discountAmount: Number(item.discount_amount || item.discountAmount || 0),
+          discountPercent: Number(item.discount_percent || item.discountPercent || 0),
+          assignedAssociateId: item.assigned_associate_id || item.assignedAssociateId || undefined,
+        });
+      });
+    }
+
+    const transactions: Transaction[] = (txData || []).map((t: any) => {
+      const id = String(t.id);
+      const items = itemsByTxId[id] || (Array.isArray(t.items) ? t.items : []);
+      return {
+        id,
+        receiptNumber: t.receipt_number || t.receiptNumber || `RCP-${id}`,
+        timestamp: t.timestamp || t.created_at || new Date().toISOString(),
+        items,
+        subtotal: Number(t.subtotal || 0),
+        discountTotal: Number(t.discount_total || t.discountTotal || 0),
+        taxTotal: Number(t.tax_total || t.taxTotal || 0),
+        grandTotal: Number(t.grand_total || t.grandTotal || 0),
+        paymentMethod: t.payment_method || t.paymentMethod || 'كاش',
+        paymentDetails: t.payment_details || t.paymentDetails || '',
+        customerId: t.customer_id || t.customerId || undefined,
+        customerName: t.customer_name || t.customerName || undefined,
+        primaryAssociateId: t.primary_associate_id || t.primaryAssociateId || 'system',
+        primaryAssociateName: t.primary_associate_name || t.primaryAssociateName || 'النظام',
+        splitAssociates: Array.isArray(t.split_associates)
+          ? t.split_associates
+          : Array.isArray(t.splitAssociates)
+            ? t.splitAssociates
+            : undefined,
+        commissions: Array.isArray(t.commissions) ? t.commissions : [],
+        notes: t.notes || '',
+        status: t.status || 'مكتملة',
+        amountPaid: Number(t.amount_paid ?? t.amountPaid ?? t.grand_total ?? 0),
+        amountDeferred: Number(t.amount_deferred ?? t.amountDeferred ?? 0),
+        splitPayments: Array.isArray(t.split_payments)
+          ? t.split_payments
+          : Array.isArray(t.splitPayments)
+            ? t.splitPayments
+            : undefined,
+        originalCart: t.original_cart || t.originalCart || undefined,
+      };
+    });
+
+    console.log(`[SUPABASE] Loaded ${transactions.length} transactions`);
+    return { data: transactions };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] fetchTransactionsFromSupabase exception:', err);
+    return { data: [], error: err };
+  }
+}
+
+export async function insertTransactionToSupabase(transaction: Transaction): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Inserting transaction:', transaction.id);
+  try {
+    const payload = {
       id: transaction.id,
       receipt_number: transaction.receiptNumber,
       timestamp: new Date(transaction.timestamp).toISOString(),
@@ -130,140 +776,275 @@ export async function syncTransactionToSupabase(transaction: Transaction): Promi
       split_payments: transaction.splitPayments || null,
     };
 
-    const { error } = await supabase.from('transactions').upsert(payload);
-    if (error) {
-      console.warn('Supabase transactions upsert failed:', error);
-      return { success: false, error };
+    const { error: txError } = await supabase.from('transactions').upsert([payload]);
+    if (txError) {
+      console.error('[SUPABASE ERROR] insertTransactionToSupabase tx record:', txError);
+      return { success: false, error: txError };
     }
 
-    // Synchronize individual transaction items to transaction_items table
+    // Insert items into transaction_items
     if (transaction.items && transaction.items.length > 0) {
-      try {
-        // Delete existing items for this transaction to avoid duplicates
-        await supabase.from('transaction_items').delete().eq('transaction_id', transaction.id);
+      await supabase.from('transaction_items').delete().eq('transaction_id', transaction.id);
 
-        const itemsPayload = transaction.items.map((item) => ({
-          transaction_id: transaction.id,
-          product_id: item.productId,
-          product_name: item.productName,
-          sku: item.sku,
-          quantity: item.quantity,
-          price_tier: item.priceTier || 'cash',
-          unit_price: item.unitPrice,
-          total_price: item.totalPrice,
-          assigned_associate_id: item.assignedAssociateId || null,
-        }));
+      const itemsPayload = transaction.items.map((item) => ({
+        transaction_id: transaction.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        sku: item.sku,
+        quantity: item.quantity,
+        price_tier: item.priceTier || 'cash',
+        unit_price: item.unitPrice,
+        total_price: item.totalPrice,
+        assigned_associate_id: item.assignedAssociateId || null,
+      }));
 
-        const { error: itemsError } = await supabase.from('transaction_items').insert(itemsPayload);
-        if (itemsError) {
-          console.warn('Supabase transaction_items insert failed:', itemsError);
-          // Return false so we can re-sync later
-          return { success: false, error: itemsError };
-        }
-      } catch (itemErr) {
-        console.warn('Error during transaction_items sync:', itemErr);
-        return { success: false, error: itemErr };
+      const { error: itemsError } = await supabase.from('transaction_items').insert(itemsPayload);
+      if (itemsError) {
+        console.warn('[SUPABASE] transaction_items insert error:', itemsError);
       }
     }
 
     return { success: true };
   } catch (err) {
-    console.warn('Supabase transaction sync error:', err);
+    console.error('[SUPABASE ERROR] insertTransactionToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-export async function syncCustomerToSupabase(customer: Customer) {
+export async function deleteTransactionFromSupabase(transactionId: string): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Deleting transaction:', transactionId);
   try {
-    await supabase.from('customers').upsert({
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      total_spent: customer.totalSpent,
-      loyalty_points: customer.loyaltyPoints,
-      notes: customer.notes || '',
-      address: customer.address || '',
+    await supabase.from('transaction_items').delete().eq('transaction_id', transactionId);
+    const { error } = await supabase.from('transactions').delete().eq('id', transactionId);
+    if (error) {
+      console.error('[SUPABASE ERROR] deleteTransactionFromSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] deleteTransactionFromSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+// --- 7. ASSOCIATES API ---
+
+export async function fetchAssociatesFromSupabase(): Promise<{ data: Associate[]; error?: any }> {
+  console.log('[SUPABASE] Fetching associates...');
+  try {
+    const { data, error } = await supabase.from('associates').select('*');
+    if (error) {
+      console.warn('[SUPABASE] fetchAssociatesFromSupabase failed:', error.message || error);
+      return { data: [], error };
+    }
+    const associates = (data || []).map(mapDbAssociateToAssociate);
+    console.log(`[SUPABASE] Loaded ${associates.length} associates`);
+    return { data: associates };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchAssociatesFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertAssociateToSupabase(associate: Associate): Promise<{ success: boolean; data?: Associate; error?: any }> {
+  console.log('[SUPABASE] Inserting associate:', associate.id);
+  try {
+    const payload = mapAssociateToDbPayload(associate);
+    const { data, error } = await supabase.from('associates').insert([payload]).select().single();
+    if (error) {
+      const { data: upsertData, error: upsertErr } = await supabase.from('associates').upsert([payload]).select().single();
+      if (upsertErr) {
+        console.error('[SUPABASE ERROR] insertAssociateToSupabase:', upsertErr);
+        return { success: false, error: upsertErr };
+      }
+      return { success: true, data: mapDbAssociateToAssociate(upsertData) };
+    }
+    return { success: true, data: mapDbAssociateToAssociate(data) };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] insertAssociateToSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function updateAssociateInSupabase(associate: Associate): Promise<{ success: boolean; data?: Associate; error?: any }> {
+  console.log('[SUPABASE] Updating associate:', associate.id);
+  try {
+    const payload = mapAssociateToDbPayload(associate);
+    const { data, error } = await supabase.from('associates').update(payload).eq('id', associate.id).select().single();
+    if (error) {
+      const { data: upsertData, error: upsertErr } = await supabase.from('associates').upsert([payload]).select().single();
+      if (upsertErr) {
+        console.error('[SUPABASE ERROR] updateAssociateInSupabase:', upsertErr);
+        return { success: false, error: upsertErr };
+      }
+      return { success: true, data: mapDbAssociateToAssociate(upsertData) };
+    }
+    return { success: true, data: mapDbAssociateToAssociate(data) };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] updateAssociateInSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function deleteAssociateFromSupabase(associateId: string): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Deleting associate:', associateId);
+  try {
+    const { error } = await supabase.from('associates').delete().eq('id', associateId);
+    if (error) {
+      console.error('[SUPABASE ERROR] deleteAssociateFromSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] deleteAssociateFromSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+// --- 8. CLOSED SHIFTS API ---
+
+export async function fetchClosedShiftsFromSupabase(): Promise<{ data: ClosedShift[]; error?: any }> {
+  console.log('[SUPABASE] Fetching closed shifts...');
+  try {
+    const { data, error } = await supabase.from('closed_shifts').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('[SUPABASE] fetchClosedShiftsFromSupabase failed:', error.message || error);
+      return { data: [], error };
+    }
+    const shifts = (data || []).map(mapDbShiftToClosedShift);
+    console.log(`[SUPABASE] Loaded ${shifts.length} closed shifts`);
+    return { data: shifts };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchClosedShiftsFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertClosedShiftToSupabase(shift: ClosedShift): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Inserting closed shift:', shift.id);
+  try {
+    const payload = mapClosedShiftToDbPayload(shift);
+    const { error } = await supabase.from('closed_shifts').upsert([payload]);
+    if (error) {
+      console.warn('[SUPABASE] insertClosedShiftToSupabase failed:', error.message || error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[SUPABASE] insertClosedShiftToSupabase exception:', err?.message || String(err));
+    return { success: false, error: err };
+  }
+}
+
+// --- 9. EXPENSES API ---
+
+export async function fetchExpensesFromSupabase(): Promise<{ data: POSExpense[]; error?: any }> {
+  console.log('[SUPABASE] Fetching expenses...');
+  try {
+    const { data, error } = await supabase.from('expenses').select('*');
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
+        console.warn('[SUPABASE] Table "expenses" not found in schema cache. Returning empty list.');
+        return { data: [] };
+      }
+      console.warn('[SUPABASE] fetchExpensesFromSupabase failed:', error.message || error);
+      return { data: [], error };
+    }
+    const expenses = (data || []).map(mapDbExpenseToExpense);
+    console.log(`[SUPABASE] Loaded ${expenses.length} expenses`);
+    return { data: expenses };
+  } catch (err: any) {
+    console.warn('[SUPABASE] fetchExpensesFromSupabase exception:', err?.message || String(err));
+    return { data: [], error: err };
+  }
+}
+
+export async function insertExpenseToSupabase(expense: POSExpense): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Inserting expense:', expense.id);
+  try {
+    const payload = mapExpenseToDbPayload(expense);
+    const { error } = await supabase.from('expenses').upsert([payload]);
+    if (error) {
+      console.error('[SUPABASE ERROR] insertExpenseToSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] insertExpenseToSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+export async function deleteExpenseFromSupabase(expenseId: string): Promise<{ success: boolean; error?: any }> {
+  console.log('[SUPABASE] Deleting expense:', expenseId);
+  try {
+    const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
+    if (error) {
+      console.error('[SUPABASE ERROR] deleteExpenseFromSupabase:', error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[SUPABASE ERROR] deleteExpenseFromSupabase exception:', err);
+    return { success: false, error: err };
+  }
+}
+
+// --- 10. DISCOUNTS API ---
+
+export async function fetchDiscountsFromSupabase(): Promise<{ data: ProductDiscount[]; error?: any }> {
+  console.log('[SUPABASE] Fetching discounts...');
+  try {
+    const { data, error } = await supabase.from('discounts').select('*');
+    if (error) {
+      // discounts table might not exist in some schemas, return empty array silently
+      return { data: [] };
+    }
+    const discounts: ProductDiscount[] = (data || []).map((d: any) => ({
+      productId: String(d.product_id || d.productId),
+      type: d.type || 'percentage',
+      value: Number(d.value || 0),
+      isActive: d.is_active ?? d.isActive ?? true,
+      applyTo: d.apply_to || d.applyTo || 'both',
+    }));
+    return { data: discounts };
+  } catch {
+    return { data: [] };
+  }
+}
+
+export async function insertDiscountToSupabase(discount: ProductDiscount): Promise<{ success: boolean; error?: any }> {
+  try {
+    const payload = {
+      product_id: discount.productId,
+      type: discount.type,
+      value: discount.value,
+      is_active: discount.isActive,
+      apply_to: discount.applyTo,
       updated_at: new Date().toISOString(),
-    });
+    };
+    await supabase.from('discounts').upsert([payload]);
+    return { success: true };
   } catch (err) {
-    console.warn('Supabase customer sync error:', err);
+    return { success: false, error: err };
   }
 }
 
-export async function syncAssociateToSupabase(associate: Associate) {
+export async function deleteDiscountFromSupabase(productId: string): Promise<{ success: boolean; error?: any }> {
   try {
-    await supabase.from('associates').upsert({
-      id: associate.id,
-      name: associate.name,
-      username: associate.username,
-      pin: associate.pin,
-      role: associate.role,
-      email: associate.email,
-      advances_balance: associate.advancesBalance || 0,
-      updated_at: new Date().toISOString(),
-    });
+    await supabase.from('discounts').delete().eq('product_id', productId);
+    return { success: true };
   } catch (err) {
-    console.warn('Supabase associate sync error:', err);
+    return { success: false, error: err };
   }
 }
 
-export async function syncSupplierToSupabase(supplier: Supplier) {
-  try {
-    await supabase.from('suppliers').upsert({
-      id: supplier.id,
-      name: supplier.name,
-      company_name: supplier.companyName || '',
-      phone: supplier.phone || '',
-      email: supplier.email || '',
-      address: supplier.address || '',
-      category: supplier.category || '',
-      current_balance: supplier.currentBalance,
-      notes: supplier.notes || '',
-      tax_number: supplier.taxNumber || '',
-      updated_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.warn('Supabase supplier sync:', err);
-  }
-}
-
-export async function syncSupplierTransactionToSupabase(tx: SupplierTransaction) {
-  try {
-    await supabase.from('supplier_transactions').upsert({
-      id: tx.id,
-      supplier_id: tx.supplierId,
-      supplier_name: tx.supplierName,
-      type: tx.type,
-      amount: tx.amount,
-      date: tx.date,
-      reference_number: tx.referenceNumber || '',
-      payment_method: tx.paymentMethod || '',
-      notes: tx.notes || '',
-      associate_name: tx.associateName || '',
-    });
-  } catch (err) {
-    console.warn('Supabase supplier transaction sync:', err);
-  }
-}
-
-export async function syncExpenseToSupabase(expense: POSExpense) {
-  try {
-    await supabase.from('expenses').upsert({
-      id: expense.id,
-      amount: expense.amount,
-      category: expense.category,
-      description: expense.description,
-      timestamp: expense.timestamp,
-      associate_id: expense.associateId,
-      associate_name: expense.associateName,
-      linked_supplier_id: expense.linkedSupplierId,
-      linked_supplier_name: expense.linkedSupplierName,
-      linked_associate_id: expense.linkedAssociateId,
-      linked_associate_name: expense.linkedAssociateName,
-    });
-  } catch (err) {
-    console.warn('Supabase expense sync:', err);
-  }
-}
-
-
+// --- COMPATIBILITY ALIASES FOR EXISTING CODE ---
+export const syncProductToSupabase = async (p: Product) => updateProductInSupabase(p);
+export const syncCustomerToSupabase = async (c: Customer) => updateCustomerInSupabase(c);
+export const syncSupplierToSupabase = async (s: Supplier) => updateSupplierInSupabase(s);
+export const syncAssociateToSupabase = async (a: Associate) => updateAssociateInSupabase(a);
+export const syncSupplierTransactionToSupabase = async (st: SupplierTransaction) => insertSupplierTransactionToSupabase(st);
+export const syncExpenseToSupabase = async (e: POSExpense) => insertExpenseToSupabase(e);
+export const syncClosedShiftToSupabase = async (cs: ClosedShift) => insertClosedShiftToSupabase(cs);
+export const syncTransactionToSupabase = async (t: Transaction) => insertTransactionToSupabase(t);

@@ -17,26 +17,50 @@ import {
   ProductDiscount,
   POSExpense,
 } from '../types';
+import { DEFAULT_ADMIN_ASSOCIATE } from '../data/initialData';
 import {
-  INITIAL_ASSOCIATES,
-  INITIAL_CUSTOMERS,
-  INITIAL_SUPPLIERS,
-  INITIAL_SUPPLIER_TRANSACTIONS,
-} from '../data/initialData';
-import {
+  checkSupabaseConnection,
+  fetchProductsFromSupabase,
+  insertProductToSupabase,
+  updateProductInSupabase,
+  deleteProductFromSupabase,
+  bulkDeleteProductsFromSupabase,
+  clearAllProductsFromSupabase,
+  fetchCustomersFromSupabase,
+  insertCustomerToSupabase,
+  updateCustomerInSupabase,
+  deleteCustomerFromSupabase,
+  fetchSuppliersFromSupabase,
+  insertSupplierToSupabase,
+  updateSupplierInSupabase,
+  deleteSupplierFromSupabase,
+  fetchSupplierTransactionsFromSupabase,
+  insertSupplierTransactionToSupabase,
+  fetchTransactionsFromSupabase,
+  insertTransactionToSupabase,
+  deleteTransactionFromSupabase,
+  fetchAssociatesFromSupabase,
+  insertAssociateToSupabase,
+  updateAssociateInSupabase,
+  deleteAssociateFromSupabase,
+  fetchClosedShiftsFromSupabase,
+  insertClosedShiftToSupabase,
+  fetchExpensesFromSupabase,
+  insertExpenseToSupabase,
+  deleteExpenseFromSupabase,
+  fetchDiscountsFromSupabase,
+  insertDiscountToSupabase,
+  deleteDiscountFromSupabase,
   syncProductToSupabase,
-  syncTransactionToSupabase,
   syncCustomerToSupabase,
-  syncAssociateToSupabase,
-  syncClosedShiftToSupabase,
   syncSupplierToSupabase,
+  syncAssociateToSupabase,
   syncSupplierTransactionToSupabase,
   syncExpenseToSupabase,
-  checkSupabaseConnection,
+  syncClosedShiftToSupabase,
+  syncTransactionToSupabase,
 } from '../lib/supabaseSync';
-import { supabase, FIXED_SUPABASE_CONFIG } from '../lib/supabase';
-
-
+import { getSupabaseKeys } from '../lib/supabase';
 
 interface POSContextType {
   associates: Associate[];
@@ -51,17 +75,17 @@ interface POSContextType {
   splitAssociates: SplitAssociate[];
   activeHeldTransactionId: string | null;
   activeTab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts';
-  globalPriceTier: PriceTier; // 'cash' | 'installment' | 'wholesale'
+  globalPriceTier: PriceTier;
   taxRate: number;
   settings: AppSettings;
   discounts: ProductDiscount[];
-  
+
   setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts') => void;
   updateSettings: (settings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void;
   setCurrentAssociate: (associate: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
   quickSwitchByPin: (pin: string) => boolean;
-  
+
   // Cart Actions
   addToCart: (product: Product, quantity?: number, priceTier?: PriceTier) => void;
   updateCartQuantity: (productId: string, quantity: number) => void;
@@ -72,13 +96,13 @@ interface POSContextType {
   clearCart: () => void;
   getCartItemDiscountAmount: (item: CartItem) => number;
   getCartItemDiscountPercent: (item: CartItem) => number;
-  addDiscount: (discount: ProductDiscount) => void;
-  removeDiscount: (productId: string) => void;
-  
+  addDiscount: (discount: ProductDiscount) => Promise<void>;
+  removeDiscount: (productId: string) => Promise<void>;
+
   // Split & Customer Actions
   setSplitAssociates: (splits: SplitAssociate[]) => void;
   setSelectedCustomer: (customer: Customer | null) => void;
-  
+
   // Transaction Actions
   completeTransaction: (
     paymentMethod: PaymentMethod,
@@ -88,48 +112,50 @@ interface POSContextType {
     amountPaid?: number,
     amountDeferred?: number,
     splitPayments?: SplitPaymentItem[]
-  ) => Transaction;
+  ) => Promise<Transaction>;
   voidTransaction: (transactionId: string) => void;
-  holdCart: (notes?: string) => void;
+  holdCart: (notes?: string) => Promise<void>;
   restoreHeldTransaction: (transactionId: string) => void;
-  deleteTransaction: (transactionId: string) => void;
-  
+  deleteTransaction: (transactionId: string) => Promise<void>;
+
   // Staff & Shift Management
-  clockInAssociate: (associateId: string) => void;
-  clockOutAssociate: (associateId: string) => void;
-  addAssociate: (assoc: Omit<Associate, 'id' | 'isClockedIn'>) => void;
-  updateAssociate: (assoc: Associate) => void;
-  
+  clockInAssociate: (associateId: string) => Promise<void>;
+  clockOutAssociate: (associateId: string) => Promise<void>;
+  addAssociate: (assoc: Omit<Associate, 'id' | 'isClockedIn'>) => Promise<void>;
+  updateAssociate: (assoc: Associate) => Promise<void>;
+  deleteAssociate: (associateId: string) => Promise<void>;
+
   // Catalog & Customer Management
-  addProduct: (prod: Omit<Product, 'id'>) => void;
-  updateProduct: (prod: Product) => void;
+  addProduct: (prod: Omit<Product, 'id'>) => Promise<void>;
+  updateProduct: (prod: Product) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
   bulkDeleteProducts: (productIds: string[]) => Promise<void>;
   clearAllProducts: () => Promise<void>;
-  bulkUpdateProducts: (productIds: string[], updates: Partial<Product>) => void;
-  addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Customer;
-  updateCustomer: (cust: Customer) => void;
-  payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => void;
-  
+  bulkUpdateProducts: (productIds: string[], updates: Partial<Product>) => Promise<void>;
+  addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Promise<Customer>;
+  updateCustomer: (cust: Customer) => Promise<void>;
+  deleteCustomer: (customerId: string) => Promise<void>;
+  payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => Promise<void>;
+
   // Supplier Actions
-  addSupplier: (supplier: Omit<Supplier, 'id'>) => Supplier;
-  updateSupplier: (supplier: Supplier) => void;
-  deleteSupplier: (supplierId: string) => void;
-  recordSupplierTransaction: (tx: Omit<SupplierTransaction, 'id' | 'date'>) => void;
+  addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<Supplier>;
+  updateSupplier: (supplier: Supplier) => Promise<void>;
+  deleteSupplier: (supplierId: string) => Promise<void>;
+  recordSupplierTransaction: (tx: Omit<SupplierTransaction, 'id' | 'date'>) => Promise<void>;
 
   // Shift Closure Actions
   closedShifts: ClosedShift[];
-  closeShift: (shift: Omit<ClosedShift, 'id'>) => void;
-  
+  closeShift: (shift: Omit<ClosedShift, 'id'>) => Promise<void>;
+
   // Expenses & Return Invoice Actions
   expenses: POSExpense[];
-  addExpense: (expense: Omit<POSExpense, 'id' | 'timestamp'>) => void;
-  deleteExpense: (id: string) => void;
-  returnTransaction: (transactionId: string) => void;
-  
+  addExpense: (expense: Omit<POSExpense, 'id' | 'timestamp'>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  returnTransaction: (transactionId: string) => Promise<void>;
+
   refreshDataFromSupabase: () => Promise<void>;
   syncUnsyncedItems: () => Promise<void>;
-  resetDemoData: () => void;
+  resetDemoData: () => Promise<void>;
   dbStatus: { isConnected: boolean; isChecking: boolean; errorMessage?: string; isCustom: boolean };
   testDbConnection: () => Promise<{ success: boolean; errorMessage?: string }>;
 }
@@ -139,43 +165,19 @@ const POSContext = createContext<POSContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'asmaa_pos_state_ar_v3';
 
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [associates, setAssociates] = useState<Associate[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_associates`);
-    return saved ? JSON.parse(saved) : INITIAL_ASSOCIATES;
-  });
+  // Pure Supabase State - Initialized empty without localStorage caches
+  const [associates, setAssociates] = useState<Associate[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [closedShifts, setClosedShifts] = useState<ClosedShift[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierTransactions, setSupplierTransactions] = useState<SupplierTransaction[]>([]);
+  const [expenses, setExpenses] = useState<POSExpense[]>([]);
+  const [discounts, setDiscounts] = useState<ProductDiscount[]>([]);
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_products`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_customers`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_transactions`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [closedShifts, setClosedShifts] = useState<ClosedShift[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_closed_shifts`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_suppliers`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [supplierTransactions, setSupplierTransactions] = useState<SupplierTransaction[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  // Local UI State
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
-
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [splitAssociates, setSplitAssociates] = useState<SplitAssociate[]>([]);
@@ -186,24 +188,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts'
   >('register');
 
-  const [discounts, setDiscounts] = useState<ProductDiscount[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_discounts`);
-    return saved ? JSON.parse(saved) : [];
+  const [dbStatus, setDbStatus] = useState<{
+    isConnected: boolean;
+    isChecking: boolean;
+    errorMessage?: string;
+    isCustom: boolean;
+  }>({
+    isConnected: false,
+    isChecking: true,
+    isCustom: false,
   });
 
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_discounts`, JSON.stringify(discounts));
-  }, [discounts]);
-
-  const [expenses, setExpenses] = useState<POSExpense[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_expenses`);
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(expenses));
-  }, [expenses]);
-
+  // Local Settings (Theme, Printer, Margins)
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
     const defaultCats = [
@@ -212,14 +208,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'أجهزة كهربائية منزلية',
       'بلاستيكيات ومنظمات',
       'زجاجيات وبورسلين',
-      'أدوات تنظيف ومستلزمات'
+      'أدوات تنظيف ومستلزمات',
     ];
     const defaultMargins = {
       default: { cash: 20, wholesale: 10, installment: 30 },
       categories: {
         'أطقم طهي وحلل': { cash: 25, wholesale: 15, installment: 35 },
-        'أجهزة كهربائية منزلية': { cash: 15, wholesale: 8, installment: 25 }
-      }
+        'أجهزة كهربائية منزلية': { cash: 15, wholesale: 8, installment: 25 },
+      },
     };
     const defaultPrint: AppSettings['printSettings'] = {
       headerText: 'أسماء للأدوات المنزليه',
@@ -231,7 +227,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showSellerCode: true,
       showQRCode: true,
       showLogo: false,
-      receiptType: 'thermal' as const
+      receiptType: 'thermal' as const,
     };
     if (saved) {
       try {
@@ -267,30 +263,28 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [settings]);
 
+  // Clear legacy business data from localStorage to prevent any stale cache pollution
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_associates`, JSON.stringify(associates));
-  }, [associates]);
-
-  const [dbStatus, setDbStatus] = useState<{
-    isConnected: boolean;
-    isChecking: boolean;
-    errorMessage?: string;
-    isCustom: boolean;
-  }>({
-    isConnected: false,
-    isChecking: true,
-    isCustom: false,
-  });
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_products`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_customers`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_transactions`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_suppliers`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_closed_shifts`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_expenses`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_associates`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_discounts`);
+  }, []);
 
   const testDbConnection = async () => {
     setDbStatus((p) => ({ ...p, isChecking: true }));
     const result = await checkSupabaseConnection();
-    setDbStatus((p) => ({
-      ...p,
+    setDbStatus({
       isConnected: result.success,
       isChecking: false,
       errorMessage: result.errorMessage,
-    }));
+      isCustom: getSupabaseKeys().isCustom,
+    });
     return result;
   };
 
@@ -301,408 +295,124 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_associates`, JSON.stringify(associates));
-  }, [associates]);
-
-  // Sync initial data from Supabase if available
+  // --- REFRESH DATA FROM SUPABASE (SSOT) ---
   const loadFromSupabase = async () => {
     setDbStatus((p) => ({ ...p, isChecking: true }));
-    try {
-      // 1. Fetch products from Supabase
-      const { data: prodData, error: prodErr } = await supabase.from('products').select('*');
-      if (prodErr) {
-        setDbStatus((p) => ({
-          ...p,
-          isConnected: false,
-          isChecking: false,
-          errorMessage: prodErr.message,
-        }));
-        return;
-      }
+    console.log('[POSContext] Loading fresh data from Supabase...');
 
-      setDbStatus((p) => ({
-        ...p,
-        isConnected: true,
-        isChecking: false,
-        errorMessage: undefined,
-      }));
+    const errorList: string[] = [];
 
-      if (prodData && Array.isArray(prodData)) {
-        if (prodData.length > 0) {
-          const mappedProducts: Product[] = prodData.map((p: any) => ({
-            id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}_${Math.random()}`),
-            name: p.name || 'منتج',
-            sku: String(p.sku ?? p.id ?? 'SKU-000'),
-            barcode: String(p.barcode || p.sku || p.id || '000000'),
-            category: p.category || 'عام',
-            priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
-            priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
-            priceWholesale: Number(p.priceWholesale ?? p.wholesale_price ?? p.price_wholesale ?? p.wholesalePrice ?? 0),
-            cost: Number(p.cost ?? p.cost_price ?? p.cost_cash ?? p.purchase_price ?? p.buy_price ?? 0),
-            stock: Number(
-              p.stock_quantity ??
-              p.quantity ??
-              p.qty ??
-              p.stock ??
-              p.stock_qty ??
-              p.quantity_in_stock ??
-              p.inventory ??
-              p.count ??
-              p.amount ??
-              0
-            ),
-            image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
-            description: p.description || '',
-            barcodes: Array.isArray(p.barcodes) 
-              ? p.barcodes.map(String) 
-              : typeof p.barcodes === 'string' 
-                ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-                : typeof p.alternative_barcodes === 'string'
-                  ? p.alternative_barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-                  : Array.isArray(p.alternative_barcodes)
-                    ? p.alternative_barcodes.map(String)
-                    : [],
-          }));
-          setProducts(mappedProducts);
-          localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(mappedProducts));
-        } else {
-          // Table in Supabase is empty (0 products) - sync empty state
-          setProducts([]);
-          localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify([]));
-        }
-      }
-
-      // 2. Fetch associates from Supabase
-      const { data: assocData } = await supabase.from('associates').select('*');
-      if (assocData && assocData.length > 0) {
-        const mappedFromDb: Associate[] = assocData.map((a: any) => ({
-          id: String(a.id),
-          name: a.name || 'موظف',
-          username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${a.id}`,
-          password: String(a.password || a.pin || a.pass || '1001'),
-          pin: String(a.pin || a.password || a.pass || '1001'),
-          role: a.role || 'مسؤول مبيعات',
-          avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-          email: a.email || '',
-          phone: a.phone || '',
-          commissionRate: Number(a.commission_rate ?? a.commissionRate ?? 0.05),
-          dailyGoal: Number(a.daily_goal ?? a.dailyGoal ?? 5000),
-          hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
-          isClockedIn: false,
-        }));
-
-        setAssociates((prev) => {
-          const map = new Map<string, Associate>();
-          // Always include built-in initial associates
-          INITIAL_ASSOCIATES.forEach((initAssoc) => map.set(initAssoc.id, initAssoc));
-          // Add/override with DB associates
-          mappedFromDb.forEach((dbAssoc) => map.set(dbAssoc.id, dbAssoc));
-          return Array.from(map.values());
-        });
-      }
-
-      // 3. Fetch customers from Supabase
-      try {
-        const { data: custData } = await supabase.from('customers').select('*');
-        if (custData && Array.isArray(custData)) {
-          if (custData.length > 0) {
-            const mappedCustomers: Customer[] = custData.map((c: any) => ({
-              id: c.id,
-              name: c.name,
-              phone: c.phone || '',
-              email: c.email || '',
-              address: c.address || '',
-              totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
-              loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
-              tier: c.tier || 'عادي',
-              isCreditEligible: Boolean(c.is_credit_eligible ?? c.isCreditEligible),
-              creditLimit: Number(c.credit_limit ?? c.creditLimit ?? 0),
-              currentDebt: Number(c.current_debt ?? c.currentDebt ?? 0),
-              notes: c.notes || '',
-            }));
-            setCustomers(mappedCustomers);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_customers`, JSON.stringify(mappedCustomers));
-          } else {
-            setCustomers([]);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_customers`, JSON.stringify([]));
-          }
-        }
-      } catch (custErr) {
-        console.warn('Customers table check error:', custErr);
-      }
-
-      // 4. Fetch closed shifts from Supabase
-      try {
-        const { data: shiftData } = await supabase.from('closed_shifts').select('*');
-        if (shiftData && Array.isArray(shiftData)) {
-          if (shiftData.length > 0) {
-            const mappedShifts: ClosedShift[] = shiftData.map((s: any) => ({
-              id: s.id,
-              associateId: s.associate_id,
-              associateName: s.associate_name,
-              startTime: s.start_time,
-              endTime: s.end_time,
-              expectedCash: Number(s.expected_cash ?? 0),
-              actualCash: Number(s.actual_cash ?? 0),
-              discrepancy: Number(s.discrepancy ?? 0),
-              salesCount: Number(s.sales_count ?? 0),
-              totalSales: Number(s.total_sales ?? 0),
-              totalCard: Number(s.total_card ?? 0),
-              totalInstallment: Number(s.total_installment ?? 0),
-              totalDebtCollected: Number(s.total_debt_collected ?? 0),
-              notes: s.notes || '',
-              openingBalance: Number(s.opening_balance ?? s.openingBalance ?? 0),
-              leftoverBalance: Number(s.leftover_balance ?? s.leftoverBalance ?? 0),
-              isSynced: true,
-            }));
-
-            setClosedShifts((prev) => {
-              const map = new Map<string, ClosedShift>();
-              mappedShifts.forEach((s) => map.set(s.id, s));
-              prev.forEach((s) => {
-                if (!s.isSynced) {
-                  map.set(s.id, { ...s, isSynced: false });
-                }
-              });
-              return Array.from(map.values()).sort((a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime());
-            });
-          } else {
-            setClosedShifts([]);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_closed_shifts`, JSON.stringify([]));
-          }
-        }
-      } catch (shiftErr) {
-        console.warn('Closed shifts table check error:', shiftErr);
-      }
-
-      // 5. Fetch transactions from Supabase
-      try {
-        const { data: txData } = await supabase.from('transactions').select('*');
-        const { data: itemsData } = await supabase.from('transaction_items').select('*');
-
-        const itemsByTxId = new Map<string, any[]>();
-        if (itemsData && itemsData.length > 0) {
-          itemsData.forEach((item: any) => {
-            const txId = item.transaction_id;
-            if (txId) {
-              if (!itemsByTxId.has(txId)) {
-                itemsByTxId.set(txId, []);
-              }
-              itemsByTxId.get(txId)!.push({
-                productId: item.product_id,
-                productName: item.product_name,
-                sku: item.sku,
-                quantity: Number(item.quantity ?? 1),
-                priceTier: item.price_tier || 'cash',
-                unitPrice: Number(item.unit_price ?? 0),
-                totalPrice: Number(item.total_price ?? 0),
-                assignedAssociateId: item.assigned_associate_id || undefined,
-              });
-            }
-          });
-        }
-
-        if (txData && Array.isArray(txData)) {
-          if (txData.length > 0) {
-            const mappedTxs: Transaction[] = txData.map((t: any) => ({
-              id: t.id,
-              receiptNumber: t.receipt_number || '0000',
-              timestamp: t.timestamp || new Date().toISOString(),
-              items: itemsByTxId.get(t.id) || [],
-              subtotal: Number(t.subtotal ?? 0),
-              discountTotal: Number(t.discount_total ?? 0),
-              taxTotal: Number(t.tax_total ?? 0),
-              grandTotal: Number(t.grand_total ?? 0),
-              paymentMethod: t.payment_method || 'كاش',
-              paymentDetails: t.payment_details || '',
-              customerId: t.customer_id || undefined,
-              customerName: t.customer_name || '',
-              primaryAssociateId: t.primary_associate_id || 'system',
-              primaryAssociateName: t.primary_associate_name || 'موظف',
-              splitAssociates: t.split_associates || [],
-              commissions: t.commissions || [],
-              notes: t.notes || '',
-              status: t.status || 'مكتملة',
-              amountPaid: Number(t.amount_paid ?? 0),
-              amountDeferred: Number(t.amount_deferred ?? 0),
-              splitPayments: t.split_payments || [],
-              originalCart: t.original_cart || [],
-              isSynced: true,
-            }));
-
-            setTransactions((prev) => {
-              const map = new Map<string, Transaction>();
-              mappedTxs.forEach((tx) => map.set(tx.id, tx));
-              prev.forEach((tx) => {
-                if (!tx.isSynced) {
-                  map.set(tx.id, { ...tx, isSynced: false });
-                }
-              });
-              return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            });
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_transactions`, JSON.stringify(mappedTxs));
-          } else {
-            setTransactions((prev) => prev.filter((tx) => !tx.isSynced));
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_transactions`, JSON.stringify([]));
-          }
-        }
-      } catch (txErr) {
-        console.warn('Transactions table check error:', txErr);
-      }
-
-      // 6. Fetch suppliers from Supabase
-      try {
-        const { data: supData } = await supabase.from('suppliers').select('*');
-        if (supData && Array.isArray(supData)) {
-          if (supData.length > 0) {
-            const mappedSuppliers: Supplier[] = supData.map((s: any) => ({
-              id: s.id,
-              name: s.name,
-              companyName: s.company_name || '',
-              phone: s.phone || '',
-              email: s.email || '',
-              address: s.address || '',
-              category: s.category || '',
-              currentBalance: Number(s.current_balance ?? 0),
-              notes: s.notes || '',
-              taxNumber: s.tax_number || '',
-            }));
-            setSuppliers(mappedSuppliers);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_suppliers`, JSON.stringify(mappedSuppliers));
-          } else {
-            setSuppliers([]);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_suppliers`, JSON.stringify([]));
-          }
-        }
-      } catch (supErr) {
-        console.warn('Suppliers table check error:', supErr);
-      }
-
-      // 7. Fetch expenses from Supabase
-      try {
-        const { data: expData } = await supabase.from('expenses').select('*');
-        if (expData && Array.isArray(expData)) {
-          if (expData.length > 0) {
-            const mappedExpenses: POSExpense[] = expData.map((e: any) => ({
-              id: e.id,
-              amount: Number(e.amount ?? 0),
-              category: e.category || 'أخرى',
-              description: e.description || '',
-              timestamp: e.timestamp || new Date().toISOString(),
-              associateId: e.associate_id,
-              associateName: e.associate_name,
-              linkedSupplierId: e.linked_supplier_id,
-              linkedSupplierName: e.linked_supplier_name,
-              linkedAssociateId: e.linked_associate_id,
-              linkedAssociateName: e.linked_associate_name,
-            }));
-            setExpenses(mappedExpenses);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(mappedExpenses));
-          } else {
-            setExpenses([]);
-            localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify([]));
-          }
-        }
-      } catch (expErr) {
-        console.warn('Expenses table check error:', expErr);
-      }
-    } catch (err: any) {
-      console.warn('Supabase initial fetch skipped or table pending:', err);
-      setDbStatus((p) => ({
-        ...p,
-        isConnected: false,
-        isChecking: false,
-        errorMessage: err?.message || String(err),
-      }));
-    }
-  };
-
-  const syncTransactionWithStatus = (tx: Transaction) => {
-    syncTransactionToSupabase(tx).then((res) => {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === tx.id ? { ...t, isSynced: res.success } : t))
-      );
-    });
-  };
-
-  const syncClosedShiftWithStatus = (shift: ClosedShift) => {
-    syncClosedShiftToSupabase(shift).then((res) => {
-      setClosedShifts((prev) =>
-        prev.map((s) => (s.id === shift.id ? { ...s, isSynced: res.success } : s))
-      );
-    });
-  };
-
-  const syncUnsyncedItems = async () => {
-    setDbStatus((p) => ({ ...p, isChecking: true }));
-    let hasError = false;
-    let lastErrorMsg = '';
-
-    // 1. Sync unsynced transactions
-    const unsyncedTxs = transactions.filter((t) => !t.isSynced);
-    for (const tx of unsyncedTxs) {
-      const res = await syncTransactionToSupabase(tx);
-      if (res.success) {
-        setTransactions((prev) =>
-          prev.map((t) => (t.id === tx.id ? { ...t, isSynced: true } : t))
-        );
-      } else {
-        hasError = true;
-        lastErrorMsg = res.error?.message || String(res.error || 'خطأ في مزامنة الفاتورة');
-      }
+    // 1. Products
+    const prodRes = await fetchProductsFromSupabase();
+    if (!prodRes.error) {
+      setProducts(prodRes.data);
+    } else {
+      errorList.push(`المنتجات: ${prodRes.error.message || String(prodRes.error)}`);
     }
 
-    // 2. Sync unsynced closed shifts
-    const unsyncedShifts = closedShifts.filter((s) => !s.isSynced);
-    for (const shift of unsyncedShifts) {
-      const res = await syncClosedShiftToSupabase(shift);
-      if (res.success) {
-        setClosedShifts((prev) =>
-          prev.map((s) => (s.id === shift.id ? { ...s, isSynced: true } : s))
-        );
-      } else {
-        hasError = true;
-        lastErrorMsg = res.error?.message || String(res.error || 'خطأ في مزامنة الوردية');
-      }
+    // 2. Customers
+    const custRes = await fetchCustomersFromSupabase();
+    if (!custRes.error) {
+      setCustomers(custRes.data);
+    } else {
+      errorList.push(`العملاء: ${custRes.error.message || String(custRes.error)}`);
     }
 
-    setDbStatus((p) => ({
-      ...p,
-      isConnected: !hasError,
+    // 3. Suppliers
+    const suppRes = await fetchSuppliersFromSupabase();
+    if (!suppRes.error) {
+      setSuppliers(suppRes.data);
+    } else {
+      errorList.push(`الموردين: ${suppRes.error.message || String(suppRes.error)}`);
+    }
+
+    // 4. Supplier Transactions
+    const stxRes = await fetchSupplierTransactionsFromSupabase();
+    if (!stxRes.error) {
+      setSupplierTransactions(stxRes.data);
+    } else {
+      errorList.push(`حركات الموردين: ${stxRes.error.message || String(stxRes.error)}`);
+    }
+
+    // 5. Transactions
+    const txRes = await fetchTransactionsFromSupabase();
+    if (!txRes.error) {
+      setTransactions(txRes.data);
+    } else {
+      errorList.push(`المبيعات: ${txRes.error.message || String(txRes.error)}`);
+    }
+
+    // 6. Closed Shifts
+    const shiftRes = await fetchClosedShiftsFromSupabase();
+    if (!shiftRes.error) {
+      setClosedShifts(shiftRes.data);
+    } else {
+      errorList.push(`الورديات المغلقة: ${shiftRes.error.message || String(shiftRes.error)}`);
+    }
+
+    // 7. Expenses
+    const expRes = await fetchExpensesFromSupabase();
+    if (!expRes.error) {
+      setExpenses(expRes.data);
+    } else {
+      errorList.push(`المصروفات: ${expRes.error.message || String(expRes.error)}`);
+    }
+
+    // 8. Discounts
+    const discRes = await fetchDiscountsFromSupabase();
+    if (!discRes.error) {
+      setDiscounts(discRes.data);
+    } else {
+      errorList.push(`الخصومات: ${discRes.error.message || String(discRes.error)}`);
+    }
+
+    // 9. Associates
+    const assocRes = await fetchAssociatesFromSupabase();
+    if (!assocRes.error) {
+      let fetchedAssociates = assocRes.data;
+
+      // Seed default admin in Supabase ONLY IF query succeeded AND table has 0 rows
+      if (fetchedAssociates.length === 0) {
+        console.log('[POSContext] Associates table is empty in Supabase. Seeding default admin...');
+        const insertRes = await insertAssociateToSupabase(DEFAULT_ADMIN_ASSOCIATE);
+        if (insertRes.success) {
+          const reFetchAssoc = await fetchAssociatesFromSupabase();
+          if (!reFetchAssoc.error) {
+            fetchedAssociates = reFetchAssoc.data;
+          }
+        }
+      }
+
+      setAssociates(fetchedAssociates);
+
+      // Maintain current logged-in associate reference if still exists
+      if (currentAssociate) {
+        const updatedMatch = fetchedAssociates.find((a) => a.id === currentAssociate.id);
+        if (updatedMatch) {
+          setCurrentAssociateState(updatedMatch);
+        }
+      }
+    } else {
+      errorList.push(`الموظفين: ${assocRes.error.message || String(assocRes.error)}`);
+    }
+
+    const hasErrors = errorList.length > 0;
+
+    setDbStatus({
+      isConnected: !hasErrors,
       isChecking: false,
-      errorMessage: hasError ? lastErrorMsg : undefined,
-    }));
+      errorMessage: hasErrors ? errorList.join(' | ') : undefined,
+      isCustom: getSupabaseKeys().isCustom,
+    });
   };
 
   useEffect(() => {
     loadFromSupabase();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_customers`, JSON.stringify(customers));
-  }, [customers]);
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_transactions`, JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_closed_shifts`, JSON.stringify(closedShifts));
-  }, [closedShifts]);
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_suppliers`, JSON.stringify(suppliers));
-  }, [suppliers]);
-
-  useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_supplier_txs`, JSON.stringify(supplierTransactions));
-  }, [supplierTransactions]);
+  const syncUnsyncedItems = async () => {
+    await loadFromSupabase();
+  };
 
   const setCurrentAssociate = (assoc: Associate | null) => {
     setCurrentAssociateState(assoc);
@@ -710,13 +420,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setGlobalPriceTier = (tier: PriceTier) => {
     setGlobalPriceTierState(tier);
-    setCart((prevCart) =>
-      prevCart.map((item) => ({ ...item, selectedPriceTier: tier }))
-    );
+    setCart((prevCart) => prevCart.map((item) => ({ ...item, selectedPriceTier: tier })));
   };
 
   const quickSwitchByPin = (pin: string): boolean => {
-    const found = associates.find((a) => a.pin === pin);
+    const found = associates.find((a) => a.pin === pin || a.password === pin);
     if (found) {
       setCurrentAssociateState(found);
       if (!found.isClockedIn) {
@@ -727,6 +435,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   };
 
+  // --- CART OPERATIONS ---
   const addToCart = (product: Product, quantity = 1, priceTier?: PriceTier) => {
     const tier = priceTier || globalPriceTier;
 
@@ -736,7 +445,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const updated = [...prevCart];
         const newQty = updated[existingIndex].quantity + quantity;
         if (newQty > product.stock) {
-          alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
+          alert(
+            `خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`
+          );
           return prevCart;
         }
         updated[existingIndex].quantity = newQty;
@@ -744,7 +455,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return updated;
       }
       if (quantity > product.stock) {
-        alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
+        alert(
+          `خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`
+        );
         return prevCart;
       }
       return [
@@ -766,19 +479,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const product = products.find((p) => p.id === productId);
     if (product && quantity > product.stock) {
-      alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
+      alert(
+        `خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`
+      );
       return;
     }
-    setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item))
-    );
+    setCart((prev) => prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item)));
   };
 
   const updateCartItemPriceTier = (productId: string, priceTier: PriceTier) => {
     setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId ? { ...item, selectedPriceTier: priceTier } : item
-      )
+      prev.map((item) => (item.product.id === productId ? { ...item, selectedPriceTier: priceTier } : item))
     );
   };
 
@@ -794,33 +505,34 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateCartItemAssociate = (productId: string, associateId?: string) => {
     setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId ? { ...item, assignedAssociateId: associateId } : item
-      )
+      prev.map((item) => (item.product.id === productId ? { ...item, assignedAssociateId: associateId } : item))
     );
+  };
+
+  const getItemUnitPrice = (item: CartItem): number => {
+    if (item.overridePrice !== undefined && item.overridePrice > 0) return item.overridePrice;
+    const tier = item.selectedPriceTier || globalPriceTier;
+    if (tier === 'cash') return item.product.priceCash || 0;
+    if (tier === 'installment') return item.product.priceInstallment || 0;
+    if (tier === 'wholesale') return item.product.priceWholesale || 0;
+    return item.product.priceCash || 0;
   };
 
   const getCartItemDiscountAmount = (item: CartItem): number => {
     const unitPrice = getItemUnitPrice(item);
-    
-    // Check if there is an active admin discount for this product
     const adminDiscount = discounts.find((d) => d.productId === item.product.id && d.isActive !== false);
     let adminDiscountAmt = 0;
     if (adminDiscount) {
       const tier = item.selectedPriceTier || globalPriceTier;
       const appliesToCash = !adminDiscount.applyTo || adminDiscount.applyTo === 'cash' || adminDiscount.applyTo === 'both';
-      const appliesToInstallment = !adminDiscount.applyTo || adminDiscount.applyTo === 'installment' || adminDiscount.applyTo === 'both';
-      
+      const appliesToInstallment =
+        !adminDiscount.applyTo || adminDiscount.applyTo === 'installment' || adminDiscount.applyTo === 'both';
+
       let isApplicable = false;
-      if (tier === 'cash' && appliesToCash) {
-        isApplicable = true;
-      } else if (tier === 'installment' && appliesToInstallment) {
-        isApplicable = true;
-      } else if (tier === 'wholesale' && appliesToCash) {
-        isApplicable = true;
-      } else if (tier !== 'cash' && tier !== 'installment' && appliesToCash) {
-        isApplicable = true;
-      }
+      if (tier === 'cash' && appliesToCash) isApplicable = true;
+      else if (tier === 'installment' && appliesToInstallment) isApplicable = true;
+      else if (tier === 'wholesale' && appliesToCash) isApplicable = true;
+      else if (tier !== 'cash' && tier !== 'installment' && appliesToCash) isApplicable = true;
 
       if (isApplicable) {
         if (adminDiscount.type === 'percentage') {
@@ -831,10 +543,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Add manual discount percent if any
     const manualDiscountAmt = (unitPrice * (item.discountPercent || 0)) / 100;
-
-    // Total discount amount per unit
     const totalDiscountPerUnit = Math.min(unitPrice, adminDiscountAmt + manualDiscountAmt);
     return Math.round(totalDiscountPerUnit * item.quantity * 100) / 100;
   };
@@ -847,15 +556,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Math.round((discountAmt / originalTotal) * 100 * 100) / 100;
   };
 
-  const addDiscount = (discount: ProductDiscount) => {
-    setDiscounts((prev) => {
-      const filtered = prev.filter((d) => d.productId !== discount.productId);
-      return [...filtered, discount];
-    });
+  const addDiscount = async (discount: ProductDiscount) => {
+    const res = await insertDiscountToSupabase(discount);
+    if (!res.success) {
+      alert(`خطأ في حفظ الخصم: ${res.error?.message || ''}`);
+    }
+    await loadFromSupabase();
   };
 
-  const removeDiscount = (productId: string) => {
-    setDiscounts((prev) => prev.filter((d) => d.productId !== productId));
+  const removeDiscount = async (productId: string) => {
+    const res = await deleteDiscountFromSupabase(productId);
+    if (!res.success) {
+      alert(`خطأ في حذف الخصم: ${res.error?.message || ''}`);
+    }
+    await loadFromSupabase();
   };
 
   const removeFromCart = (productId: string) => {
@@ -869,16 +583,309 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveHeldTransactionId(null);
   };
 
-  const getItemUnitPrice = (item: CartItem): number => {
-    if (item.overridePrice !== undefined && item.overridePrice > 0) return item.overridePrice;
-    const tier = item.selectedPriceTier || globalPriceTier;
-    if (tier === 'cash') return item.product.priceCash || 0;
-    if (tier === 'installment') return item.product.priceInstallment || 0;
-    if (tier === 'wholesale') return item.product.priceWholesale || 0;
-    return item.product.priceCash || 0;
+  // --- CRUD OPERATIONS WITH SUPABASE (SSOT) ---
+
+  const addProduct = async (prodData: Omit<Product, 'id'>) => {
+    const newProduct: Product = {
+      ...prodData,
+      id: prodData.sku || prodData.barcode || `prod_${Date.now()}`,
+    };
+    const res = await insertProductToSupabase(newProduct);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشلت إضافة الصنف في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
   };
 
-  const completeTransaction = (
+  const updateProduct = async (prod: Product) => {
+    const res = await updateProductInSupabase(prod);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تحديث بيانات الصنف في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const deleteProduct = async (productId: string) => {
+    const res = await deleteProductFromSupabase(productId);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف الصنف من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const bulkDeleteProducts = async (productIds: string[]) => {
+    const res = await bulkDeleteProductsFromSupabase(productIds);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف الاصناف المحددة من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const clearAllProducts = async () => {
+    const res = await clearAllProductsFromSupabase();
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تفريغ الاصناف من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const bulkUpdateProducts = async (productIds: string[], updates: Partial<Product>) => {
+    for (const id of productIds) {
+      const p = products.find((prod) => prod.id === id);
+      if (p) {
+        await updateProductInSupabase({ ...p, ...updates });
+      }
+    }
+    await loadFromSupabase();
+  };
+
+  const addCustomer = async (custData: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>): Promise<Customer> => {
+    const newCustomer: Customer = {
+      ...custData,
+      id: `cust_${Date.now()}`,
+      totalSpent: 0,
+      loyaltyPoints: 50,
+    };
+    const res = await insertCustomerToSupabase(newCustomer);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشلت إضافة العميل في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    setSelectedCustomer(newCustomer);
+    await loadFromSupabase();
+    return newCustomer;
+  };
+
+  const updateCustomer = async (cust: Customer) => {
+    const res = await updateCustomerInSupabase(cust);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تحديث بيانات العميل في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    if (selectedCustomer?.id === cust.id) {
+      setSelectedCustomer(cust);
+    }
+    await loadFromSupabase();
+  };
+
+  const deleteCustomer = async (customerId: string) => {
+    const res = await deleteCustomerFromSupabase(customerId);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف العميل من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    if (selectedCustomer?.id === customerId) {
+      setSelectedCustomer(null);
+    }
+    await loadFromSupabase();
+  };
+
+  const addSupplier = async (supplierData: Omit<Supplier, 'id'>): Promise<Supplier> => {
+    const newSupplier: Supplier = {
+      ...supplierData,
+      id: `supp_${Date.now()}`,
+      currentBalance: supplierData.currentBalance || 0,
+    };
+    const res = await insertSupplierToSupabase(newSupplier);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشلت إضافة المورد في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+    return newSupplier;
+  };
+
+  const updateSupplier = async (supplier: Supplier) => {
+    const res = await updateSupplierInSupabase(supplier);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تحديث بيانات المورد في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const deleteSupplier = async (supplierId: string) => {
+    const res = await deleteSupplierFromSupabase(supplierId);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف المورد من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const recordSupplierTransaction = async (txData: Omit<SupplierTransaction, 'id' | 'date'>) => {
+    const newTx: SupplierTransaction = {
+      ...txData,
+      id: `stx_${Date.now()}`,
+      date: new Date().toISOString(),
+    };
+    const res = await insertSupplierTransactionToSupabase(newTx);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تسجيل معاملة المورد في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+
+    const targetSupplier = suppliers.find((s) => s.id === txData.supplierId);
+    if (targetSupplier) {
+      let delta = 0;
+      if (txData.type === 'supply_invoice') delta = txData.amount;
+      else if (txData.type === 'payment' || txData.type === 'return') delta = -txData.amount;
+
+      const updatedSupplier = {
+        ...targetSupplier,
+        currentBalance: Math.max(0, (targetSupplier.currentBalance || 0) + delta),
+      };
+      await updateSupplierInSupabase(updatedSupplier);
+    }
+
+    await loadFromSupabase();
+  };
+
+  const addExpense = async (expenseData: Omit<POSExpense, 'id' | 'timestamp'>) => {
+    const newExpense: POSExpense = {
+      ...expenseData,
+      id: `expense_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      associateId: currentAssociate?.id || undefined,
+      associateName: currentAssociate?.name || undefined,
+    };
+    const res = await insertExpenseToSupabase(newExpense);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تسجيل المصروف في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+
+    if (expenseData.category === 'دفعة لمورد' && expenseData.linkedSupplierId) {
+      await recordSupplierTransaction({
+        supplierId: expenseData.linkedSupplierId,
+        supplierName: expenseData.linkedSupplierName || '',
+        type: 'payment',
+        amount: expenseData.amount,
+        referenceNumber: newExpense.id,
+        notes: expenseData.description || 'دفعة مسجلة عبر المصروفات اليومية',
+        associateName: currentAssociate?.name || 'النظام',
+      });
+    }
+
+    if (expenseData.category === 'سلفة لموظف' && expenseData.linkedAssociateId) {
+      const targetAssoc = associates.find((a) => a.id === expenseData.linkedAssociateId);
+      if (targetAssoc) {
+        await updateAssociateInSupabase({
+          ...targetAssoc,
+          advancesBalance: (targetAssoc.advancesBalance || 0) + expenseData.amount,
+        });
+      }
+    }
+
+    await loadFromSupabase();
+  };
+
+  const deleteExpense = async (id: string) => {
+    const res = await deleteExpenseFromSupabase(id);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف المصروف من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const clockInAssociate = async (associateId: string) => {
+    const target = associates.find((a) => a.id === associateId);
+    if (target) {
+      const updated = { ...target, isClockedIn: true, clockInTime: new Date().toISOString() };
+      await updateAssociateInSupabase(updated);
+      await loadFromSupabase();
+    }
+  };
+
+  const clockOutAssociate = async (associateId: string) => {
+    const target = associates.find((a) => a.id === associateId);
+    if (target) {
+      const updated = { ...target, isClockedIn: false, clockInTime: undefined };
+      await updateAssociateInSupabase(updated);
+      await loadFromSupabase();
+    }
+  };
+
+  const addAssociate = async (assocData: Omit<Associate, 'id' | 'isClockedIn'>) => {
+    const newAssoc: Associate = {
+      ...assocData,
+      id: `assoc_${Date.now()}`,
+      isClockedIn: true,
+      clockInTime: new Date().toISOString(),
+    };
+    const res = await insertAssociateToSupabase(newAssoc);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشلت إضافة الموظف في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    if (!currentAssociate) {
+      setCurrentAssociateState(newAssoc);
+    }
+    await loadFromSupabase();
+  };
+
+  const updateAssociate = async (assoc: Associate) => {
+    const res = await updateAssociateInSupabase(assoc);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تحديث بيانات الموظف في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    if (currentAssociate?.id === assoc.id) {
+      setCurrentAssociateState(assoc);
+    }
+    await loadFromSupabase();
+  };
+
+  const deleteAssociate = async (associateId: string) => {
+    const res = await deleteAssociateFromSupabase(associateId);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف الموظف من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    if (currentAssociate?.id === associateId) {
+      setCurrentAssociateState(null);
+    }
+    await loadFromSupabase();
+  };
+
+  const closeShift = async (shiftData: Omit<ClosedShift, 'id'>) => {
+    const newShift: ClosedShift = {
+      ...shiftData,
+      id: `shift_${Date.now()}`,
+    };
+    const res = await insertClosedShiftToSupabase(newShift);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تسجيل إغلاق الوردية في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
+    await loadFromSupabase();
+  };
+
+  const completeTransaction = async (
     paymentMethod: PaymentMethod,
     discountTotalOverride = 0,
     paymentDetails = '',
@@ -886,7 +893,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amountPaid?: number,
     amountDeferred?: number,
     splitPayments?: SplitPaymentItem[]
-  ): Transaction => {
+  ): Promise<Transaction> => {
     if (!currentAssociate) {
       throw new Error('رجاءً اختر البائع المسؤول قبل إتمام البيع.');
     }
@@ -926,7 +933,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       discountTotal += discountTotalOverride;
     }
 
-    const grandTotal = isReturn ? (subtotal - discountTotal) : Math.max(0, subtotal - discountTotal);
+    const grandTotal = isReturn ? subtotal - discountTotal : Math.max(0, subtotal - discountTotal);
 
     let generalNetSubtotal = 0;
     const associateSalesMap: Record<string, number> = {};
@@ -955,37 +962,32 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (primarySharePercent > 0) {
           associateSalesMap[primaryAssocId] =
-            (associateSalesMap[primaryAssocId] || 0) +
-            (generalNetSubtotal * primarySharePercent) / 100;
+            (associateSalesMap[primaryAssocId] || 0) + (generalNetSubtotal * primarySharePercent) / 100;
         }
 
         splitAssociates.forEach((split) => {
           associateSalesMap[split.associateId] =
-            (associateSalesMap[split.associateId] || 0) +
-            (generalNetSubtotal * split.sharePercentage) / 100;
+            (associateSalesMap[split.associateId] || 0) + (generalNetSubtotal * split.sharePercentage) / 100;
         });
       } else {
-        associateSalesMap[primaryAssocId] =
-          (associateSalesMap[primaryAssocId] || 0) + generalNetSubtotal;
+        associateSalesMap[primaryAssocId] = (associateSalesMap[primaryAssocId] || 0) + generalNetSubtotal;
       }
     }
 
-    const commissions: TransactionCommission[] = Object.entries(associateSalesMap).map(
-      ([assocId, saleAmt]) => {
-        const assoc = associates.find((a) => a.id === assocId);
-        const rate = assoc ? assoc.commissionRate : 0.05;
-        const commissionAmount = Math.round(saleAmt * rate * 100) / 100;
-        const sharePercent = Math.abs(grandTotal) > 0 ? Math.round((saleAmt / grandTotal) * 100) : 0;
+    const commissions: TransactionCommission[] = Object.entries(associateSalesMap).map(([assocId, saleAmt]) => {
+      const assoc = associates.find((a) => a.id === assocId);
+      const rate = assoc ? assoc.commissionRate : 0.05;
+      const commissionAmount = Math.round(saleAmt * rate * 100) / 100;
+      const sharePercent = Math.abs(grandTotal) > 0 ? Math.round((saleAmt / grandTotal) * 100) : 0;
 
-        return {
-          associateId: assocId,
-          associateName: assoc ? assoc.name : 'بائع',
-          saleAmount: Math.round(saleAmt * 100) / 100,
-          commissionAmount,
-          sharePercentage: sharePercent,
-        };
-      }
-    );
+      return {
+        associateId: assocId,
+        associateName: assoc ? assoc.name : 'بائع',
+        saleAmount: Math.round(saleAmt * 100) / 100,
+        commissionAmount,
+        sharePercentage: sharePercent,
+      };
+    });
 
     const targetTxId = activeHeldTransactionId || `tx_${Date.now()}`;
     let receiptNumber = `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
@@ -1025,74 +1027,54 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : undefined,
     };
 
-    setProducts((prev) =>
-      prev.map((p) => {
-        const cartItem = cart.find((ci) => ci.product.id === p.id);
-        if (cartItem) {
-          const updatedProd = { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
-          syncProductToSupabase(updatedProd);
-          return updatedProd;
-        }
-        return p;
-      })
-    );
+    // 1. Insert transaction into Supabase
+    const txRes = await insertTransactionToSupabase(newTransaction);
+    if (!txRes.success) {
+      const msg = txRes.error?.message || 'فشل حفظ الفاتورة في قاعدة البيانات Supabase';
+      alert(`خطأ في حفظ البيع: ${msg}`);
+      throw new Error(msg);
+    }
 
+    // 2. Update product stock in Supabase
+    for (const ci of cart) {
+      const p = products.find((prod) => prod.id === ci.product.id);
+      if (p) {
+        const updatedStock = Math.max(0, p.stock - ci.quantity);
+        await updateProductInSupabase({ ...p, stock: updatedStock });
+      }
+    }
+
+    // 3. Update customer stats in Supabase
     if (selectedCustomer) {
-      setCustomers((prev) =>
-        prev.map((c) => {
-          if (c.id === selectedCustomer.id) {
-            const ratio = settings.loyaltyPointsRatio || 10;
-            const addedPoints = Math.floor(grandTotal / ratio);
-
-            // Calculate points used
-            let pointsUsed = 0;
-            const pointVal = settings.loyaltyPointValue || 0.1;
-            if (paymentMethod === 'نقاط ولاء') {
-              pointsUsed = Math.ceil(grandTotal / pointVal);
-            } else if (paymentMethod === 'دفع متعدد' && splitPayments) {
-              const ptsPay = splitPayments.find((sp) => sp.method === 'نقاط ولاء');
-              if (ptsPay) {
-                pointsUsed = Math.ceil(ptsPay.amount / pointVal);
-              }
-            }
-
-            const currentDebtVal = c.currentDebt || 0;
-            const newDebt = currentDebtVal + (amountDeferred || 0);
-            const updated = {
-              ...c,
-              totalSpent: c.totalSpent + grandTotal,
-              loyaltyPoints: Math.max(0, c.loyaltyPoints + addedPoints - pointsUsed),
-              currentDebt: newDebt,
-            };
-            syncCustomerToSupabase(updated);
-            return updated;
-          }
-          return c;
-        })
-      );
+      const ratio = settings.loyaltyPointsRatio || 10;
+      const addedPoints = Math.floor(grandTotal / ratio);
+      let pointsUsed = 0;
+      const pointVal = settings.loyaltyPointValue || 0.1;
+      if (paymentMethod === 'نقاط ولاء') {
+        pointsUsed = Math.ceil(grandTotal / pointVal);
+      } else if (paymentMethod === 'دفع متعدد' && splitPayments) {
+        const ptsPay = splitPayments.find((sp) => sp.method === 'نقاط ولاء');
+        if (ptsPay) {
+          pointsUsed = Math.ceil(ptsPay.amount / pointVal);
+        }
+      }
+      const currentDebtVal = selectedCustomer.currentDebt || 0;
+      const newDebt = currentDebtVal + (amountDeferred || 0);
+      const updatedCust = {
+        ...selectedCustomer,
+        totalSpent: selectedCustomer.totalSpent + grandTotal,
+        loyaltyPoints: Math.max(0, selectedCustomer.loyaltyPoints + addedPoints - pointsUsed),
+        currentDebt: newDebt,
+      };
+      await updateCustomerInSupabase(updatedCust);
     }
 
-    if (activeHeldTransactionId) {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === activeHeldTransactionId ? newTransaction : t))
-      );
-    } else {
-      setTransactions((prev) => [newTransaction, ...prev]);
-    }
-
-    syncTransactionWithStatus(newTransaction);
     clearCart();
-
+    await loadFromSupabase();
     return newTransaction;
   };
 
-  const voidTransaction = (transactionId: string) => {
-    setTransactions((prev) =>
-      prev.map((t) => (t.id === transactionId ? { ...t, status: 'ملغاة' as const } : t))
-    );
-  };
-
-  const holdCart = (notes = '') => {
+  const holdCart = async (notes = '') => {
     if (!selectedCustomer) {
       throw new Error('يجب اختيار عميل أولاً لتعليق الفاتورة.');
     }
@@ -1133,45 +1115,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const primaryAssocId = currentAssociate?.id || 'system';
     const primaryAssocName = currentAssociate?.name || 'النظام';
 
-    if (activeHeldTransactionId) {
-      // Update existing held transaction
-      setTransactions((prev) =>
-        prev.map((t) => {
-          if (t.id === activeHeldTransactionId) {
-            const updated: Transaction = {
-              ...t,
-              timestamp: new Date().toISOString(),
-              items: transactionItems,
-              subtotal,
-              discountTotal,
-              grandTotal,
-              customerId: selectedCustomer?.id,
-              customerName: selectedCustomer?.name,
-              primaryAssociateId: primaryAssocId,
-              primaryAssociateName: primaryAssocName,
-              splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
-              notes: notes || 'تحديث الفاتورة المعلقة',
-              status: 'معلقة',
-              originalCart: JSON.parse(JSON.stringify(cart)),
-            };
-            try {
-              syncTransactionWithStatus(updated);
-            } catch (e) {
-              console.error(e);
-            }
-            return updated;
-          }
-          return t;
-        })
-      );
-      clearCart();
-      return;
-    }
+    const targetTxId = activeHeldTransactionId || `tx_held_${Date.now()}`;
+    const receiptNumber = activeHeldTransactionId
+      ? transactions.find((t) => t.id === activeHeldTransactionId)?.receiptNumber || `HLD-${Math.floor(1000 + Math.random() * 9000)}`
+      : `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const receiptNumber = `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const newHeldTransaction: Transaction = {
-      id: `tx_held_${Date.now()}`,
+    const heldTx: Transaction = {
+      id: targetTxId,
       receiptNumber,
       timestamp: new Date().toISOString(),
       items: transactionItems,
@@ -1188,17 +1138,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       commissions: [],
       notes: notes || 'فاتورة معلقة للعميل',
       status: 'معلقة',
-      originalCart: JSON.parse(JSON.stringify(cart)), // deep copy to avoid reference sharing
+      originalCart: JSON.parse(JSON.stringify(cart)),
     };
 
-    setTransactions((prev) => [newHeldTransaction, ...prev]);
-    try {
-      syncTransactionWithStatus(newHeldTransaction);
-    } catch (e) {
-      console.error(e);
+    const res = await insertTransactionToSupabase(heldTx);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل تعليق الفاتورة في قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
     }
 
     clearCart();
+    await loadFromSupabase();
   };
 
   const restoreHeldTransaction = (transactionId: string) => {
@@ -1270,258 +1221,78 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTab('register');
   };
 
-  const deleteTransaction = (transactionId: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+  const deleteTransaction = async (transactionId: string) => {
+    const res = await deleteTransactionFromSupabase(transactionId);
+    if (!res.success) {
+      const msg = res.error?.message || 'فشل حذف الفاتورة من قاعدة البيانات Supabase';
+      alert(`خطأ: ${msg}`);
+      throw new Error(msg);
+    }
     if (activeHeldTransactionId === transactionId) {
       setActiveHeldTransactionId(null);
     }
+    await loadFromSupabase();
   };
 
-  const returnTransaction = (transactionId: string) => {
-    setTransactions((prev) =>
-      prev.map((t) => {
-        if (t.id === transactionId && t.status === 'مكتملة') {
-          // 1. Revert product stock
-          setProducts((prevProducts) =>
-            prevProducts.map((p) => {
-              const returnedItem = t.items.find((item) => item.productId === p.id);
-              if (returnedItem) {
-                const updatedProd = { ...p, stock: p.stock + returnedItem.quantity };
-                syncProductToSupabase(updatedProd);
-                return updatedProd;
-              }
-              return p;
-            })
-          );
-
-          // 2. Revert customer balance
-          if (t.customerId) {
-            setCustomers((prevCusts) =>
-              prevCusts.map((c) => {
-                if (c.id === t.customerId) {
-                  const ratio = settings.loyaltyPointsRatio || 10;
-                  const addedPoints = Math.floor(t.grandTotal / ratio);
-                  
-                  // Revert loyalty points and spent total, also decrease currentDebt if amountDeferred exists
-                  const newDebt = Math.max(0, (c.currentDebt || 0) - (t.amountDeferred || 0));
-                  const newSpent = Math.max(0, (c.totalSpent || 0) - t.grandTotal);
-                  const newPoints = Math.max(0, (c.loyaltyPoints || 0) - addedPoints);
-
-                  const updatedCust = {
-                    ...c,
-                    totalSpent: newSpent,
-                    loyaltyPoints: newPoints,
-                    currentDebt: newDebt,
-                  };
-                  syncCustomerToSupabase(updatedCust);
-                  return updatedCust;
-                }
-                return c;
-              })
-            );
-          }
-
-          // 3. Mark transaction as returned
-          const updatedTx: Transaction = { ...t, status: 'مسترجعة' };
-          syncTransactionWithStatus(updatedTx);
-          return updatedTx;
-        }
-        return t;
-      })
-    );
-  };
-
-  const addExpense = (expenseData: Omit<POSExpense, 'id' | 'timestamp'>) => {
-    const newExpense: POSExpense = {
-      ...expenseData,
-      id: `expense_${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      associateId: currentAssociate?.id || undefined,
-      associateName: currentAssociate?.name || undefined,
-    };
-    setExpenses((prev) => [newExpense, ...prev]);
-    syncExpenseToSupabase(newExpense);
-
-    // If payment to a supplier, record supplier payment transaction
-    if (expenseData.category === 'دفعة لمورد' && expenseData.linkedSupplierId) {
-      recordSupplierTransaction({
-        supplierId: expenseData.linkedSupplierId,
-        supplierName: expenseData.linkedSupplierName || '',
-        type: 'payment',
-        amount: expenseData.amount,
-        referenceNumber: newExpense.id,
-        notes: expenseData.description || 'دفعة مسجلة عبر المصروفات اليومية',
-        associateName: currentAssociate?.name || 'النظام',
-      });
-    }
-
-    // If salary advance to employee, record/increment advances balance
-    if (expenseData.category === 'سلفة لموظف' && expenseData.linkedAssociateId) {
-      setAssociates((prev) =>
-        prev.map((a) => {
-          if (a.id === expenseData.linkedAssociateId) {
-            const updated = {
-              ...a,
-              advancesBalance: (a.advancesBalance || 0) + expenseData.amount,
-            };
-            syncAssociateToSupabase(updated);
-            return updated;
-          }
-          return a;
-        })
-      );
+  const voidTransaction = async (transactionId: string) => {
+    const targetTx = transactions.find((t) => t.id === transactionId);
+    if (targetTx) {
+      const voided = { ...targetTx, status: 'ملغاة' as const };
+      await insertTransactionToSupabase(voided);
+      await loadFromSupabase();
     }
   };
 
-  const deleteExpense = (id: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-  };
+  const returnTransaction = async (transactionId: string) => {
+    const targetTx = transactions.find((t) => t.id === transactionId && t.status === 'مكتملة');
+    if (!targetTx) return;
 
-  const clockInAssociate = (associateId: string) => {
-    setAssociates((prev) =>
-      prev.map((a) => {
-        if (a.id === associateId) {
-          const updated = { ...a, isClockedIn: true, clockInTime: new Date().toISOString() };
-          syncAssociateToSupabase(updated);
-          return updated;
-        }
-        return a;
-      })
-    );
-  };
-
-  const clockOutAssociate = (associateId: string) => {
-    setAssociates((prev) =>
-      prev.map((a) => {
-        if (a.id === associateId) {
-          const updated = { ...a, isClockedIn: false, clockInTime: undefined };
-          syncAssociateToSupabase(updated);
-          return updated;
-        }
-        return a;
-      })
-    );
-  };
-
-  const addAssociate = (assocData: Omit<Associate, 'id' | 'isClockedIn'>) => {
-    const newAssoc: Associate = {
-      ...assocData,
-      id: `assoc_${Date.now()}`,
-      isClockedIn: true,
-      clockInTime: new Date().toISOString(),
-    };
-    setAssociates((prev) => [...prev, newAssoc]);
-    syncAssociateToSupabase(newAssoc);
-    if (!currentAssociate) {
-      setCurrentAssociateState(newAssoc);
+    // 1. Revert product stock in Supabase
+    for (const item of targetTx.items) {
+      const p = products.find((prod) => prod.id === item.productId);
+      if (p) {
+        await updateProductInSupabase({ ...p, stock: p.stock + item.quantity });
+      }
     }
-  };
 
-  const updateAssociate = (assoc: Associate) => {
-    setAssociates((prev) => prev.map((a) => (a.id === assoc.id ? assoc : a)));
-    syncAssociateToSupabase(assoc);
-    if (currentAssociate?.id === assoc.id) {
-      setCurrentAssociateState(assoc);
+    // 2. Revert customer balance in Supabase
+    if (targetTx.customerId) {
+      const cust = customers.find((c) => c.id === targetTx.customerId);
+      if (cust) {
+        const ratio = settings.loyaltyPointsRatio || 10;
+        const addedPoints = Math.floor(targetTx.grandTotal / ratio);
+        const newDebt = Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0));
+        const newSpent = Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal);
+        const newPoints = Math.max(0, (cust.loyaltyPoints || 0) - addedPoints);
+        await updateCustomerInSupabase({
+          ...cust,
+          totalSpent: newSpent,
+          loyaltyPoints: newPoints,
+          currentDebt: newDebt,
+        });
+      }
     }
+
+    // 3. Update transaction status
+    const updatedTx: Transaction = { ...targetTx, status: 'مسترجعة' };
+    await insertTransactionToSupabase(updatedTx);
+    await loadFromSupabase();
   };
 
-  const addProduct = (prodData: Omit<Product, 'id'>) => {
-    const newProduct: Product = {
-      ...prodData,
-      id: prodData.sku || prodData.barcode || `prod_${Date.now()}`,
-    };
-    setProducts((prev) => [newProduct, ...prev]);
-    syncProductToSupabase(newProduct);
-  };
-
-  const updateProduct = (prod: Product) => {
-    setProducts((prev) => prev.map((p) => (p.id === prod.id ? prod : p)));
-    syncProductToSupabase(prod);
-  };
-
-  const deleteProduct = async (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
-    try {
-      await supabase.from('products').delete().or(`id.eq.${productId},sku.eq.${productId},barcode.eq.${productId}`);
-    } catch (err) {
-      console.warn('Could not delete product from Supabase:', err);
-    }
-  };
-
-  const bulkDeleteProducts = async (productIds: string[]) => {
-    setProducts((prev) => prev.filter((p) => !productIds.includes(p.id)));
-    try {
-      await supabase.from('products').delete().in('id', productIds);
-    } catch (err) {
-      console.warn('Could not bulk delete products from Supabase:', err);
-    }
-  };
-
-  const clearAllProducts = async () => {
-    setProducts([]);
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify([]));
-    try {
-      await supabase.from('products').delete().neq('id', '___non_existent___');
-    } catch (err) {
-      console.warn('Could not clear products from Supabase:', err);
-    }
-  };
-
-  const bulkUpdateProducts = (productIds: string[], updates: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (productIds.includes(p.id)) {
-          const updated = { ...p, ...updates };
-          syncProductToSupabase(updated);
-          return updated;
-        }
-        return p;
-      })
-    );
-  };
-
-  const addCustomer = (
-    custData: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>
-  ): Customer => {
-    const newCustomer: Customer = {
-      ...custData,
-      id: `cust_${Date.now()}`,
-      totalSpent: 0,
-      loyaltyPoints: 50,
-    };
-    setCustomers((prev) => [newCustomer, ...prev]);
-    syncCustomerToSupabase(newCustomer);
-    setSelectedCustomer(newCustomer);
-    return newCustomer;
-  };
-
-  const updateCustomer = (cust: Customer) => {
-    setCustomers((prev) => prev.map((c) => (c.id === cust.id ? cust : c)));
-    syncCustomerToSupabase(cust);
-    if (selectedCustomer?.id === cust.id) {
-      setSelectedCustomer(cust);
-    }
-  };
-
-  const payCustomerDebt = (
+  const payCustomerDebt = async (
     customerId: string,
     amount: number,
     paymentMethod: PaymentMethod,
     notes?: string
   ) => {
-    setCustomers((prev) =>
-      prev.map((c) => {
-        if (c.id === customerId) {
-          const updated = {
-            ...c,
-            currentDebt: Math.max(0, (c.currentDebt || 0) - amount),
-          };
-          syncCustomerToSupabase(updated);
-          return updated;
-        }
-        return c;
-      })
-    );
+    const cust = customers.find((c) => c.id === customerId);
+    if (cust) {
+      const updatedCust = {
+        ...cust,
+        currentDebt: Math.max(0, (cust.currentDebt || 0) - amount),
+      };
+      await updateCustomerInSupabase(updatedCust);
+    }
 
     const receiptNumber = `PAY-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
     const newTransaction: Transaction = {
@@ -1537,7 +1308,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           priceTier: 'cash',
           unitPrice: -amount,
           totalPrice: -amount,
-        }
+        },
       ],
       subtotal: -amount,
       discountTotal: 0,
@@ -1546,7 +1317,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentMethod,
       paymentDetails: `سداد جزء من مديونية الآجل: ${amount.toLocaleString()} ج.م`,
       customerId,
-      customerName: customers.find((c) => c.id === customerId)?.name || 'عميل',
+      customerName: cust?.name || 'عميل',
       primaryAssociateId: currentAssociate?.id || 'system',
       primaryAssociateName: currentAssociate?.name || 'النظام',
       commissions: [],
@@ -1556,88 +1327,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amountDeferred: -amount,
     };
 
-    setTransactions((prev) => [newTransaction, ...prev]);
-    syncTransactionWithStatus(newTransaction);
-  };
-
-  const addSupplier = (supplierData: Omit<Supplier, 'id'>): Supplier => {
-    const newSupplier: Supplier = {
-      ...supplierData,
-      id: `supp_${Date.now()}`,
-      currentBalance: supplierData.currentBalance || 0,
-    };
-    setSuppliers((prev) => [newSupplier, ...prev]);
-    syncSupplierToSupabase(newSupplier);
-    return newSupplier;
-  };
-
-  const updateSupplier = (updated: Supplier) => {
-    setSuppliers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    syncSupplierToSupabase(updated);
-  };
-
-  const deleteSupplier = (supplierId: string) => {
-    setSuppliers((prev) => prev.filter((s) => s.id !== supplierId));
-  };
-
-  const recordSupplierTransaction = (txData: Omit<SupplierTransaction, 'id' | 'date'>) => {
-    const newTx: SupplierTransaction = {
-      ...txData,
-      id: `stx_${Date.now()}`,
-      date: new Date().toISOString(),
-    };
-
-    setSupplierTransactions((prev) => [newTx, ...prev]);
-    syncSupplierTransactionToSupabase(newTx);
-
-    setSuppliers((prev) =>
-      prev.map((s) => {
-        if (s.id === txData.supplierId) {
-          let delta = 0;
-          if (txData.type === 'supply_invoice') delta = txData.amount;
-          else if (txData.type === 'payment' || txData.type === 'return') delta = -txData.amount;
-
-          const updated = {
-            ...s,
-            currentBalance: Math.max(0, (s.currentBalance || 0) + delta),
-          };
-          syncSupplierToSupabase(updated);
-          return updated;
-        }
-        return s;
-      })
-    );
-  };
-
-  const resetDemoData = async () => {
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_associates`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_products`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_customers`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_transactions`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_suppliers`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_closed_shifts`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_expenses`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_discounts`);
-    setProducts([]);
-    setCustomers([]);
-    setTransactions([]);
-    setSuppliers([]);
-    setSupplierTransactions([]);
-    setClosedShifts([]);
-    setExpenses([]);
-    clearCart();
+    await insertTransactionToSupabase(newTransaction);
     await loadFromSupabase();
   };
 
-
-  const closeShift = (shiftData: Omit<ClosedShift, 'id'>) => {
-    const newShift: ClosedShift = {
-      ...shiftData,
-      id: `shift_${Date.now()}`,
-    };
-    setClosedShifts((prev) => [newShift, ...prev]);
-    syncClosedShiftWithStatus(newShift);
+  const resetDemoData = async () => {
+    clearCart();
+    await loadFromSupabase();
   };
 
   return (
@@ -1686,6 +1382,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clockOutAssociate,
         addAssociate,
         updateAssociate,
+        deleteAssociate,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -1694,6 +1391,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bulkUpdateProducts,
         addCustomer,
         updateCustomer,
+        deleteCustomer,
         payCustomerDebt,
         addSupplier,
         updateSupplier,

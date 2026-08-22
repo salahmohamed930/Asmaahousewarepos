@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
+import { getSupabaseKeys } from '../../lib/supabase';
 import {
   Sun,
   Moon,
@@ -463,7 +464,7 @@ export const SettingsView: React.FC = () => {
                 className="w-full px-4 py-2 bg-stone-800 hover:bg-stone-750 text-stone-200 border border-stone-700/60 rounded-xl text-xs font-bold transition-colors flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50"
               >
                 <RotateCcw className={`w-3.5 h-3.5 ${isDiagnosing ? 'animate-spin' : ''}`} />
-                <span>{isDiagnosing ? 'جاري فحص الاتصال...' : 'اختبار الاتصال بقاعدة البيانات'}</span>
+                <span>{isDiagnosing ? 'جاري الفحص...' : 'اختبار الاتصال بقاعدة البيانات'}</span>
               </button>
             </div>
 

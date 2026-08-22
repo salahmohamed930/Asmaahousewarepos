@@ -5,6 +5,11 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    define: {
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://ilyxhubihdqjbvkkpalx.supabase.co'),
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify('sb_publishable_I8SaqNGWtFy-wDD2XAkOAA_X7f42g_w'),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('sb_publishable_I8SaqNGWtFy-wDD2XAkOAA_X7f42g_w'),
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

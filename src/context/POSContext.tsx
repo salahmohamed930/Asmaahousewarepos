@@ -219,12 +219,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'أجهزة كهربائية منزلية': { cash: 15, wholesale: 8, installment: 25 }
       }
     };
-    const defaultPrint = {
-      headerText: 'محلات أسماء للأدوات المنزلية',
-      footerText: 'شكراً لزيارتكم! الفاتورة قابلة للاستبدال خلال 14 يوماً من تاريخ الشراء بوجود أصل الفاتورة.',
+    const defaultPrint: AppSettings['printSettings'] = {
+      headerText: 'أسماء للأدوات المنزليه',
+      address: 'اخر شارع المدارس امام دار المناسبات حى الصفا',
+      phoneNumbers: '01229028133 - 01222334884',
+      footerText: 'شكرا و دائما فى خدمتكم',
+      footerSubText: 'visit us again',
+      facebookUrl: 'https://facebook.com',
       showSellerCode: true,
       showQRCode: true,
-      showLogo: true,
+      showLogo: false,
       receiptType: 'thermal' as const
     };
     if (saved) {

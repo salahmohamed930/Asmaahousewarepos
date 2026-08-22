@@ -193,11 +193,15 @@ export interface ProfitMargin {
 
 export interface PrintSettings {
   headerText: string;
+  address?: string;
+  phoneNumbers?: string;
   footerText: string;
+  footerSubText?: string;
   showSellerCode: boolean;
   showQRCode: boolean;
   showLogo: boolean;
   receiptType: 'thermal' | 'a4';
+  facebookUrl?: string;
 }
 
 export interface AppSettings {

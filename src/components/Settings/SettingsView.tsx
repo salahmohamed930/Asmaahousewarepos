@@ -299,11 +299,57 @@ export const SettingsView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-stone-400 text-xs mb-1 font-bold">تذييل أسفل الفاتورة (Footer):</label>
-                <textarea
-                  rows={3}
+                <label className="block text-stone-400 text-xs mb-1 font-bold">عنوان المتجر / الفرع:</label>
+                <input
+                  type="text"
+                  placeholder="اخر شارع المدارس امام دار المناسبات حى الصفا"
+                  value={settings.printSettings.address || ''}
+                  onChange={(e) => handlePrintSettingChange('address', e.target.value)}
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-stone-400 text-xs mb-1 font-bold">أرقام الهواتف والتواصل:</label>
+                <input
+                  type="text"
+                  placeholder="01229028133 - 01222334884"
+                  value={settings.printSettings.phoneNumbers || ''}
+                  onChange={(e) => handlePrintSettingChange('phoneNumbers', e.target.value)}
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-stone-400 text-xs mb-1 font-bold">رابط صفحة فيسبوك للباركود (Facebook URL):</label>
+                <input
+                  type="text"
+                  placeholder="https://facebook.com/your-page"
+                  value={settings.printSettings.facebookUrl || ''}
+                  onChange={(e) => handlePrintSettingChange('facebookUrl', e.target.value)}
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-mono"
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-stone-400 text-xs mb-1 font-bold">رسالة التذييل (Footer):</label>
+                <input
+                  type="text"
                   value={settings.printSettings.footerText}
                   onChange={(e) => handlePrintSettingChange('footerText', e.target.value)}
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-stone-400 text-xs mb-1 font-bold">السطر الإضافي أسفل التذييل (بالإنجليزية):</label>
+                <input
+                  type="text"
+                  placeholder="visit us again"
+                  value={settings.printSettings.footerSubText || ''}
+                  onChange={(e) => handlePrintSettingChange('footerSubText', e.target.value)}
                   className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500"
                 />
               </div>

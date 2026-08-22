@@ -37,9 +37,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   );
   const sellerName = primaryAssoc ? primaryAssoc.name : (transaction.primaryAssociateName || 'Admin');
 
-  const subtotal = transaction.subtotal || 0;
-  const discountTotal = transaction.discountTotal || 0;
-  const grandTotal = transaction.grandTotal || subtotal - discountTotal;
+  const itemsSubtotal = transaction.items.reduce((sum, item) => {
+    return sum + (item.unitPrice * item.quantity);
+  }, 0);
+
+  const discountTotal = transaction.discountTotal !== undefined
+    ? transaction.discountTotal
+    : Math.max(0, itemsSubtotal - (transaction.grandTotal || 0));
+
+  const totalBeforeDiscount = itemsSubtotal > 0
+    ? itemsSubtotal
+    : (transaction.subtotal || ((transaction.grandTotal || 0) + discountTotal));
+
+  const grandTotal = transaction.grandTotal || (totalBeforeDiscount - discountTotal);
+  const totalAfterDiscount = grandTotal;
   const isReturn = transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0);
 
   // Price & number formatting helper (e.g. 520.0, 135.0, 2.0)
@@ -368,8 +379,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
             {/* 4. Totals Summary (Right-aligned, matching the image format) */}
             <div className="pt-2 text-[11.5px] font-black text-black text-right space-y-1">
               <div>
-                <span className="font-extrabold">الاجمالي : </span>
-                <span className="font-mono font-black">{formatPrice(grandTotal)}</span>
+                <span className="font-extrabold">الإجمالي قبل الخصم : </span>
+                <span className="font-mono font-black">{formatPrice(totalBeforeDiscount)}</span>
               </div>
               {discountTotal > 0 && (
                 <div>
@@ -378,8 +389,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 </div>
               )}
               <div>
+                <span className="font-extrabold">الإجمالي بعد الخصم : </span>
+                <span className="font-mono font-black">{formatPrice(totalAfterDiscount)}</span>
+              </div>
+              <div>
                 <span className="font-extrabold">المدفوع : </span>
-                <span className="font-mono font-black">{formatPrice(transaction.amountPaid ?? grandTotal)}</span>
+                <span className="font-mono font-black">{formatPrice(transaction.amountPaid ?? totalAfterDiscount)}</span>
               </div>
               <div>
                 <span className="font-extrabold">المتبقي : </span>

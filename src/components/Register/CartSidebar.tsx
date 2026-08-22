@@ -357,6 +357,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                     <th className="py-1.5 px-2">اسم الصنف</th>
                     <th className="py-1.5 px-1 text-center">الكمية</th>
                     <th className="py-1.5 px-1 text-center">السعر</th>
+                    <th className="py-1.5 px-1 text-center">الخصم</th>
                     <th className="py-1.5 px-1 text-center">إجمالي الصنف</th>
                     <th className="py-1.5 px-1 text-center">البائع</th>
                     <th className="py-1.5 px-1 text-center">حذف</th>
@@ -437,34 +438,24 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                         {/* 3. السعر */}
                         <td className="py-1.5 px-1 text-center font-mono font-bold text-stone-300 whitespace-nowrap text-[11px]">
-                          {overallDiscountPercent > 0 ? (
-                            <div className="flex flex-col items-center">
-                              <span className="line-through text-[9px] text-stone-500">
-                                {unitPrice.toLocaleString()} ج.م
-                              </span>
-                              <span className="text-emerald-400 font-bold">
-                                {Math.round((lineTotal / item.quantity) * 100) / 100} ج.م
-                              </span>
-                            </div>
+                          <span>{unitPrice.toLocaleString()} ج.م</span>
+                        </td>
+
+                        {/* 4. الخصم */}
+                        <td className="py-1.5 px-1 text-center font-mono whitespace-nowrap text-[11px]">
+                          {lineDiscount > 0 ? (
+                            <span className="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded text-[10px]">
+                              -{lineDiscount.toLocaleString()} ج.م
+                              {overallDiscountPercent > 0 && ` (${overallDiscountPercent}%)`}
+                            </span>
                           ) : (
-                            <span>{unitPrice.toLocaleString()} ج.م</span>
+                            <span className="text-stone-600 font-bold">-</span>
                           )}
                         </td>
 
-                        {/* 4. إجمالي الصنف */}
+                        {/* 5. إجمالي الصنف */}
                         <td className="py-1.5 px-1 text-center font-mono font-extrabold text-amber-400 whitespace-nowrap text-[11px]">
-                          {overallDiscountPercent > 0 ? (
-                            <div className="flex flex-col items-center">
-                              <span className="line-through text-[9px] text-stone-500 font-mono">
-                                {(unitPrice * item.quantity).toLocaleString()} ج.م
-                              </span>
-                              <span className="text-emerald-400 font-black">
-                                {lineTotal.toLocaleString()} ج.م
-                              </span>
-                            </div>
-                          ) : (
-                            <span>{lineTotal.toLocaleString()} ج.م</span>
-                          )}
+                          <span>{lineTotal.toLocaleString()} ج.م</span>
                         </td>
 
                         {/* 5. البائع */}
@@ -510,7 +501,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
           
           <div className="space-y-1 text-[11px] text-stone-400">
             <div className="flex justify-between">
-              <span>المجموع الفرعي (عدد الأصناف: {cart.reduce((a, c) => a + c.quantity, 0)})</span>
+              <span>الإجمالي قبل الخصم (الأصناف: {cart.reduce((a, c) => a + c.quantity, 0)})</span>
               <span className="font-mono text-stone-200 font-bold">{subtotal.toLocaleString()} ج.م</span>
             </div>
 
@@ -527,7 +518,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             </div>
 
             <div className="flex justify-between text-base font-extrabold text-white pt-1.5 border-t border-stone-800">
-              <span>{cart.some((item) => item.quantity < 0) ? 'إجمالي قيمة المرتجع المسترد' : 'إجمالي الفاتورة النهائي'}</span>
+              <span>{cart.some((item) => item.quantity < 0) ? 'إجمالي قيمة المرتجع المسترد' : (discountTotal > 0 ? 'الإجمالي بعد الخصم' : 'إجمالي الفاتورة')}</span>
               <span className="font-mono text-amber-400">{grandTotal.toLocaleString()} ج.م</span>
             </div>
           </div>

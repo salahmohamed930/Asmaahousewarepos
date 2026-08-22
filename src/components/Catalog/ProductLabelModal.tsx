@@ -251,7 +251,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           fontSizeHeader: '8.5px',
           fontSizeTitle: '10px',
           fontSizePrice: '11px',
-          fontSizeBarcode: 8.5,
+          fontSizeBarcode: 7.5,
           labelName: '1.5 × 1 بوصة (38mm × 25mm)',
         };
     }
@@ -1060,7 +1060,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
                       className="font-mono font-black text-black"
-                      style={{ fontSize: `calc(${config.fontSizePrice} - 1px)` }}
+                      style={{ fontSize: `calc(${config.fontSizePrice} - 2px)` }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}
                     </div>

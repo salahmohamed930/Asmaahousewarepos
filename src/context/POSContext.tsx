@@ -151,7 +151,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_customers`);
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -166,12 +166,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_suppliers`);
-    return saved ? JSON.parse(saved) : INITIAL_SUPPLIERS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [supplierTransactions, setSupplierTransactions] = useState<SupplierTransaction[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
-    return saved ? JSON.parse(saved) : INITIAL_SUPPLIER_TRANSACTIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
@@ -404,64 +404,77 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // 3. Fetch customers from Supabase
-      const { data: custData } = await supabase.from('customers').select('*');
-      if (custData && custData.length > 0) {
-        const mappedCustomers: Customer[] = custData.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          phone: c.phone || '',
-          email: c.email || '',
-          address: c.address || '',
-          totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
-          loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
-          tier: c.tier || 'عادي',
-          isCreditEligible: c.is_credit_eligible ?? c.isCreditEligible ?? (c.id === 'cust_1' || c.id === 'cust_3'),
-          creditLimit: Number(c.credit_limit ?? c.creditLimit ?? (c.id === 'cust_1' ? 10000 : c.id === 'cust_3' ? 150000 : 0)),
-          currentDebt: Number(c.current_debt ?? c.currentDebt ?? (c.id === 'cust_3' ? 25000 : 0)),
-          notes: c.notes || '',
-        }));
-        setCustomers(mappedCustomers);
+      try {
+        const { data: custData } = await supabase.from('customers').select('*');
+        if (custData && Array.isArray(custData)) {
+          if (custData.length > 0) {
+            const mappedCustomers: Customer[] = custData.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              phone: c.phone || '',
+              email: c.email || '',
+              address: c.address || '',
+              totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
+              loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
+              tier: c.tier || 'عادي',
+              isCreditEligible: Boolean(c.is_credit_eligible ?? c.isCreditEligible),
+              creditLimit: Number(c.credit_limit ?? c.creditLimit ?? 0),
+              currentDebt: Number(c.current_debt ?? c.currentDebt ?? 0),
+              notes: c.notes || '',
+            }));
+            setCustomers(mappedCustomers);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_customers`, JSON.stringify(mappedCustomers));
+          } else {
+            setCustomers([]);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_customers`, JSON.stringify([]));
+          }
+        }
+      } catch (custErr) {
+        console.warn('Customers table check error:', custErr);
       }
 
       // 4. Fetch closed shifts from Supabase
       try {
         const { data: shiftData } = await supabase.from('closed_shifts').select('*');
-        if (shiftData && shiftData.length > 0) {
-          const mappedShifts: ClosedShift[] = shiftData.map((s: any) => ({
-            id: s.id,
-            associateId: s.associate_id,
-            associateName: s.associate_name,
-            startTime: s.start_time,
-            endTime: s.end_time,
-            expectedCash: Number(s.expected_cash ?? 0),
-            actualCash: Number(s.actual_cash ?? 0),
-            discrepancy: Number(s.discrepancy ?? 0),
-            salesCount: Number(s.sales_count ?? 0),
-            totalSales: Number(s.total_sales ?? 0),
-            totalCard: Number(s.total_card ?? 0),
-            totalInstallment: Number(s.total_installment ?? 0),
-            totalDebtCollected: Number(s.total_debt_collected ?? 0),
-            notes: s.notes || '',
-            openingBalance: Number(s.opening_balance ?? s.openingBalance ?? 0),
-            leftoverBalance: Number(s.leftover_balance ?? s.leftoverBalance ?? 0),
-            isSynced: true,
-          }));
+        if (shiftData && Array.isArray(shiftData)) {
+          if (shiftData.length > 0) {
+            const mappedShifts: ClosedShift[] = shiftData.map((s: any) => ({
+              id: s.id,
+              associateId: s.associate_id,
+              associateName: s.associate_name,
+              startTime: s.start_time,
+              endTime: s.end_time,
+              expectedCash: Number(s.expected_cash ?? 0),
+              actualCash: Number(s.actual_cash ?? 0),
+              discrepancy: Number(s.discrepancy ?? 0),
+              salesCount: Number(s.sales_count ?? 0),
+              totalSales: Number(s.total_sales ?? 0),
+              totalCard: Number(s.total_card ?? 0),
+              totalInstallment: Number(s.total_installment ?? 0),
+              totalDebtCollected: Number(s.total_debt_collected ?? 0),
+              notes: s.notes || '',
+              openingBalance: Number(s.opening_balance ?? s.openingBalance ?? 0),
+              leftoverBalance: Number(s.leftover_balance ?? s.leftoverBalance ?? 0),
+              isSynced: true,
+            }));
 
-          setClosedShifts((prev) => {
-            const map = new Map<string, ClosedShift>();
-            mappedShifts.forEach((s) => map.set(s.id, s));
-            prev.forEach((s) => {
-              if (!s.isSynced) {
-                map.set(s.id, { ...s, isSynced: false });
-              } else {
-                map.set(s.id, { ...s, isSynced: true });
-              }
+            setClosedShifts((prev) => {
+              const map = new Map<string, ClosedShift>();
+              mappedShifts.forEach((s) => map.set(s.id, s));
+              prev.forEach((s) => {
+                if (!s.isSynced) {
+                  map.set(s.id, { ...s, isSynced: false });
+                }
+              });
+              return Array.from(map.values()).sort((a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime());
             });
-            return Array.from(map.values()).sort((a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime());
-          });
+          } else {
+            setClosedShifts([]);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_closed_shifts`, JSON.stringify([]));
+          }
         }
       } catch (shiftErr) {
-        console.warn('Closed shifts table might be missing or not created yet in Supabase:', shiftErr);
+        console.warn('Closed shifts table check error:', shiftErr);
       }
 
       // 5. Fetch transactions from Supabase
@@ -491,65 +504,77 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        if (txData && txData.length > 0) {
-          const mappedTxs: Transaction[] = txData.map((t: any) => ({
-            id: t.id,
-            receiptNumber: t.receipt_number || '0000',
-            timestamp: t.timestamp || new Date().toISOString(),
-            items: itemsByTxId.get(t.id) || [],
-            subtotal: Number(t.subtotal ?? 0),
-            discountTotal: Number(t.discount_total ?? 0),
-            taxTotal: Number(t.tax_total ?? 0),
-            grandTotal: Number(t.grand_total ?? 0),
-            paymentMethod: t.payment_method || 'كاش',
-            paymentDetails: t.payment_details || '',
-            customerId: t.customer_id || undefined,
-            customerName: t.customer_name || '',
-            primaryAssociateId: t.primary_associate_id || 'system',
-            primaryAssociateName: t.primary_associate_name || 'موظف',
-            splitAssociates: t.split_associates || [],
-            commissions: t.commissions || [],
-            notes: t.notes || '',
-            status: t.status || 'مكتملة',
-            amountPaid: Number(t.amount_paid ?? 0),
-            amountDeferred: Number(t.amount_deferred ?? 0),
-            splitPayments: t.split_payments || [],
-            originalCart: t.original_cart || [],
-            isSynced: true,
-          }));
+        if (txData && Array.isArray(txData)) {
+          if (txData.length > 0) {
+            const mappedTxs: Transaction[] = txData.map((t: any) => ({
+              id: t.id,
+              receiptNumber: t.receipt_number || '0000',
+              timestamp: t.timestamp || new Date().toISOString(),
+              items: itemsByTxId.get(t.id) || [],
+              subtotal: Number(t.subtotal ?? 0),
+              discountTotal: Number(t.discount_total ?? 0),
+              taxTotal: Number(t.tax_total ?? 0),
+              grandTotal: Number(t.grand_total ?? 0),
+              paymentMethod: t.payment_method || 'كاش',
+              paymentDetails: t.payment_details || '',
+              customerId: t.customer_id || undefined,
+              customerName: t.customer_name || '',
+              primaryAssociateId: t.primary_associate_id || 'system',
+              primaryAssociateName: t.primary_associate_name || 'موظف',
+              splitAssociates: t.split_associates || [],
+              commissions: t.commissions || [],
+              notes: t.notes || '',
+              status: t.status || 'مكتملة',
+              amountPaid: Number(t.amount_paid ?? 0),
+              amountDeferred: Number(t.amount_deferred ?? 0),
+              splitPayments: t.split_payments || [],
+              originalCart: t.original_cart || [],
+              isSynced: true,
+            }));
 
-          setTransactions((prev) => {
-            const map = new Map<string, Transaction>();
-            mappedTxs.forEach((tx) => map.set(tx.id, tx));
-            prev.forEach((tx) => {
-              if (!tx.isSynced) {
-                map.set(tx.id, { ...tx, isSynced: false });
-              }
+            setTransactions((prev) => {
+              const map = new Map<string, Transaction>();
+              mappedTxs.forEach((tx) => map.set(tx.id, tx));
+              prev.forEach((tx) => {
+                if (!tx.isSynced) {
+                  map.set(tx.id, { ...tx, isSynced: false });
+                }
+              });
+              return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             });
-            return Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          });
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_transactions`, JSON.stringify(mappedTxs));
+          } else {
+            setTransactions((prev) => prev.filter((tx) => !tx.isSynced));
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_transactions`, JSON.stringify([]));
+          }
         }
       } catch (txErr) {
-        console.warn('Transactions table might be missing or not created yet in Supabase:', txErr);
+        console.warn('Transactions table check error:', txErr);
       }
 
       // 6. Fetch suppliers from Supabase
       try {
         const { data: supData } = await supabase.from('suppliers').select('*');
-        if (supData && supData.length > 0) {
-          const mappedSuppliers: Supplier[] = supData.map((s: any) => ({
-            id: s.id,
-            name: s.name,
-            companyName: s.company_name || '',
-            phone: s.phone || '',
-            email: s.email || '',
-            address: s.address || '',
-            category: s.category || '',
-            currentBalance: Number(s.current_balance ?? 0),
-            notes: s.notes || '',
-            taxNumber: s.tax_number || '',
-          }));
-          setSuppliers(mappedSuppliers);
+        if (supData && Array.isArray(supData)) {
+          if (supData.length > 0) {
+            const mappedSuppliers: Supplier[] = supData.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              companyName: s.company_name || '',
+              phone: s.phone || '',
+              email: s.email || '',
+              address: s.address || '',
+              category: s.category || '',
+              currentBalance: Number(s.current_balance ?? 0),
+              notes: s.notes || '',
+              taxNumber: s.tax_number || '',
+            }));
+            setSuppliers(mappedSuppliers);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_suppliers`, JSON.stringify(mappedSuppliers));
+          } else {
+            setSuppliers([]);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_suppliers`, JSON.stringify([]));
+          }
         }
       } catch (supErr) {
         console.warn('Suppliers table check error:', supErr);
@@ -558,21 +583,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 7. Fetch expenses from Supabase
       try {
         const { data: expData } = await supabase.from('expenses').select('*');
-        if (expData && expData.length > 0) {
-          const mappedExpenses: POSExpense[] = expData.map((e: any) => ({
-            id: e.id,
-            amount: Number(e.amount ?? 0),
-            category: e.category || 'أخرى',
-            description: e.description || '',
-            timestamp: e.timestamp || new Date().toISOString(),
-            associateId: e.associate_id,
-            associateName: e.associate_name,
-            linkedSupplierId: e.linked_supplier_id,
-            linkedSupplierName: e.linked_supplier_name,
-            linkedAssociateId: e.linked_associate_id,
-            linkedAssociateName: e.linked_associate_name,
-          }));
-          setExpenses(mappedExpenses);
+        if (expData && Array.isArray(expData)) {
+          if (expData.length > 0) {
+            const mappedExpenses: POSExpense[] = expData.map((e: any) => ({
+              id: e.id,
+              amount: Number(e.amount ?? 0),
+              category: e.category || 'أخرى',
+              description: e.description || '',
+              timestamp: e.timestamp || new Date().toISOString(),
+              associateId: e.associate_id,
+              associateName: e.associate_name,
+              linkedSupplierId: e.linked_supplier_id,
+              linkedSupplierName: e.linked_supplier_name,
+              linkedAssociateId: e.linked_associate_id,
+              linkedAssociateName: e.linked_associate_name,
+            }));
+            setExpenses(mappedExpenses);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify(mappedExpenses));
+          } else {
+            setExpenses([]);
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_expenses`, JSON.stringify([]));
+          }
         }
       } catch (expErr) {
         console.warn('Expenses table check error:', expErr);
@@ -1585,6 +1616,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_transactions`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_suppliers`);
     localStorage.removeItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_closed_shifts`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_expenses`);
+    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_discounts`);
+    setProducts([]);
+    setCustomers([]);
+    setTransactions([]);
+    setSuppliers([]);
+    setSupplierTransactions([]);
+    setClosedShifts([]);
+    setExpenses([]);
     clearCart();
     await loadFromSupabase();
   };

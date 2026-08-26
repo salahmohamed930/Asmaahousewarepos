@@ -47,13 +47,36 @@ export const Header: React.FC = () => {
   ] as const;
 
   const tabs = allTabs.filter((tab) => {
+    if (tab.id === 'register') return hasPermission('create_invoice');
+    if (tab.id === 'catalog') {
+      return (
+        hasPermission('manage_catalog') ||
+        hasPermission('add_products') ||
+        hasPermission('edit_products') ||
+        hasPermission('delete_products') ||
+        hasPermission('view_cash_price') ||
+        hasPermission('view_installment_price') ||
+        hasPermission('view_wholesale_price')
+      );
+    }
+    if (tab.id === 'discounts') return hasPermission('apply_discount') || hasPermission('edit_products');
     if (tab.id === 'analytics') return hasPermission('view_analytics');
     if (tab.id === 'customers') return hasPermission('manage_customers');
     if (tab.id === 'suppliers') return hasPermission('manage_suppliers');
     if (tab.id === 'associates') return hasPermission('manage_associates');
-    if (tab.id === 'discounts') return hasPermission('apply_discount');
+    if (tab.id === 'settings') return hasPermission('manage_associates') || currentAssociate?.role === 'مدير الفرع';
     return true;
   });
+
+  // Automatically switch active tab if current user loses access to active tab
+  React.useEffect(() => {
+    if (!currentAssociate) return;
+    const isAllowed = tabs.some((t) => t.id === activeTab);
+    if (!isAllowed) {
+      const fallback = tabs[0]?.id || 'register';
+      setActiveTab(fallback as any);
+    }
+  }, [currentAssociate?.id, currentAssociate?.role, currentAssociate?.permissions, activeTab, tabs]);
 
   return (
     <>

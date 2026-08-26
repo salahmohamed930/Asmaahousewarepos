@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Customer } from '../../types';
-import { UserCheck, UserPlus, Search, ShoppingBag, Heart, X, Phone, Mail, FileText, MapPin } from 'lucide-react';
+import { UserCheck, UserPlus, Search, ShoppingBag, Heart, X, Phone, Mail, FileText, MapPin, Edit } from 'lucide-react';
 import { CustomerAccountModal } from './CustomerAccountModal';
 
 export const CustomersView: React.FC = () => {
@@ -216,8 +216,8 @@ export const CustomersView: React.FC = () => {
                   onClick={() => setSelectedAccountCust(cust)}
                   className="py-2 bg-stone-800 hover:bg-stone-750 text-stone-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse"
                 >
-                  <FileText className="w-3.5 h-3.5 text-stone-400" />
-                  <span>كشف الحساب</span>
+                  <Edit className="w-3.5 h-3.5 text-amber-400" />
+                  <span>تعديل الحساب</span>
                 </button>
 
                 <button

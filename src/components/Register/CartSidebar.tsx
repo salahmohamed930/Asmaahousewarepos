@@ -372,7 +372,13 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 </thead>
                 <tbody className="divide-y divide-stone-800/60">
                   {cart.map((item, idx) => {
-                    // Active price based on current selected price tier
+                    const canViewItemPrice =
+                      globalPriceTier === 'cash'
+                        ? canViewCash
+                        : globalPriceTier === 'installment'
+                        ? canViewInstallment
+                        : canViewWholesale;
+
                     const unitPrice =
                       globalPriceTier === 'cash'
                         ? item.product.priceCash
@@ -382,6 +388,8 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                     const lineDiscount = getCartItemDiscountAmount(item);
                     const lineTotal = Math.max(0, unitPrice * item.quantity - lineDiscount);
+                    const unitPriceDisplay = canViewItemPrice ? `${unitPrice.toLocaleString()} ج.م` : '***';
+                    const lineTotalDisplay = canViewItemPrice ? `${lineTotal.toLocaleString()} ج.م` : '***';
                     const overallDiscountPercent = Math.round((lineDiscount / (unitPrice * item.quantity)) * 105) > 0 
                       ? Math.round((lineDiscount / (unitPrice * item.quantity)) * 100)
                       : 0;
@@ -445,14 +453,14 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                         {/* 3. السعر */}
                         <td className="py-1.5 px-1 text-center font-mono font-bold text-stone-300 whitespace-nowrap text-[11px]">
-                          <span>{unitPrice.toLocaleString()} ج.م</span>
+                          <span>{unitPriceDisplay}</span>
                         </td>
 
                         {/* 4. الخصم */}
                         <td className="py-1.5 px-1 text-center font-mono whitespace-nowrap text-[11px]">
                           {lineDiscount > 0 ? (
                             <span className="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded text-[10px]">
-                              -{lineDiscount.toLocaleString()} ج.م
+                              -{canViewItemPrice ? `${lineDiscount.toLocaleString()} ج.م` : '***'}
                               {overallDiscountPercent > 0 && ` (${overallDiscountPercent}%)`}
                             </span>
                           ) : (
@@ -462,7 +470,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                         {/* 5. إجمالي الصنف */}
                         <td className="py-1.5 px-1 text-center font-mono font-extrabold text-amber-400 whitespace-nowrap text-[11px]">
-                          <span>{lineTotal.toLocaleString()} ج.م</span>
+                          <span>{lineTotalDisplay}</span>
                         </td>
 
                         {/* 5. البائع */}

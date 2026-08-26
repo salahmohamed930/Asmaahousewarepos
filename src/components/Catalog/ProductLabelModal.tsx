@@ -606,12 +606,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
-                  {targetProducts.map((p) => {
+                  {targetProducts.map((p, idx) => {
                     const isSelectedForPreview = p.id === previewProduct.id;
                     const count = productCounts[p.id] ?? 0;
                     return (
                       <div
-                        key={p.id}
+                        key={p.id ? `lbl_p_${p.id}_${idx}` : `lbl_p_${idx}`}
                         onClick={() => setSelectedPreviewId(p.id)}
                         className={`p-2 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all ${
                           isSelectedForPreview
@@ -924,7 +924,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           <div className="p-0 m-0 w-full flex flex-col items-center">
             {allPrintItems.map((item, idx) => (
               <div
-                key={item.key}
+                key={`thermal_${item.key}_${idx}`}
                 className="label-sticker-thermal bg-white text-black flex flex-col justify-between items-center text-center overflow-hidden box-border"
                 style={{
                   width: config.width,
@@ -1002,9 +1002,9 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               labelPreset === 'sheet_a4_2col' ? 'grid-cols-2 gap-3' : 'grid-cols-3 gap-2'
             } p-3 w-full bg-white text-black`}
           >
-            {allPrintItems.map((item) => (
+            {allPrintItems.map((item, idx) => (
               <div
-                key={item.key}
+                key={`sheet_${item.key}_${idx}`}
                 className="bg-white text-black border border-stone-400 p-2 rounded flex flex-col justify-between items-center text-center overflow-hidden box-border"
                 style={{
                   height: config.height,

@@ -158,9 +158,9 @@ export const DiscountsView: React.FC = () => {
                 {isDropdownOpen && productSearch.trim() && (
                   <div className="absolute left-0 right-0 mt-1 bg-stone-950 border border-stone-800 rounded-2xl shadow-2xl p-2 z-50 max-h-60 overflow-y-auto">
                     {filteredProducts.length > 0 ? (
-                      filteredProducts.map((p) => (
+                      filteredProducts.map((p, idx) => (
                         <div
-                          key={p.id}
+                          key={p.id ? `disc_search_${p.id}_${idx}` : `disc_search_${idx}`}
                           onClick={() => handleSelectProduct(p)}
                           className="flex items-center justify-between p-2.5 rounded-xl cursor-pointer hover:bg-stone-900 text-xs text-stone-300 transition-colors"
                         >
@@ -344,7 +344,7 @@ export const DiscountsView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-800/60">
-                    {discounts.map((disc) => {
+                    {discounts.map((disc, idx) => {
                       const prod = products.find((p) => p.id === disc.productId);
                       if (!prod) return null;
 
@@ -363,7 +363,7 @@ export const DiscountsView: React.FC = () => {
                       }
 
                       return (
-                        <tr key={disc.productId} className="hover:bg-stone-950/20 text-stone-300">
+                        <tr key={disc.productId ? `disc_${disc.productId}_${disc.applyTo || ''}_${idx}` : `disc_${idx}`} className="hover:bg-stone-950/20 text-stone-300">
                           <td className="py-3.5 pr-1">
                             <div className="flex items-center gap-3">
                               <img

@@ -226,17 +226,17 @@ export function mapDbCustomerToCustomer(c: any): Customer {
 
   return {
     id: safeId,
-    name: c.name || '',
-    phone: c.phone || '',
-    email: c.email || '',
-    address: c.address || '',
+    name: String(c.name || ''),
+    phone: String(c.phone ?? ''),
+    email: String(c.email ?? ''),
+    address: String(c.address || ''),
     totalSpent: Number(c.total_spent ?? c.totalSpent ?? 0),
     loyaltyPoints: Number(c.loyalty_points ?? c.loyaltyPoints ?? 0),
     tier: c.tier || 'عادي',
     isCreditEligible: Boolean(c.is_credit_eligible ?? c.isCreditEligible),
     creditLimit: Number(c.credit_limit ?? c.creditLimit ?? 0),
     currentDebt: Number(c.current_debt ?? c.currentDebt ?? 0),
-    notes: c.notes || '',
+    notes: String(c.notes || ''),
   };
 }
 
@@ -267,15 +267,15 @@ export function mapDbSupplierToSupplier(s: any): Supplier {
 
   return {
     id: safeId,
-    name: s.name || '',
-    companyName: s.company_name || s.companyName || '',
-    phone: s.phone || '',
-    email: s.email || '',
-    address: s.address || '',
-    category: s.category || '',
+    name: String(s.name || ''),
+    companyName: String(s.company_name || s.companyName || ''),
+    phone: String(s.phone ?? ''),
+    email: String(s.email ?? ''),
+    address: String(s.address || ''),
+    category: String(s.category || ''),
     currentBalance: Number(s.current_balance ?? s.currentBalance ?? 0),
-    notes: s.notes || '',
-    taxNumber: s.tax_number || s.taxNumber || '',
+    notes: String(s.notes || ''),
+    taxNumber: String(s.tax_number || s.taxNumber || ''),
   };
 }
 
@@ -374,19 +374,26 @@ export function mapDbAssociateToAssociate(a: any): Associate {
 
   return {
     id: safeId,
-    name: a.name || 'موظف',
-    username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${safeId}`,
+    name: String(a.name || 'موظف'),
+    username: String(a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${safeId}`),
     password: String(a.password || a.pin || '1001'),
     pin: String(a.pin || a.password || '1001'),
-    role: a.role || 'مسؤول مبيعات',
-    avatar: a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    email: a.email || '',
-    phone: a.phone || '',
+    role: (a.role as any) || 'مسؤول مبيعات',
+    avatar: String(a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'),
+    email: String(a.email ?? ''),
+    phone: String(a.phone ?? ''),
     commissionRate: Number(a.commission_rate ?? a.commissionRate ?? 0.05),
     dailyGoal: Number(a.daily_goal ?? a.dailyGoal ?? 5000),
     hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
     advancesBalance: Number(a.advances_balance ?? a.advancesBalance ?? 0),
     isClockedIn: Boolean(a.is_clocked_in ?? a.isClockedIn ?? false),
+    permissions: Array.isArray(a.permissions)
+      ? a.permissions
+      : typeof a.permissions === 'string'
+      ? (() => {
+          try { return JSON.parse(a.permissions); } catch { return undefined; }
+        })()
+      : undefined,
   };
 }
 
@@ -406,6 +413,7 @@ export function mapAssociateToDbPayload(associate: Associate): any {
     avatar: associate.avatar || '',
     advances_balance: associate.advancesBalance || 0,
     is_clocked_in: Boolean(associate.isClockedIn),
+    permissions: associate.permissions || [],
     updated_at: new Date().toISOString(),
   };
 }

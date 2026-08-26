@@ -60,11 +60,11 @@ export const LoginScreen: React.FC = () => {
 
       // 1. Try matching local candidate
       let matched = candidateList.find((a) => {
-        const u = (a.username || '').toLowerCase();
-        const e = (a.email || '').toLowerCase();
-        const n = (a.name || '').toLowerCase();
-        const p = (a.phone || '').toLowerCase();
-        const pin = (a.pin || '').toLowerCase();
+        const u = String(a.username || '').toLowerCase();
+        const e = String(a.email || '').toLowerCase();
+        const n = String(a.name || '').toLowerCase();
+        const p = String(a.phone || '').toLowerCase();
+        const pin = String(a.pin || '').toLowerCase();
         return (
           u === trimmedUsername ||
           e === trimmedUsername ||
@@ -86,23 +86,30 @@ export const LoginScreen: React.FC = () => {
           const { data: dbData } = await supabase.from('associates').select('*');
           if (dbData && dbData.length > 0) {
             const foundDb = dbData.find((a: any) => {
-              const u = (a.username || a.user_name || '').toLowerCase();
-              const e = (a.email || '').toLowerCase();
-              const n = (a.name || '').toLowerCase();
-              return u === trimmedUsername || e === trimmedUsername || n === trimmedUsername || n.includes(trimmedUsername);
+              const u = String(a.username || a.user_name || '').toLowerCase();
+              const e = String(a.email || '').toLowerCase();
+              const n = String(a.name || '').toLowerCase();
+              const p = String(a.phone || '').toLowerCase();
+              return (
+                u === trimmedUsername ||
+                e === trimmedUsername ||
+                n === trimmedUsername ||
+                p === trimmedUsername ||
+                n.includes(trimmedUsername)
+              );
             });
 
             if (foundDb) {
               matched = {
                 id: String(foundDb.id),
-                name: foundDb.name || 'موظف',
-                username: foundDb.username || foundDb.user_name || foundDb.name,
+                name: String(foundDb.name || 'موظف'),
+                username: String(foundDb.username || foundDb.user_name || foundDb.name),
                 password: String(foundDb.password || foundDb.pin || '1001'),
                 pin: String(foundDb.pin || foundDb.password || '1001'),
                 role: foundDb.role || 'مسؤول مبيعات',
                 avatar: foundDb.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-                email: foundDb.email || '',
-                phone: foundDb.phone || '',
+                email: String(foundDb.email || ''),
+                phone: String(foundDb.phone || ''),
                 commissionRate: 0.05,
                 dailyGoal: 5000,
                 hourlyRate: 25,

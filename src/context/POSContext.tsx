@@ -304,13 +304,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const errorList: string[] = [];
 
-    // 1. Products
-    const prodRes = await fetchProductsFromSupabase();
-    if (!prodRes.error) {
-      setProducts(prodRes.data);
-    } else {
-      errorList.push(`المنتجات: ${prodRes.error.message || String(prodRes.error)}`);
-    }
+    // 1. Products (Lazy server-side queries on demand via products.service.ts)
+    // No bulk fetching of all products into memory on app startup
 
     // 2. Customers
     const custRes = await fetchCustomersFromSupabase();
@@ -1334,30 +1329,32 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const hasPermission = useCallback((perm: Permission): boolean => {
-    if (!currentAssociate) return true;
+    if (!currentAssociate) return false;
     if (currentAssociate.role === 'مدير الفرع') return true;
 
-    const perms = currentAssociate.permissions || [];
-    if (perms.includes(perm)) return true;
-
-    // Fallbacks for legacy permissions
-    if ((perm === 'add_products' || perm === 'edit_products' || perm === 'delete_products') && perms.includes('manage_catalog')) {
-      return true;
-    }
-    if ((perm === 'view_cash_price' || perm === 'view_installment_price' || perm === 'view_wholesale_price') && (perms.includes('create_invoice') || perms.includes('manage_catalog'))) {
-      return true;
-    }
-    if (perm === 'return_invoice' && (perms.includes('void_invoice') || perms.includes('create_invoice'))) {
-      return true;
-    }
-    if (perm === 'view_cost_price' && (perms.includes('view_analytics') || perms.includes('manage_catalog'))) {
-      return true;
-    }
-    if (perm === 'manage_expenses' && (perms.includes('manage_safe') || perms.includes('view_analytics'))) {
-      return true;
+    if (Array.isArray(currentAssociate.permissions)) {
+      return currentAssociate.permissions.includes(perm);
     }
 
-    return false;
+    // Role-based defaults if permissions array is uninitialized
+    const roleDefaults: Record<string, Permission[]> = {
+      'مشرف قسم': [
+        'view_cash_price', 'view_installment_price', 'view_wholesale_price', 'view_cost_price',
+        'create_invoice', 'apply_discount', 'override_cart_price', 'return_invoice',
+        'add_products', 'edit_products', 'manage_catalog',
+        'manage_expenses', 'manage_customers', 'manage_suppliers',
+      ],
+      'بائع أول': [
+        'view_cash_price', 'view_installment_price', 'view_wholesale_price',
+        'create_invoice', 'apply_discount', 'return_invoice',
+      ],
+      'مسؤول مبيعات': [
+        'view_cash_price', 'create_invoice',
+      ],
+    };
+
+    const defaultPerms = roleDefaults[currentAssociate.role] || ['view_cash_price', 'create_invoice'];
+    return defaultPerms.includes(perm);
   }, [currentAssociate]);
 
   const resetDemoData = async () => {

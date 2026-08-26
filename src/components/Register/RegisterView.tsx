@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Product, Transaction, PriceTier } from '../../types';
+import { searchProductsForPOS, getProductByBarcode, getCategories } from '../../services/products.service';
 import {
   Search,
   Barcode,
@@ -24,6 +25,7 @@ import {
   Users,
   Wallet,
   TrendingDown,
+  RefreshCw,
 } from 'lucide-react';
 import CartSidebar from './CartSidebar';
 import PaymentModal from './PaymentModal';
@@ -55,6 +57,9 @@ export const RegisterView: React.FC = () => {
   const canManageExpenses = hasPermission('manage_expenses');
   const canReturn = hasPermission('return_invoice');
   const canVoid = hasPermission('void_invoice');
+  const canViewCash = hasPermission('view_cash_price');
+  const canViewInstallment = hasPermission('view_installment_price');
+  const canViewWholesale = hasPermission('view_wholesale_price');
 
   // Mode state: DEFAULT TO 'history' AS REQUESTED!
   const [viewMode, setViewMode] = useState<'history' | 'create' | 'expenses'>('history');
@@ -147,33 +152,73 @@ export const RegisterView: React.FC = () => {
     }
   }, [currentAssociate]);
 
-  // Dynamically extract unique categories from products table
-  const dynamicCategories = Array.from(
-    new Set(
-      products
-        .map((p) => p.category?.trim())
-        .filter((cat): cat is string => Boolean(cat && cat !== 'الكل'))
-    )
-  );
+  // --- Server-Side POS Products Search & Barcode Lookup ---
+  const [posProducts, setPosProducts] = useState<Product[]>([]);
+  const [isSearchingProducts, setIsSearchingProducts] = useState<boolean>(false);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>('');
+  const [categories, setCategories] = useState<string[]>(['الكل']);
+  const [isBarcodeLoading, setIsBarcodeLoading] = useState<boolean>(false);
 
-  const categories = ['الكل', ...dynamicCategories];
+  // 1. Debounce text search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
-  const handleBarcodeScan = (e: React.FormEvent) => {
+  // 2. Query products from Supabase directly
+  useEffect(() => {
+    let isSubscribed = true;
+    const controller = new AbortController();
+
+    const fetchPOSProducts = async () => {
+      setIsSearchingProducts(true);
+      const res = await searchProductsForPOS({
+        search: debouncedSearchQuery,
+        category: selectedCategory,
+        limit: 25,
+        abortSignal: controller.signal,
+      });
+
+      if (isSubscribed) {
+        setPosProducts(res.products);
+        setIsSearchingProducts(false);
+      }
+    };
+
+    fetchPOSProducts();
+
+    return () => {
+      isSubscribed = false;
+      controller.abort();
+    };
+  }, [debouncedSearchQuery, selectedCategory]);
+
+  // 3. Query categories
+  useEffect(() => {
+    getCategories().then((cats) => {
+      setCategories(cats);
+    });
+  }, []);
+
+  // 4. Scanner exact match lookup in Supabase
+  const handleBarcodeScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barcodeInput.trim()) return;
+    const clean = barcodeInput.trim();
+    if (!clean) return;
 
-    const matchedProduct = products.find(
-      (p) =>
-        p.barcode.toLowerCase() === barcodeInput.trim().toLowerCase() ||
-        p.sku.toLowerCase() === barcodeInput.trim().toLowerCase() ||
-        (p.barcodes && p.barcodes.some((b) => b.toLowerCase() === barcodeInput.trim().toLowerCase()))
-    );
-
-    if (matchedProduct) {
-      triggerAddToCart(matchedProduct);
-      setBarcodeInput('');
-    } else {
-      alert(`لم يتم العثور على منتج برقم باركود أو كود: "${barcodeInput}"`);
+    setIsBarcodeLoading(true);
+    try {
+      const matchedProduct = await getProductByBarcode(clean);
+      if (matchedProduct) {
+        triggerAddToCart(matchedProduct);
+        setBarcodeInput('');
+      } else {
+        alert(`لم يتم العثور على منتج برقم باركود أو كود: "${clean}"`);
+      }
+    } finally {
+      setIsBarcodeLoading(false);
     }
   };
 
@@ -184,18 +229,6 @@ export const RegisterView: React.FC = () => {
       setAddedAnimationId(null);
     }, 500);
   };
-
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.barcode.includes(searchQuery) ||
-      (p.barcodes && p.barcodes.some((b) => b.toLowerCase().includes(searchQuery.toLowerCase())));
-
-    const matchesCategory = selectedCategory === 'الكل' || p.category === selectedCategory;
-
-    return matchesSearch && matchesCategory;
-  });
 
   // Filtered Past Invoices History Logic
   const filteredTransactions = transactions.filter((tx) => {
@@ -375,8 +408,8 @@ export const RegisterView: React.FC = () => {
                   className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-amber-300 focus:outline-none"
                 >
                   <option value="all">تصفية بكود البائع: الكل</option>
-                  {associates.map((a) => (
-                    <option key={a.id} value={a.pin}>
+                  {associates.map((a, idx) => (
+                    <option key={a.id ? `assoc_flt_${a.id}_${idx}` : `assoc_flt_${idx}`} value={a.pin}>
                       كود البائع: {a.pin}
                     </option>
                   ))}
@@ -420,7 +453,7 @@ export const RegisterView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-800/80 text-xs text-stone-200">
-                    {sortedTransactions.map((tx) => {
+                    {sortedTransactions.map((tx, idx) => {
                       const assocId = tx.primaryAssociateId || (tx as any).associateId;
                       const assoc = associates.find((a) => a.id === assocId);
                       const sellerPinCode = assoc ? assoc.pin : '101';
@@ -438,7 +471,7 @@ export const RegisterView: React.FC = () => {
 
                       return (
                         <tr
-                          key={tx.id}
+                          key={tx.id ? `tx_${tx.id}_${idx}` : `tx_${idx}`}
                           className={`transition-colors ${
                             isHeld
                               ? 'bg-amber-950/20 hover:bg-amber-950/30 border-r-4 border-amber-500'
@@ -613,8 +646,8 @@ export const RegisterView: React.FC = () => {
                     className="bg-stone-950 border border-stone-800 focus:border-rose-500 rounded-xl px-2.5 py-1 text-[11px] font-bold text-stone-300 focus:outline-none w-full"
                   >
                     <option value="all">كل الفئات</option>
-                    {expenseCategoriesList.map((cat) => (
-                      <option key={cat} value={cat}>
+                    {expenseCategoriesList.map((cat, idx) => (
+                      <option key={`exp_cat1_${cat}_${idx}`} value={cat}>
                         {cat}
                       </option>
                     ))}
@@ -659,8 +692,8 @@ export const RegisterView: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-850 text-xs text-stone-300">
-                        {filteredExpenses.map((exp) => (
-                          <tr key={exp.id} className="hover:bg-stone-955/40">
+                        {filteredExpenses.map((exp, idx) => (
+                          <tr key={exp.id ? `exp1_${exp.id}_${idx}` : `exp1_${idx}`} className="hover:bg-stone-955/40">
                             <td className="py-2 px-3 whitespace-nowrap text-stone-400 text-[10px] font-mono">
                               {new Date(exp.timestamp).toLocaleDateString('ar-EG', {
                                 month: 'numeric',
@@ -720,7 +753,7 @@ export const RegisterView: React.FC = () => {
             }`}
           >
             <Package className="w-3.5 h-3.5" />
-            <span>الأصناف والكتالوج ({filteredProducts.length})</span>
+            <span>الأصناف والكتالوج ({posProducts.length})</span>
           </button>
           <button
             onClick={() => setMobileSubTab('cart')}
@@ -761,7 +794,7 @@ export const RegisterView: React.FC = () => {
                 <div className="flex items-center space-x-1.5 space-x-reverse">
                   <span className="text-[11px] font-extrabold text-amber-400 bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
                     <Package className="w-3.5 h-3.5" />
-                    <span>كتالوج الاصناف ({filteredProducts.length})</span>
+                    <span>كتالوج الاصناف ({posProducts.length})</span>
                   </span>
                 </div>
               </div>
@@ -813,9 +846,10 @@ export const RegisterView: React.FC = () => {
                   <Barcode className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2.5" />
                   <input
                     type="text"
-                    placeholder="باركود + Enter"
+                    placeholder={isBarcodeLoading ? 'جاري الفحص...' : 'باركود + Enter'}
                     value={barcodeInput}
                     onChange={(e) => setBarcodeInput(e.target.value)}
+                    disabled={isBarcodeLoading}
                     className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-8 pl-7 py-1.5 text-[11px] font-mono text-stone-100 placeholder-stone-500 focus:outline-none"
                   />
                   {barcodeInput && (
@@ -833,9 +867,9 @@ export const RegisterView: React.FC = () => {
 
               {/* Row 4: Horizontal Scrollable Category Filter */}
               <div className="flex items-center space-x-1.5 space-x-reverse overflow-x-auto pb-1.5 scrollbar-none border-b border-stone-800/60">
-                {categories.map((cat) => (
+                {categories.map((cat, idx) => (
                   <button
-                    key={cat}
+                    key={`pos_cat_${cat}_${idx}`}
                     onClick={() => setSelectedCategory(cat)}
                     className={`px-3 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all ${
                       selectedCategory === cat
@@ -855,24 +889,26 @@ export const RegisterView: React.FC = () => {
                   <span>التسعير:</span>
                 </span>
 
-                <div className="grid grid-cols-3 gap-1 flex-1">
+                <div className="flex gap-1 flex-1">
                   {[
-                    { id: 'cash', label: 'كاش 💵' },
-                    { id: 'installment', label: 'تقسيط 📅' },
-                    { id: 'wholesale', label: 'جملة 📦' },
-                  ].map((tier) => (
-                    <button
-                      key={tier.id}
-                      onClick={() => setGlobalPriceTier(tier.id as PriceTier)}
-                      className={`py-0.5 rounded-lg font-bold text-[10px] transition-all text-center ${
-                        globalPriceTier === tier.id
-                          ? 'bg-amber-600 text-white shadow-sm'
-                          : 'bg-stone-900 text-stone-400 hover:text-stone-200'
-                      }`}
-                    >
-                      {tier.label}
-                    </button>
-                  ))}
+                    { id: 'cash', label: 'كاش 💵', canView: canViewCash },
+                    { id: 'installment', label: 'تقسيط 📅', canView: canViewInstallment },
+                    { id: 'wholesale', label: 'جملة 📦', canView: canViewWholesale },
+                  ]
+                    .filter((t) => t.canView)
+                    .map((tier, idx) => (
+                      <button
+                        key={`tier_${tier.id}_${idx}`}
+                        onClick={() => setGlobalPriceTier(tier.id as PriceTier)}
+                        className={`flex-1 py-0.5 rounded-lg font-bold text-[10px] transition-all text-center ${
+                          globalPriceTier === tier.id
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : 'bg-stone-900 text-stone-400 hover:text-stone-200'
+                        }`}
+                      >
+                        {tier.label}
+                      </button>
+                    ))}
                 </div>
               </div>
 
@@ -880,10 +916,28 @@ export const RegisterView: React.FC = () => {
 
             {/* Compact Product List - Rendered as Rows */}
             <div className="flex flex-col space-y-1 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
-              {filteredProducts.map((product, idx) => {
+              {isSearchingProducts ? (
+                <div className="py-12 text-center text-stone-400 space-y-2 bg-stone-900 border border-stone-800 rounded-xl">
+                  <RefreshCw className="w-6 h-6 text-amber-500 animate-spin mx-auto" />
+                  <p className="text-xs font-bold text-stone-300">جاري البحث في Supabase...</p>
+                </div>
+              ) : posProducts.length === 0 ? (
+                <div className="py-12 text-center text-stone-400 space-y-2 bg-stone-900 border border-stone-800 rounded-xl">
+                  <Package className="w-8 h-8 text-stone-600 mx-auto" />
+                  <p className="text-xs font-bold text-stone-300">لا توجد أصناف تطابق البحث</p>
+                </div>
+              ) : (
+                posProducts.map((product, idx) => {
                 const isLowStock = product.stock <= 5;
                 const isOutOfStock = product.stock === 0;
                 const isJustAdded = addedAnimationId === product.id;
+
+                const canViewActivePrice =
+                  globalPriceTier === 'cash'
+                    ? canViewCash
+                    : globalPriceTier === 'installment'
+                    ? canViewInstallment
+                    : canViewWholesale;
 
                 const activePrice =
                   globalPriceTier === 'cash'
@@ -892,9 +946,11 @@ export const RegisterView: React.FC = () => {
                     ? product.priceInstallment
                     : product.priceWholesale;
 
+                const displayPrice = canViewActivePrice ? `${activePrice.toLocaleString()} ج.م` : '***';
+
                 return (
                   <div
-                    key={product.id && product.id !== 'null' ? product.id : `prod_${idx}`}
+                    key={product.id ? `pos_prod_${product.id}_${idx}` : `pos_prod_${idx}`}
                     onClick={() => !isOutOfStock && triggerAddToCart(product)}
                     className={`bg-stone-900 border border-stone-800 hover:border-amber-500/60 rounded-xl p-1.5 flex items-center justify-between transition-all group cursor-pointer relative shadow-sm space-x-1.5 space-x-reverse ${
                       isJustAdded ? 'scale-[0.99] border-amber-500 ring-1 ring-amber-500/50' : ''
@@ -942,7 +998,7 @@ export const RegisterView: React.FC = () => {
                       </span>
 
                       <span className="text-[11px] font-mono font-extrabold text-amber-400 min-w-[55px] text-left">
-                        {activePrice.toLocaleString()} ج.م
+                        {displayPrice}
                       </span>
 
                       <button
@@ -976,7 +1032,7 @@ export const RegisterView: React.FC = () => {
 
                   </div>
                 );
-              })}
+              }))}
             </div>
 
           </div>
@@ -1057,8 +1113,8 @@ export const RegisterView: React.FC = () => {
                   onChange={(e) => setExpenseCategory(e.target.value)}
                   className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
                 >
-                  {expenseCategoriesList.map((cat) => (
-                    <option key={cat} value={cat}>
+                  {expenseCategoriesList.map((cat, idx) => (
+                    <option key={`exp_cat2_${cat}_${idx}`} value={cat}>
                       {cat}
                     </option>
                   ))}
@@ -1075,8 +1131,8 @@ export const RegisterView: React.FC = () => {
                     className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
                   >
                     <option value="">-- اختر المورد لخصم المبلغ من مديونيته --</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
+                    {suppliers.map((s, idx) => (
+                      <option key={s.id ? `supp1_${s.id}_${idx}` : `supp1_${idx}`} value={s.id}>
                         {s.name} (الرصيد الدائن الحالي: {s.currentBalance.toLocaleString('ar-EG')} ج.م)
                       </option>
                     ))}
@@ -1094,8 +1150,8 @@ export const RegisterView: React.FC = () => {
                     className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
                   >
                     <option value="">-- اختر الموظف لتسجيل السلفة عليه --</option>
-                    {associates.map((a) => (
-                      <option key={a.id} value={a.id}>
+                    {associates.map((a, idx) => (
+                      <option key={a.id ? `assoc1_${a.id}_${idx}` : `assoc1_${idx}`} value={a.id}>
                         {a.name} ({a.role})
                       </option>
                     ))}
@@ -1240,8 +1296,8 @@ const ExpensesSubView: React.FC = () => {
               onChange={(e) => setCategory(e.target.value)}
               className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
             >
-              {categoriesList.map((cat) => (
-                <option key={cat} value={cat}>
+              {categoriesList.map((cat, idx) => (
+                <option key={`exp_cat3_${cat}_${idx}`} value={cat}>
                   {cat}
                 </option>
               ))}
@@ -1258,8 +1314,8 @@ const ExpensesSubView: React.FC = () => {
                 className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
               >
                 <option value="">-- اختر المورد لخصم المبلغ من مديونيته --</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
+                {suppliers.map((s, idx) => (
+                  <option key={s.id ? `supp2_${s.id}_${idx}` : `supp2_${idx}`} value={s.id}>
                     {s.name} (الرصيد الدائن الحالي: {s.currentBalance.toLocaleString('ar-EG')} ج.م)
                   </option>
                 ))}
@@ -1277,8 +1333,8 @@ const ExpensesSubView: React.FC = () => {
                 className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
               >
                 <option value="">-- اختر الموظف لتسجيل السلفة عليه --</option>
-                {associates.map((a) => (
-                  <option key={a.id} value={a.id}>
+                {associates.map((a, idx) => (
+                  <option key={a.id ? `assoc2_${a.id}_${idx}` : `assoc2_${idx}`} value={a.id}>
                     {a.name} ({a.role})
                   </option>
                 ))}
@@ -1323,8 +1379,8 @@ const ExpensesSubView: React.FC = () => {
               className="bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-1.5 text-xs font-bold text-stone-300 focus:outline-none w-full sm:w-auto"
             >
               <option value="all">كل الفئات</option>
-              {categoriesList.map((cat) => (
-                <option key={cat} value={cat}>
+              {categoriesList.map((cat, idx) => (
+                <option key={`exp_cat4_${cat}_${idx}`} value={cat}>
                   {cat}
                 </option>
               ))}
@@ -1371,8 +1427,8 @@ const ExpensesSubView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-800/60 text-xs text-stone-300">
-                  {filteredExpenses.map((exp) => (
-                    <tr key={exp.id} className="hover:bg-stone-900/40">
+                  {filteredExpenses.map((exp, idx) => (
+                    <tr key={exp.id ? `exp2_${exp.id}_${idx}` : `exp2_${idx}`} className="hover:bg-stone-900/40">
                       <td className="py-2 px-3 whitespace-nowrap text-stone-400 text-[11px] font-mono">
                         {new Date(exp.timestamp).toLocaleString('ar-EG', {
                           month: 'short',

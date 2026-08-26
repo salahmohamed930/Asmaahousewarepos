@@ -15,7 +15,10 @@ import {
   Phone,
   Mail,
   UserCheck,
-  MapPin
+  MapPin,
+  Edit,
+  Save,
+  User
 } from 'lucide-react';
 
 interface CustomerAccountModalProps {
@@ -34,6 +37,13 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const { transactions, payCustomerDebt, currentAssociate, updateCustomer } = usePOS();
   const [activeTab, setActiveTab] = useState<ActiveSubTab>('overview');
   
+  // Basic Info States (Name, Phone, Email)
+  const [customerName, setCustomerName] = useState<string>(customer.name || '');
+  const [customerPhone, setCustomerPhone] = useState<string>(customer.phone || '');
+  const [customerEmail, setCustomerEmail] = useState<string>(customer.email || '');
+  const [isEditingBasicInfo, setIsEditingBasicInfo] = useState<boolean>(false);
+  const [basicInfoSuccess, setBasicInfoSuccess] = useState<string>('');
+
   // Credit eligibility states
   const [isCreditEligible, setIsCreditEligible] = useState<boolean>(customer.isCreditEligible || false);
   const [creditLimitInput, setCreditLimitInput] = useState<string>(String(customer.creditLimit || 0));
@@ -48,6 +58,9 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [addressSavedMessage, setAddressSavedMessage] = useState<string>('');
 
   React.useEffect(() => {
+    setCustomerName(customer.name || '');
+    setCustomerPhone(customer.phone || '');
+    setCustomerEmail(customer.email || '');
     setIsCreditEligible(customer.isCreditEligible || false);
     setCreditLimitInput(String(customer.creditLimit || 0));
     setCustomerNotes(customer.notes || '');
@@ -62,6 +75,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [paymentError, setPaymentError] = useState<string>('');
 
   if (!isOpen) return null;
+
+  const handleSaveBasicInfo = () => {
+    if (!customerName.trim()) return;
+    updateCustomer({
+      ...customer,
+      name: customerName.trim(),
+      phone: customerPhone.trim(),
+      email: customerEmail.trim(),
+    });
+    setBasicInfoSuccess('تم حفظ اسم العميل ورقم الهاتف بنجاح!');
+    setIsEditingBasicInfo(false);
+    setTimeout(() => setBasicInfoSuccess(''), 3000);
+  };
 
   // Filter transactions for this customer
   const customerTx = transactions.filter(t => t.customerId === customer.id);
@@ -112,31 +138,86 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col text-stone-100">
         
         {/* Modal Header */}
-        <div className="p-6 border-b border-stone-800 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3 space-x-reverse">
-            <div className="w-12 h-12 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center">
+        <div className="p-6 border-b border-stone-800 flex items-center justify-between shrink-0 gap-3">
+          <div className="flex items-center space-x-3 space-x-reverse flex-1">
+            <div className="w-12 h-12 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center shrink-0">
               <UserCheck className="w-6 h-6" />
             </div>
-            <div>
-              <h2 className="text-lg font-extrabold text-stone-100">كشف حساب العميل: {customer.name}</h2>
-              <div className="flex items-center space-x-4 space-x-reverse text-xs text-stone-400 mt-1">
-                <span className="flex items-center space-x-1 space-x-reverse font-mono">
-                  <Phone className="w-3.5 h-3.5 text-stone-500" />
-                  <span>{customer.phone}</span>
-                </span>
-                {customer.email && (
-                  <span className="flex items-center space-x-1 space-x-reverse">
-                    <Mail className="w-3.5 h-3.5 text-stone-500" />
-                    <span>{customer.email}</span>
+            
+            {!isEditingBasicInfo ? (
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 space-x-reverse flex-wrap gap-y-1">
+                  <h2 className="text-lg font-extrabold text-stone-100">كشف حساب العميل: {customer.name}</h2>
+                  <button
+                    onClick={() => setIsEditingBasicInfo(true)}
+                    className="text-[11px] px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold transition-all flex items-center space-x-1 space-x-reverse"
+                    title="تعديل اسم العميل ورقم الهاتف"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>تعديل الاسم / الهاتف</span>
+                  </button>
+                </div>
+                <div className="flex items-center space-x-4 space-x-reverse text-xs text-stone-400 mt-1">
+                  <span className="flex items-center space-x-1 space-x-reverse font-mono">
+                    <Phone className="w-3.5 h-3.5 text-stone-500" />
+                    <span>{customer.phone}</span>
                   </span>
-                )}
+                  {customer.email && (
+                    <span className="flex items-center space-x-1 space-x-reverse">
+                      <Mail className="w-3.5 h-3.5 text-stone-500" />
+                      <span>{customer.email}</span>
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex-1 bg-stone-950 p-3 rounded-2xl border border-amber-500/40 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="text-[10px] text-amber-400 font-bold block mb-1">اسم العميل</label>
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-1.5 text-stone-100 text-xs focus:border-amber-500 focus:outline-none font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-amber-400 font-bold block mb-1">رقم الهاتف</label>
+                    <input
+                      type="text"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-1.5 text-stone-100 text-xs font-mono focus:border-amber-500 focus:outline-none font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end space-x-2 space-x-reverse pt-1">
+                  <button
+                    onClick={() => {
+                      setCustomerName(customer.name || '');
+                      setCustomerPhone(customer.phone || '');
+                      setIsEditingBasicInfo(false);
+                    }}
+                    className="px-3 py-1 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-lg text-xs font-bold"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleSaveBasicInfo}
+                    className="px-3.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1 space-x-reverse"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>حفظ التعديلات</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           
           <button
             onClick={onClose}
-            className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
+            className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -254,6 +335,68 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       <span className="text-stone-500">دفعات السداد المكتملة:</span>
                       <span className="text-emerald-400 font-mono font-bold">{payments.length} عمليات</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Customer Basic Info (Name & Phone Edit) */}
+                <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-stone-900 pb-2">
+                    <h4 className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+                      <User className="w-3.5 h-3.5" />
+                      <span>تعديل اسم العميل ورقم الهاتف</span>
+                    </h4>
+                  </div>
+
+                  {basicInfoSuccess && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl p-2.5 flex items-center space-x-1.5 space-x-reverse">
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>{basicInfoSuccess}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-stone-400 mb-1 font-medium">اسم العميل / اسم المحل</label>
+                      <input
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="اسم العميل..."
+                        className="w-full bg-stone-900 border border-stone-850 rounded-xl px-3 py-2 text-stone-200 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-stone-400 mb-1 font-medium">رقم الهاتف</label>
+                      <input
+                        type="text"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        placeholder="رقم الهاتف..."
+                        className="w-full bg-stone-900 border border-stone-850 rounded-xl px-3 py-2 text-stone-200 font-mono focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-stone-400 mb-1 font-medium">البريد الإلكتروني (اختياري)</label>
+                      <input
+                        type="email"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        placeholder="البريد الإلكتروني..."
+                        className="w-full bg-stone-900 border border-stone-850 rounded-xl px-3 py-2 text-stone-200 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/20 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-[10px] text-stone-500">سيتم حفظ التعديلات فوراً في حساب العميل والقواعد البيانات</span>
+                    <button
+                      type="button"
+                      onClick={handleSaveBasicInfo}
+                      className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl transition-all flex items-center space-x-1.5 space-x-reverse"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>حفظ تعديلات البيانات</span>
+                    </button>
                   </div>
                 </div>
 

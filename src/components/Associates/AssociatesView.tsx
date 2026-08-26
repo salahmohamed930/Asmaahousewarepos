@@ -20,17 +20,77 @@ import {
   Square,
   Printer,
   RotateCcw,
+  Package,
+  ShoppingBag,
+  Receipt,
+  Layers,
 } from 'lucide-react';
 
-const ALL_PERMISSIONS: { id: Permission; label: string; desc: string }[] = [
-  { id: 'create_invoice', label: 'إنشاء فواتير', desc: 'إمكانية إعداد وبيع الفواتير' },
-  { id: 'view_analytics', label: 'عرض التقارير', desc: 'اطلاع على التقارير المالية والإحصائيات' },
-  { id: 'manage_catalog', label: 'إدارة الأصناف', desc: 'إضافة وتعديل المنتجات والأسعار' },
-  { id: 'manage_customers', label: 'حسابات العملاء', desc: 'إدارة واستعلام بيانات العملاء' },
-  { id: 'manage_associates', label: 'إدارة الموظفين والصلاحيات', desc: 'إضافة وتعديل المستخدمين وتحديد صلاحياتهم' },
-  { id: 'apply_discount', label: 'تطبيق الخصم', desc: 'خصم مبالغ من الفاتورة أثناء البيع' },
-  { id: 'void_invoice', label: 'إلغاء الفواتير', desc: 'إلغاء أو تعديل الفواتير السابقة' },
+export interface PermissionGroup {
+  category: string;
+  icon: any;
+  desc: string;
+  permissions: { id: Permission; label: string; desc: string }[];
+}
+
+export const PERMISSION_GROUPS: PermissionGroup[] = [
+  {
+    category: 'رؤية الأسعار والتكاليف',
+    icon: DollarSign,
+    desc: 'تحديد مستويات أسعار المنتجات التي يستطيع الموظف مشاهدتها',
+    permissions: [
+      { id: 'view_cash_price', label: 'رؤية سعر الكاش / القطاعي', desc: 'إظهار سعر بيع القطاعي للمنتجات' },
+      { id: 'view_installment_price', label: 'رؤية سعر التقسيط', desc: 'إظهار سعر التقسيط للمنتجات' },
+      { id: 'view_wholesale_price', label: 'رؤية سعر الجملة', desc: 'إظهار سعر الجملة للمنتجات' },
+      { id: 'view_cost_price', label: 'رؤية سعر التكلفة والأرباح', desc: 'إظهار سعر التكلفة وهامش ربح الصنف' },
+    ],
+  },
+  {
+    category: 'المبيعات والكاشير',
+    icon: ShoppingBag,
+    desc: 'صلاحيات عمليات الكاشير والبيع والمرتجعات والخصوم',
+    permissions: [
+      { id: 'create_invoice', label: 'إنشاء فواتير مبيعات', desc: 'إمكانية إعداد وإتمام الفواتير في شاشة الكاشير' },
+      { id: 'apply_discount', label: 'تطبيق خصم على الفاتورة', desc: 'إتاحة إدخال خصومات على إجمالي الفاتورة' },
+      { id: 'override_cart_price', label: 'تعديل سعر الصنف بالسلة', desc: 'تعديل سعر بيع المنتج يدوياً داخل السلة' },
+      { id: 'return_invoice', label: 'إجراء مرتجع للفواتير', desc: 'استرداد الفواتير وإرجاع المنتجات للمخزن' },
+      { id: 'void_invoice', label: 'إلغاء الفواتير نهائياً', desc: 'إلغاء الفواتير السابقة وحذفها' },
+    ],
+  },
+  {
+    category: 'إدارة المنتجات والأصناف',
+    icon: Package,
+    desc: 'إضافة وتعديل وحذف المنتجات والأقسام',
+    permissions: [
+      { id: 'add_products', label: 'إضافة أصناف جديدة', desc: 'إضافة أصناف مفردة أو متعددة بدليل المنتجات' },
+      { id: 'edit_products', label: 'تعديل بيانات وأسعار الأصناف', desc: 'تعديل أسعار وباركودات وكميات الأصناف' },
+      { id: 'delete_products', label: 'حذف أصناف المنتجات', desc: 'حذف منتجات من قاعدة البيانات الكلية' },
+      { id: 'manage_catalog', label: 'إدارة الكتالوج والأقسام', desc: 'إنشاء وإعادة ترتيب تصنيفات وأقسام المحل' },
+    ],
+  },
+  {
+    category: 'الخزينة والمصروفات',
+    icon: Lock,
+    desc: 'صرف وتسجيل المصروفات وتسليم الخزنة',
+    permissions: [
+      { id: 'manage_expenses', label: 'تسجيل وصرف المصروفات', desc: 'صرف المصروفات والسلف والدفعات من الخزينة' },
+      { id: 'manage_safe', label: 'إدارة الخزينة والورديات', desc: 'فتح وإغلاق الخزينة وتسليم ورديات العمل' },
+    ],
+  },
+  {
+    category: 'الإدارة والتقارير',
+    icon: Shield,
+    desc: 'الاطلاع على الحسابات والتقارير والتحليلات',
+    permissions: [
+      { id: 'view_analytics', label: 'عرض التقارير والأرباح', desc: 'عرض المبيعات والأرباح والرسوم البيانية' },
+      { id: 'manage_customers', label: 'إدارة حسابات العملاء', desc: 'متابعة ديون العملاء والتحصيلات والمبيعات الآجلة' },
+      { id: 'manage_suppliers', label: 'إدارة حسابات الموردين', desc: 'متابعة مستحقات الموردين وسجل التوريدات' },
+      { id: 'manage_associates', label: 'إدارة الموظفين والصلاحيات', desc: 'تسجيل الموظفين وتحديد كلمات السر والصلاحيات' },
+    ],
+  },
 ];
+
+export const ALL_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) => g.permissions);
 
 export const AssociatesView: React.FC = () => {
   const { associates, transactions, addAssociate, updateAssociate } = usePOS();
@@ -408,7 +468,7 @@ export const AssociatesView: React.FC = () => {
 
       {/* Roster Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {associates.map((assoc) => {
+        {associates.map((assoc, idx) => {
           const stats = getAssociateStats(assoc.id);
           const goalProgress = Math.min(100, Math.round((stats.totalSales / assoc.dailyGoal) * 100));
 
@@ -419,7 +479,7 @@ export const AssociatesView: React.FC = () => {
 
           return (
             <div
-              key={assoc.id}
+              key={assoc.id && assoc.id !== 'null' ? assoc.id : `assoc_${idx}`}
               className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4 relative overflow-hidden"
             >
               <div>
@@ -687,49 +747,104 @@ export const AssociatesView: React.FC = () => {
                 </p>
               </div>
 
-              {/* User Permissions Checkboxes */}
-              <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-stone-200 flex items-center space-x-1.5 space-x-reverse">
-                    <Shield className="w-4 h-4 text-emerald-400" />
-                    <span>تحديد الصلاحيات الممنوحة للمستخدم:</span>
-                  </span>
+              {/* User Permissions Checkboxes - Grouped by Category */}
+              <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <div>
+                    <span className="text-xs font-bold text-stone-100 flex items-center space-x-1.5 space-x-reverse">
+                      <Shield className="w-4 h-4 text-emerald-400" />
+                      <span>تحديد وتخصيص الصلاحيات الممنوحة للموظف:</span>
+                    </span>
+                    <p className="text-[10px] text-stone-400 mt-0.5">
+                      حدد بالضبط ما يستطيع الموظف مشاهادتهم وإجراءه على النظام
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
                       if (formData.permissions.length === ALL_PERMISSIONS.length) {
-                        setFormData({ ...formData, permissions: ['create_invoice'] });
+                        setFormData({ ...formData, permissions: ['create_invoice', 'view_cash_price'] });
                       } else {
                         setFormData({ ...formData, permissions: ALL_PERMISSIONS.map((p) => p.id) });
                       }
                     }}
-                    className="text-[10px] text-amber-400 hover:underline font-bold"
+                    className="text-[10px] bg-amber-950/60 text-amber-300 border border-amber-800/80 hover:bg-amber-900/80 px-2.5 py-1 rounded-lg font-bold transition-all"
                   >
-                    {formData.permissions.length === ALL_PERMISSIONS.length ? 'إلغاء الكل' : 'تحديد الكل'}
+                    {formData.permissions.length === ALL_PERMISSIONS.length ? 'إلغاء تحديد الكل' : 'تحديد جميع الصلاحيات'}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  {ALL_PERMISSIONS.map((perm) => {
-                    const isChecked = formData.permissions.includes(perm.id);
+                {formData.role === 'مدير الفرع' && (
+                  <div className="bg-emerald-950/30 border border-emerald-800/50 rounded-xl p-2.5 text-[11px] text-emerald-300 flex items-center space-x-2 space-x-reverse">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>ملاحظة: الموظف بمسمى "مدير الفرع" يمتلك صلاحيات كاملة افتراضياً على جميع أقسام ووظائف النظام.</span>
+                  </div>
+                )}
+
+                <div className="space-y-4 pt-1">
+                  {PERMISSION_GROUPS.map((group) => {
+                    const GroupIcon = group.icon;
+                    const groupPermIds = group.permissions.map((p) => p.id);
+                    const isAllGroupChecked = groupPermIds.every((id) => formData.permissions.includes(id));
+
+                    const toggleGroup = () => {
+                      if (isAllGroupChecked) {
+                        setFormData({
+                          ...formData,
+                          permissions: formData.permissions.filter((p) => !groupPermIds.includes(p)),
+                        });
+                      } else {
+                        const merged = Array.from(new Set([...formData.permissions, ...groupPermIds]));
+                        setFormData({ ...formData, permissions: merged });
+                      }
+                    };
+
                     return (
-                      <div
-                        key={perm.id}
-                        onClick={() => togglePermission(perm.id)}
-                        className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-start space-x-2 space-x-reverse ${
-                          isChecked
-                            ? 'bg-amber-950/40 border-amber-600/80 text-amber-200'
-                            : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
-                        }`}
-                      >
-                        {isChecked ? (
-                          <CheckSquare className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                        ) : (
-                          <Square className="w-4 h-4 text-stone-600 shrink-0 mt-0.5" />
-                        )}
-                        <div>
-                          <span className="font-bold text-xs block text-stone-100">{perm.label}</span>
-                          <span className="text-[10px] text-stone-400 block">{perm.desc}</span>
+                      <div key={group.category} className="bg-stone-900/90 border border-stone-800/80 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2 space-x-reverse">
+                            <div className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                              <GroupIcon className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-amber-300">{group.category}</h4>
+                              <p className="text-[9px] text-stone-400">{group.desc}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={toggleGroup}
+                            className="text-[9px] text-amber-400 hover:text-amber-300 font-bold underline"
+                          >
+                            {isAllGroupChecked ? 'إلغاء القسم' : 'تحديد القسم'}
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                          {group.permissions.map((perm) => {
+                            const isChecked = formData.permissions.includes(perm.id);
+                            return (
+                              <div
+                                key={perm.id}
+                                onClick={() => togglePermission(perm.id)}
+                                className={`p-2 rounded-xl border cursor-pointer transition-all flex items-start space-x-2 space-x-reverse ${
+                                  isChecked
+                                    ? 'bg-amber-950/40 border-amber-600/80 text-amber-200'
+                                    : 'bg-stone-950 border-stone-800 text-stone-400 hover:border-stone-700'
+                                }`}
+                              >
+                                {isChecked ? (
+                                  <CheckSquare className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                                ) : (
+                                  <Square className="w-3.5 h-3.5 text-stone-600 shrink-0 mt-0.5" />
+                                )}
+                                <div>
+                                  <span className="font-bold text-xs block text-stone-100">{perm.label}</span>
+                                  <span className="text-[9.5px] text-stone-400 block">{perm.desc}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );

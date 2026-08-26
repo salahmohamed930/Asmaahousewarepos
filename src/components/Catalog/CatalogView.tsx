@@ -31,7 +31,16 @@ export const CatalogView: React.FC = () => {
     clearAllProducts,
     refreshDataFromSupabase,
     settings,
+    hasPermission,
   } = usePOS();
+
+  const canAdd = hasPermission('add_products');
+  const canEdit = hasPermission('edit_products');
+  const canDelete = hasPermission('delete_products');
+  const canViewCash = hasPermission('view_cash_price');
+  const canViewInstallment = hasPermission('view_installment_price');
+  const canViewWholesale = hasPermission('view_wholesale_price');
+  const canViewCost = hasPermission('view_cost_price');
 
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
@@ -381,7 +390,7 @@ export const CatalogView: React.FC = () => {
             <span>{isRefreshing ? 'جاري المزامنة...' : 'مزامنة من قاعدة البيانات'}</span>
           </button>
 
-          {products.length > 0 && (
+          {products.length > 0 && canDelete && (
             <button
               onClick={handleClearAll}
               className="py-2 px-3.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-all"
@@ -392,37 +401,40 @@ export const CatalogView: React.FC = () => {
             </button>
           )}
 
-          <button
-            onClick={() => {
-              // Open Bulk Add Modal with initial row
-              setBulkAddRows([
-                {
-                  name: '',
-                  sku: `HK-${Math.floor(100 + Math.random() * 900)}`,
-                  barcode: `622100${Math.floor(100000 + Math.random() * 900000)}`,
-                  category: lastChosenCategory,
-                  cost: 0,
-                  priceCash: 0,
-                  priceWholesale: 0,
-                  priceInstallment: 0,
-                  stock: 10
-                }
-              ]);
-              setIsBulkAddModalOpen(true);
-            }}
-            className="py-2 px-3.5 bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-2 space-x-reverse transition-all"
-          >
-            <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
-            <span>إضافة أصناف متعددة</span>
-          </button>
+          {canAdd && (
+            <>
+              <button
+                onClick={() => {
+                  setBulkAddRows([
+                    {
+                      name: '',
+                      sku: `HK-${Math.floor(100 + Math.random() * 900)}`,
+                      barcode: `622100${Math.floor(100000 + Math.random() * 900000)}`,
+                      category: lastChosenCategory,
+                      cost: 0,
+                      priceCash: 0,
+                      priceWholesale: 0,
+                      priceInstallment: 0,
+                      stock: 10
+                    }
+                  ]);
+                  setIsBulkAddModalOpen(true);
+                }}
+                className="py-2 px-3.5 bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-800 rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-2 space-x-reverse transition-all"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
+                <span>إضافة أصناف متعددة</span>
+              </button>
 
-          <button
-            onClick={handleOpenAdd}
-            className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-2 space-x-reverse transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>إضافة صنف جديد</span>
-          </button>
+              <button
+                onClick={handleOpenAdd}
+                className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-2 space-x-reverse transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>إضافة صنف جديد</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -596,16 +608,16 @@ export const CatalogView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-1.5 px-3 text-center font-mono font-bold text-emerald-400 whitespace-nowrap">
-                        {(p.priceCash || 0).toLocaleString()} ج.م
+                        {canViewCash ? `${(p.priceCash || 0).toLocaleString()} ج.م` : '***'}
                       </td>
                       <td className="py-1.5 px-3 text-center font-mono font-bold text-amber-400 whitespace-nowrap">
-                        {(p.priceInstallment || 0).toLocaleString()} ج.م
+                        {canViewInstallment ? `${(p.priceInstallment || 0).toLocaleString()} ج.م` : '***'}
                       </td>
                       <td className="py-1.5 px-3 text-center font-mono font-bold text-indigo-400 whitespace-nowrap">
-                        {(p.priceWholesale || 0).toLocaleString()} ج.م
+                        {canViewWholesale ? `${(p.priceWholesale || 0).toLocaleString()} ج.م` : '***'}
                       </td>
                       <td className="py-1.5 px-3 text-center font-mono text-stone-400 whitespace-nowrap">
-                        {p.cost || 0} ج.م
+                        {canViewCost ? `${p.cost || 0} ج.م` : '***'}
                       </td>
                       <td className="py-1.5 px-3 text-center whitespace-nowrap">
                         <span
@@ -626,21 +638,25 @@ export const CatalogView: React.FC = () => {
                             <Printer className="w-3 h-3" />
                             <span>ملصق السعر</span>
                           </button>
-                          <button
-                            onClick={() => handleOpenEdit(p)}
-                            className="px-2 py-0.5 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
-                          >
-                            <Edit className="w-3 h-3" />
-                            <span>تعديل</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteProduct(p)}
-                            className="px-2 py-0.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
-                            title="حذف الصنف نهائياً"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>حذف</span>
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => handleOpenEdit(p)}
+                              className="px-2 py-0.5 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                            >
+                              <Edit className="w-3 h-3" />
+                              <span>تعديل</span>
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteProduct(p)}
+                              className="px-2 py-0.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                              title="حذف الصنف نهائياً"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>حذف</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -721,21 +737,21 @@ export const CatalogView: React.FC = () => {
                     <div>
                       <span className="text-[8px] text-emerald-400 font-bold block">كاش</span>
                       <span className="font-mono font-bold text-stone-100">
-                        {(p.priceCash || 0).toLocaleString()}
+                        {canViewCash ? (p.priceCash || 0).toLocaleString() : '***'}
                       </span>
                     </div>
 
                     <div>
                       <span className="text-[8px] text-amber-400 font-bold block">تقسيط</span>
                       <span className="font-mono font-bold text-stone-100">
-                        {(p.priceInstallment || 0).toLocaleString()}
+                        {canViewInstallment ? (p.priceInstallment || 0).toLocaleString() : '***'}
                       </span>
                     </div>
 
                     <div>
                       <span className="text-[8px] text-indigo-400 font-bold block">جملة</span>
                       <span className="font-mono font-bold text-stone-100">
-                        {(p.priceWholesale || 0).toLocaleString()}
+                        {canViewWholesale ? (p.priceWholesale || 0).toLocaleString() : '***'}
                       </span>
                     </div>
                   </div>
@@ -743,7 +759,7 @@ export const CatalogView: React.FC = () => {
                   {/* Profit Margin & Stock - Compact */}
                   <div className="flex justify-between items-center text-[9px] text-stone-400 bg-stone-950/40 px-1.5 py-1 rounded-md border border-stone-800/60">
                     <span className="font-mono text-stone-400">
-                      تكلفة: <strong className="text-stone-300">{p.cost || 0}</strong> ج.م
+                      تكلفة: <strong className="text-stone-300">{canViewCost ? p.cost || 0 : '***'}</strong> {canViewCost && 'ج.م'}
                     </span>
 
                     <span
@@ -756,30 +772,34 @@ export const CatalogView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-1 pt-1">
+                <div className="flex gap-1 pt-1">
                   <button
                     onClick={() => setLabelProduct(p)}
-                    className="py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                    className="flex-1 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
                     title="طباعة ملصق السعر والباركود"
                   >
                     <Printer className="w-2.5 h-2.5" />
                     <span>ملصق</span>
                   </button>
-                  <button
-                    onClick={() => handleOpenEdit(p)}
-                    className="py-1 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
-                  >
-                    <Edit className="w-2.5 h-2.5" />
-                    <span>تعديل</span>
-                  </button>
-                  <button
-                    onClick={() => handleDeleteProduct(p)}
-                    className="py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
-                    title="حذف الصنف"
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                    <span>حذف</span>
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => handleOpenEdit(p)}
+                      className="flex-1 py-1 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                    >
+                      <Edit className="w-2.5 h-2.5" />
+                      <span>تعديل</span>
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDeleteProduct(p)}
+                      className="flex-1 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-[9px] font-bold transition-colors flex items-center justify-center space-x-1 space-x-reverse"
+                      title="حذف الصنف"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      <span>حذف</span>
+                    </button>
+                  )}
                 </div>
 
               </div>

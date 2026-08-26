@@ -29,12 +29,13 @@ export const Header: React.FC = () => {
     resetDemoData,
     dbStatus,
     refreshDataFromSupabase,
+    hasPermission,
   } = usePOS();
 
   const [isAssociateDropdownOpen, setIsAssociateDropdownOpen] = useState(false);
 
-  // Navigation tabs with suppliers page:
-  const tabs = [
+  // Navigation tabs with permissions check:
+  const allTabs = [
     { id: 'catalog', label: 'الأصناف', icon: Package },
     { id: 'register', label: 'الفواتير', icon: FileText },
     { id: 'discounts', label: 'الخصومات', icon: Percent },
@@ -44,6 +45,15 @@ export const Header: React.FC = () => {
     { id: 'associates', label: 'الموظفين', icon: Users },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ] as const;
+
+  const tabs = allTabs.filter((tab) => {
+    if (tab.id === 'analytics') return hasPermission('view_analytics');
+    if (tab.id === 'customers') return hasPermission('manage_customers');
+    if (tab.id === 'suppliers') return hasPermission('manage_suppliers');
+    if (tab.id === 'associates') return hasPermission('manage_associates');
+    if (tab.id === 'discounts') return hasPermission('apply_discount');
+    return true;
+  });
 
   return (
     <>

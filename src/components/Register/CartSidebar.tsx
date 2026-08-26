@@ -43,7 +43,14 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     getCartItemDiscountAmount,
     activeHeldTransactionId,
     transactions,
+    hasPermission,
   } = usePOS();
+
+  const canApplyDiscount = hasPermission('apply_discount');
+  const canOverridePrice = hasPermission('override_cart_price');
+  const canViewCash = hasPermission('view_cash_price');
+  const canViewInstallment = hasPermission('view_installment_price');
+  const canViewWholesale = hasPermission('view_wholesale_price');
 
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -364,7 +371,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-800/60">
-                  {cart.map((item) => {
+                  {cart.map((item, idx) => {
                     // Active price based on current selected price tier
                     const unitPrice =
                       globalPriceTier === 'cash'
@@ -385,7 +392,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                     return (
                       <tr
-                        key={item.product.id}
+                        key={item.product?.id && item.product.id !== 'null' ? `${item.product.id}_${item.priceTier || 'cash'}_${idx}` : `cart_${idx}`}
                         className="hover:bg-stone-950/80 transition-colors text-xs text-stone-200"
                       >
                         {/* 1. اسم الصنف */}

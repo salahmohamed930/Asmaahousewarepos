@@ -3,13 +3,30 @@ export type PriceTier = 'cash' | 'installment' | 'wholesale';
 export type Role = 'مسؤول مبيعات' | 'بائع أول' | 'مشرف قسم' | 'مدير الفرع';
 
 export type Permission =
-  | 'create_invoice'      // إنشاء فواتير
-  | 'view_analytics'      // التقارير والإحصائيات
-  | 'manage_catalog'      // كتالوج الأصناف والأسعار
-  | 'manage_customers'    // حسابات العملاء
-  | 'manage_associates'   // إدارة الموظفين والصلاحيات
-  | 'apply_discount'      // تطبيق الخصم
-  | 'void_invoice';       // إلغاء الفواتير
+  // رؤية الأسعار
+  | 'view_cash_price'        // رؤية سعر الكاش / القطاعي
+  | 'view_installment_price' // رؤية سعر التقسيط
+  | 'view_wholesale_price'   // رؤية سعر الجملة
+  | 'view_cost_price'        // رؤية سعر التكلفة والأرباح
+  // المبيعات والكاشير
+  | 'create_invoice'         // إنشاء فواتير المبيعات
+  | 'apply_discount'         // تطبيق خصم على الفاتورة
+  | 'override_cart_price'    // تعديل سعر الصنف بالسلة
+  | 'return_invoice'         // عمل مرتجع واسترداد فواتير
+  | 'void_invoice'           // إلغاء الفواتير نهائياً
+  // المنتجات والأصناف
+  | 'add_products'           // إضافة أصناف منتجات جديدة
+  | 'edit_products'          // تعديل أصناف وأسعار المنتجات
+  | 'delete_products'        // حذف أصناف منتجات
+  | 'manage_catalog'         // إدارة الأقسام والكتالوج الشامل
+  // الخزينة والمصروفات
+  | 'manage_expenses'        // تسجيل وصرف المصروفات والمسحوبات
+  | 'manage_safe'            // فتح وإغلاق وتسليم الخزنة والورديات
+  // الإدارة والتقارير
+  | 'view_analytics'         // عرض التقارير والإحصائيات والأرباح
+  | 'manage_customers'       // حسابات والديون الخاصة بالعملاء
+  | 'manage_suppliers'       // حسابات ومستحقات الموردين
+  | 'manage_associates';     // إدارة الموظفين والصلاحيات وتراخيص الحسابات
 
 export interface Associate {
   id: string;

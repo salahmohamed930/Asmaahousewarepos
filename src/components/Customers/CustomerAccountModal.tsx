@@ -518,11 +518,11 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {invoices.map((tx) => {
+                  {invoices.map((tx, idx) => {
                     const totalItemsCount = tx.items.reduce((sum, item) => sum + item.quantity, 0);
                     return (
                       <div 
-                        key={tx.id}
+                        key={tx.id && tx.id !== 'null' ? tx.id : `inv_${idx}`}
                         className="bg-stone-950 border border-stone-800/80 rounded-2xl p-4 hover:border-stone-700 transition-all text-xs flex flex-col md:flex-row md:items-center justify-between gap-4"
                       >
                         <div className="space-y-1">
@@ -589,10 +589,10 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {payments.map((p) => {
+                  {payments.map((p, idx) => {
                     return (
                       <div 
-                        key={p.id}
+                        key={p.id && p.id !== 'null' ? p.id : `pmt_${idx}`}
                         className="bg-stone-950 border border-stone-800/80 rounded-2xl p-4 hover:border-stone-700 transition-all text-xs flex items-center justify-between"
                       >
                         <div className="space-y-1">

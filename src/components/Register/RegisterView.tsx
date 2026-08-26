@@ -49,7 +49,12 @@ export const RegisterView: React.FC = () => {
     deleteExpense,
     returnTransaction,
     suppliers,
+    hasPermission,
   } = usePOS();
+
+  const canManageExpenses = hasPermission('manage_expenses');
+  const canReturn = hasPermission('return_invoice');
+  const canVoid = hasPermission('void_invoice');
 
   // Mode state: DEFAULT TO 'history' AS REQUESTED!
   const [viewMode, setViewMode] = useState<'history' | 'create' | 'expenses'>('history');
@@ -299,13 +304,15 @@ export const RegisterView: React.FC = () => {
                 <span>إنشاء فاتورة مبيعات</span>
               </button>
 
-              <button
-                onClick={() => setIsAddExpenseModalOpen(true)}
-                className="flex-1 sm:flex-initial py-2 px-4 bg-rose-700 hover:bg-rose-600 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-md shadow-rose-950/40"
-              >
-                <TrendingDown className="w-4 h-4 stroke-[2.5]" />
-                <span>تسجيل مصروف جديد</span>
-              </button>
+              {canManageExpenses && (
+                <button
+                  onClick={() => setIsAddExpenseModalOpen(true)}
+                  className="flex-1 sm:flex-initial py-2 px-4 bg-rose-700 hover:bg-rose-600 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-md shadow-rose-950/40"
+                >
+                  <TrendingDown className="w-4 h-4 stroke-[2.5]" />
+                  <span>تسجيل مصروف جديد</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -562,7 +569,7 @@ export const RegisterView: React.FC = () => {
                                     <Printer className="w-3.5 h-3.5" />
                                     <span>طباعة</span>
                                   </button>
-                                  {tx.status === 'مكتملة' && (
+                                  {tx.status === 'مكتملة' && canReturn && (
                                     <button
                                       onClick={() => {
                                         if (confirm(`هل أنت متأكد من رغبتك في عمل مرتجع للفاتورة رقم #${tx.receiptNumber}؟ سيتم إرجاع المنتجات للمخزن وتحديث مديونية العميل والبيع.`)) {
@@ -873,7 +880,7 @@ export const RegisterView: React.FC = () => {
 
             {/* Compact Product List - Rendered as Rows */}
             <div className="flex flex-col space-y-1 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
-              {filteredProducts.map((product) => {
+              {filteredProducts.map((product, idx) => {
                 const isLowStock = product.stock <= 5;
                 const isOutOfStock = product.stock === 0;
                 const isJustAdded = addedAnimationId === product.id;
@@ -887,7 +894,7 @@ export const RegisterView: React.FC = () => {
 
                 return (
                   <div
-                    key={product.id}
+                    key={product.id && product.id !== 'null' ? product.id : `prod_${idx}`}
                     onClick={() => !isOutOfStock && triggerAddToCart(product)}
                     className={`bg-stone-900 border border-stone-800 hover:border-amber-500/60 rounded-xl p-1.5 flex items-center justify-between transition-all group cursor-pointer relative shadow-sm space-x-1.5 space-x-reverse ${
                       isJustAdded ? 'scale-[0.99] border-amber-500 ring-1 ring-amber-500/50' : ''

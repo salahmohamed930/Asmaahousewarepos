@@ -113,7 +113,7 @@ export const CustomersView: React.FC = () => {
 
       {/* Customers Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCustomers.map((cust) => {
+        {filteredCustomers.map((cust, idx) => {
           const prefAssoc = cust.preferredAssociateId
             ? associates.find((a) => a.id === cust.preferredAssociateId)
             : null;
@@ -122,7 +122,7 @@ export const CustomersView: React.FC = () => {
 
           return (
             <div
-              key={cust.id}
+              key={cust.id && cust.id !== 'null' ? cust.id : `cust_${idx}`}
               className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-xl space-y-4 flex flex-col justify-between hover:border-stone-700 transition-all"
             >
               <div 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   Associate,
   Product,
@@ -16,6 +16,7 @@ import {
   SupplierTransaction,
   ProductDiscount,
   POSExpense,
+  Permission,
 } from '../types';
 import { DEFAULT_ADMIN_ASSOCIATE } from '../data/initialData';
 import {
@@ -79,6 +80,7 @@ interface POSContextType {
   taxRate: number;
   settings: AppSettings;
   discounts: ProductDiscount[];
+  hasPermission: (perm: Permission) => boolean;
 
   setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts') => void;
   updateSettings: (settings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void;
@@ -1331,6 +1333,33 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await loadFromSupabase();
   };
 
+  const hasPermission = useCallback((perm: Permission): boolean => {
+    if (!currentAssociate) return true;
+    if (currentAssociate.role === 'مدير الفرع') return true;
+
+    const perms = currentAssociate.permissions || [];
+    if (perms.includes(perm)) return true;
+
+    // Fallbacks for legacy permissions
+    if ((perm === 'add_products' || perm === 'edit_products' || perm === 'delete_products') && perms.includes('manage_catalog')) {
+      return true;
+    }
+    if ((perm === 'view_cash_price' || perm === 'view_installment_price' || perm === 'view_wholesale_price') && (perms.includes('create_invoice') || perms.includes('manage_catalog'))) {
+      return true;
+    }
+    if (perm === 'return_invoice' && (perms.includes('void_invoice') || perms.includes('create_invoice'))) {
+      return true;
+    }
+    if (perm === 'view_cost_price' && (perms.includes('view_analytics') || perms.includes('manage_catalog'))) {
+      return true;
+    }
+    if (perm === 'manage_expenses' && (perms.includes('manage_safe') || perms.includes('view_analytics'))) {
+      return true;
+    }
+
+    return false;
+  }, [currentAssociate]);
+
   const resetDemoData = async () => {
     clearCart();
     await loadFromSupabase();
@@ -1355,6 +1384,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         taxRate,
         settings,
         discounts,
+        hasPermission,
         updateSettings,
         setActiveTab,
         setCurrentAssociate,

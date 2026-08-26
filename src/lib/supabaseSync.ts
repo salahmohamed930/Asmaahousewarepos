@@ -98,14 +98,75 @@ export async function checkSupabaseConnection(): Promise<{
   }
 }
 
+// --- AUTO-RECOVERY MUTATION HELPER ---
+/**
+ * Safely executes a Supabase DB write operation (insert/update/upsert).
+ * If PostgREST returns PGRST204 ("Could not find the 'xyz' column of 'table' in the schema cache"),
+ * it automatically strips the missing column from the payload and retries up to 5 times.
+ */
+export async function safeSupabaseMutation(
+  operationFn: (cleanPayload: any) => Promise<{ data?: any; error?: any }>,
+  initialPayload: any
+): Promise<{ data?: any; error?: any }> {
+  let currentPayload = { ...initialPayload };
+  let attempts = 0;
+  const maxAttempts = 5;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    const res = await operationFn(currentPayload);
+    const error = res?.error;
+
+    if (!error) {
+      return res;
+    }
+
+    if (error && error.code === 'PGRST204' && typeof error.message === 'string') {
+      const match = error.message.match(/Could not find the '([^']+)' column/i);
+      if (match && match[1]) {
+        const missingColumn = match[1];
+        console.warn(`[SUPABASE AUTO-RECOVERY] Stripping missing column '${missingColumn}' from payload and retrying...`);
+        delete currentPayload[missingColumn];
+        continue;
+      }
+    }
+
+    // Handle 22P02 invalid input syntax (e.g. smallint vs decimal "0.005" or "0.05")
+    if (error && (error.code === '22P02' || (typeof error.message === 'string' && error.message.toLowerCase().includes('invalid input syntax')))) {
+      console.warn(`[SUPABASE AUTO-RECOVERY] Type mismatch error detected: ${error.message}`);
+      if (currentPayload.commission_rate !== undefined) {
+        if (typeof currentPayload.commission_rate === 'number' && !Number.isInteger(currentPayload.commission_rate)) {
+          console.warn(`[SUPABASE AUTO-RECOVERY] Converting decimal commission_rate ${currentPayload.commission_rate} to integer percentage or stripping...`);
+          currentPayload.commission_rate = Math.round(currentPayload.commission_rate * 100);
+          continue;
+        } else {
+          console.warn(`[SUPABASE AUTO-RECOVERY] Stripping commission_rate from payload to recover...`);
+          delete currentPayload.commission_rate;
+          continue;
+        }
+      }
+    }
+
+    return res;
+  }
+
+  return { data: null, error: new Error('Max retry attempts reached for PGRST204 recovery') };
+}
+
 // --- MAPPERS ---
 
 export function mapDbProductToProduct(p: any): Product {
+  const safeId = (p.id !== null && p.id !== undefined && String(p.id) !== 'null' && String(p.id) !== 'undefined')
+    ? String(p.id)
+    : (p.id2 !== null && p.id2 !== undefined && String(p.id2) !== 'null' && String(p.id2) !== 'undefined')
+      ? String(p.id2)
+      : (p.sku ? String(p.sku) : (p.barcode ? String(p.barcode) : `prod_${Math.random().toString(36).substring(2, 9)}`));
+
   return {
-    id: String(p.id ?? p.sku ?? p.barcode ?? `prod_${Date.now()}`),
+    id: safeId,
     name: p.name || 'منتج',
-    sku: String(p.sku ?? p.id ?? 'SKU-000'),
-    barcode: String(p.barcode || p.sku || p.id || '000000'),
+    sku: String(p.sku ?? safeId ?? 'SKU-000'),
+    barcode: String(p.barcode || p.sku || safeId || '000000'),
     category: p.category || 'عام',
     priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
     priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
@@ -157,8 +218,14 @@ export function mapProductToDbPayload(product: Product): any {
 }
 
 export function mapDbCustomerToCustomer(c: any): Customer {
+  const safeId = (c.id !== null && c.id !== undefined && String(c.id) !== 'null' && String(c.id) !== 'undefined')
+    ? String(c.id)
+    : (c.id2 !== null && c.id2 !== undefined && String(c.id2) !== 'null' && String(c.id2) !== 'undefined')
+      ? String(c.id2)
+      : (c.phone ? `cust_${c.phone}` : `cust_${Math.random().toString(36).substring(2, 9)}`);
+
   return {
-    id: String(c.id),
+    id: safeId,
     name: c.name || '',
     phone: c.phone || '',
     email: c.email || '',
@@ -192,8 +259,14 @@ export function mapCustomerToDbPayload(customer: Customer): any {
 }
 
 export function mapDbSupplierToSupplier(s: any): Supplier {
+  const safeId = (s.id !== null && s.id !== undefined && String(s.id) !== 'null' && String(s.id) !== 'undefined')
+    ? String(s.id)
+    : (s.id2 !== null && s.id2 !== undefined && String(s.id2) !== 'null' && String(s.id2) !== 'undefined')
+      ? String(s.id2)
+      : `supp_${Math.random().toString(36).substring(2, 9)}`;
+
   return {
-    id: String(s.id),
+    id: safeId,
     name: s.name || '',
     companyName: s.company_name || s.companyName || '',
     phone: s.phone || '',
@@ -223,9 +296,13 @@ export function mapSupplierToDbPayload(supplier: Supplier): any {
 }
 
 export function mapDbSupplierTxToSupplierTx(t: any): SupplierTransaction {
+  const safeId = (t.id !== null && t.id !== undefined && String(t.id) !== 'null' && String(t.id) !== 'undefined')
+    ? String(t.id)
+    : `stx_${Math.random().toString(36).substring(2, 9)}`;
+
   return {
-    id: String(t.id),
-    supplierId: String(t.supplier_id ?? t.supplierId),
+    id: safeId,
+    supplierId: String(t.supplier_id ?? t.supplierId ?? ''),
     supplierName: t.supplier_name ?? t.supplierName ?? '',
     type: t.type || 'supply_invoice',
     amount: Number(t.amount ?? 0),
@@ -253,8 +330,12 @@ export function mapSupplierTxToDbPayload(tx: SupplierTransaction): any {
 }
 
 export function mapDbExpenseToExpense(e: any): POSExpense {
+  const safeId = (e.id !== null && e.id !== undefined && String(e.id) !== 'null' && String(e.id) !== 'undefined')
+    ? String(e.id)
+    : `exp_${Math.random().toString(36).substring(2, 9)}`;
+
   return {
-    id: String(e.id),
+    id: safeId,
     amount: Number(e.amount ?? 0),
     category: e.category || 'أخرى',
     description: e.description || '',
@@ -285,10 +366,16 @@ export function mapExpenseToDbPayload(expense: POSExpense): any {
 }
 
 export function mapDbAssociateToAssociate(a: any): Associate {
+  const safeId = (a.id !== null && a.id !== undefined && String(a.id) !== 'null' && String(a.id) !== 'undefined')
+    ? String(a.id)
+    : (a.id2 !== null && a.id2 !== undefined && String(a.id2) !== 'null' && String(a.id2) !== 'undefined')
+      ? String(a.id2)
+      : `assoc_${Math.random().toString(36).substring(2, 9)}`;
+
   return {
-    id: String(a.id),
+    id: safeId,
     name: a.name || 'موظف',
-    username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${a.id}`,
+    username: a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${safeId}`,
     password: String(a.password || a.pin || '1001'),
     pin: String(a.pin || a.password || '1001'),
     role: a.role || 'مسؤول مبيعات',
@@ -324,8 +411,12 @@ export function mapAssociateToDbPayload(associate: Associate): any {
 }
 
 export function mapDbShiftToClosedShift(s: any): ClosedShift {
+  const safeId = (s.id !== null && s.id !== undefined && String(s.id) !== 'null' && String(s.id) !== 'undefined')
+    ? String(s.id)
+    : `shift_${Math.random().toString(36).substring(2, 9)}`;
+
   return {
-    id: String(s.id),
+    id: safeId,
     associateId: s.associate_id ?? s.associateId ?? '',
     associateName: s.associate_name ?? s.associateName ?? '',
     startTime: s.start_time ?? s.startTime ?? new Date().toISOString(),
@@ -390,12 +481,15 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
   console.log('[SUPABASE] Inserting product:', product.name);
   try {
     const payload = mapProductToDbPayload(product);
-    const { data, error } = await supabase.from('products').insert([payload]).select().single();
+    const { data, error } = await safeSupabaseMutation(
+      async (p) => await supabase.from('products').insert([p]).select().single(),
+      payload
+    );
     if (error) {
       console.error('[SUPABASE ERROR] insertProductToSupabase:', error.message || error);
       return { success: false, error };
     }
-    return { success: true, data: mapDbProductToProduct(data) };
+    return { success: true, data: data ? mapDbProductToProduct(data) : product };
   } catch (err: any) {
     console.error('[SUPABASE ERROR] insertProductToSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
@@ -406,20 +500,26 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
   console.log('[SUPABASE] Updating product:', product.id);
   try {
     const payload = mapProductToDbPayload(product);
-    let query = supabase.from('products').update(payload);
+    const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
 
-    if (product.id && !isNaN(Number(product.id))) {
-      query = query.eq('id', Number(product.id));
-    } else {
-      query = query.eq('name', product.name);
-    }
+    const { data, error } = await safeSupabaseMutation(
+      async (p) => {
+        let query = supabase.from('products').update(p);
+        if (idNum !== null) {
+          query = query.eq('id', idNum);
+        } else {
+          query = query.eq('name', product.name);
+        }
+        return await query.select().single();
+      },
+      payload
+    );
 
-    const { data, error } = await query.select().single();
     if (error) {
       console.error('[SUPABASE ERROR] updateProductInSupabase:', error.message || error);
       return { success: false, error };
     }
-    return { success: true, data: mapDbProductToProduct(data) };
+    return { success: true, data: data ? mapDbProductToProduct(data) : product };
   } catch (err: any) {
     console.error('[SUPABASE ERROR] updateProductInSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
@@ -850,16 +950,15 @@ export async function insertAssociateToSupabase(associate: Associate): Promise<{
   console.log('[SUPABASE] Inserting associate:', associate.id);
   try {
     const payload = mapAssociateToDbPayload(associate);
-    const { data, error } = await supabase.from('associates').insert([payload]).select().single();
+    const { data, error } = await safeSupabaseMutation(
+      async (p) => await supabase.from('associates').upsert([p]).select().single(),
+      payload
+    );
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('associates').upsert([payload]).select().single();
-      if (upsertErr) {
-        console.error('[SUPABASE ERROR] insertAssociateToSupabase:', upsertErr);
-        return { success: false, error: upsertErr };
-      }
-      return { success: true, data: mapDbAssociateToAssociate(upsertData) };
+      console.error('[SUPABASE ERROR] insertAssociateToSupabase:', error);
+      return { success: false, error };
     }
-    return { success: true, data: mapDbAssociateToAssociate(data) };
+    return { success: true, data: data ? mapDbAssociateToAssociate(data) : associate };
   } catch (err) {
     console.error('[SUPABASE ERROR] insertAssociateToSupabase exception:', err);
     return { success: false, error: err };
@@ -870,16 +969,22 @@ export async function updateAssociateInSupabase(associate: Associate): Promise<{
   console.log('[SUPABASE] Updating associate:', associate.id);
   try {
     const payload = mapAssociateToDbPayload(associate);
-    const { data, error } = await supabase.from('associates').update(payload).eq('id', associate.id).select().single();
+    const { data, error } = await safeSupabaseMutation(
+      async (p) => await supabase.from('associates').update(p).eq('id', associate.id).select().single(),
+      payload
+    );
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('associates').upsert([payload]).select().single();
+      const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
+        async (p) => await supabase.from('associates').upsert([p]).select().single(),
+        payload
+      );
       if (upsertErr) {
         console.error('[SUPABASE ERROR] updateAssociateInSupabase:', upsertErr);
         return { success: false, error: upsertErr };
       }
-      return { success: true, data: mapDbAssociateToAssociate(upsertData) };
+      return { success: true, data: upsertData ? mapDbAssociateToAssociate(upsertData) : associate };
     }
-    return { success: true, data: mapDbAssociateToAssociate(data) };
+    return { success: true, data: data ? mapDbAssociateToAssociate(data) : associate };
   } catch (err) {
     console.error('[SUPABASE ERROR] updateAssociateInSupabase exception:', err);
     return { success: false, error: err };

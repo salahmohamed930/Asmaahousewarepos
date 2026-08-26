@@ -409,13 +409,13 @@ export const SuppliersView: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
-          {filteredSuppliers.map((supplier) => {
+          {filteredSuppliers.map((supplier, idx) => {
             const hasDebt = supplier.currentBalance > 0;
             const isSettled = supplier.currentBalance === 0;
 
             return (
               <div
-                key={supplier.id}
+                key={supplier.id && supplier.id !== 'null' ? supplier.id : `supp_${idx}`}
                 className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-3xl p-5 shadow-lg space-y-4 transition-all"
               >
                 {/* Header Info */}

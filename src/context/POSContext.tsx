@@ -298,7 +298,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // --- REFRESH DATA FROM SUPABASE (SSOT) ---
-  const loadFromSupabase = async () => {
+  const loadFromSupabase = useCallback(async () => {
     setDbStatus((p) => ({ ...p, isChecking: true }));
     console.log('[POSContext] Loading fresh data from Supabase...');
 
@@ -401,11 +401,33 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       errorMessage: hasErrors ? errorList.join(' | ') : undefined,
       isCustom: getSupabaseKeys().isCustom,
     });
-  };
+  }, [currentAssociate]);
 
+  // Re-fetch data automatically whenever the active tab / page changes
   useEffect(() => {
     loadFromSupabase();
-  }, []);
+  }, [activeTab, loadFromSupabase]);
+
+  // Auto-refresh when window or browser tab gains focus / visibility
+  useEffect(() => {
+    let lastFetched = Date.now();
+
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastFetched > 3000) {
+        lastFetched = Date.now();
+        console.log('[POSContext] Auto refreshing data on window focus / tab visibility...');
+        loadFromSupabase();
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+    return () => {
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
+  }, [loadFromSupabase]);
 
   const syncUnsyncedItems = async () => {
     await loadFromSupabase();
@@ -1284,10 +1306,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
-      const updatedCust = {
+      const updatedCust: Customer = {
         ...cust,
         currentDebt: Math.max(0, (cust.currentDebt || 0) - amount),
       };
+      setCustomers((prev) => prev.map((c) => (c.id === customerId ? updatedCust : c)));
+      if (selectedCustomer?.id === customerId) {
+        setSelectedCustomer(updatedCust);
+      }
       await updateCustomerInSupabase(updatedCust);
     }
 

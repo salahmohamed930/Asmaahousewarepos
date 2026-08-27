@@ -258,7 +258,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     setPaymentError('');
     setIsProcessing(true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         let details = '';
         let finalMethod = paymentMethod;
@@ -296,7 +296,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           }
         }
 
-        const completedTx = completeTransaction(finalMethod, 0, details, '', paidAmount, deferredAmount, finalSplitArray);
+        const completedTx = await completeTransaction(finalMethod, 0, details, '', paidAmount, deferredAmount, finalSplitArray);
         setIsProcessing(false);
         onSuccess(completedTx);
       } catch (err: any) {

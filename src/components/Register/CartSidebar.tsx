@@ -13,8 +13,10 @@ import {
   Search,
   CreditCard,
   Clock,
+  DollarSign,
 } from 'lucide-react';
 import SplitAssociateModal from './SplitAssociateModal';
+import { CustomerPaymentModal } from '../Customers/CustomerPaymentModal';
 
 interface CartSidebarProps {
   onOpenCheckout: () => void;
@@ -53,6 +55,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const canViewWholesale = hasPermission('view_wholesale_price');
 
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [showAddCustomerForm, setShowAddCustomerForm] = useState(false);
@@ -63,6 +66,20 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   // New quick customer state
   const [newCustName, setNewCustName] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('');
+
+  const handleOpenAddCustomerForm = () => {
+    const q = customerSearch.trim();
+    if (q) {
+      const containsDigits = /\d/.test(q);
+      if (containsDigits || q.length >= 7) {
+        setNewCustPhone(q);
+      } else {
+        setNewCustName(q);
+      }
+    }
+    setShowAddCustomerForm(true);
+    setIsCustomerDropdownOpen(false);
+  };
 
   // Totals calculations
   let subtotal = 0;
@@ -178,42 +195,54 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
           {/* Customer Name & Phone Number Field (With Database Search) */}
           <div className="relative">
             {selectedCustomer ? (
-              <div className="flex items-center justify-between bg-amber-950/30 border border-amber-800/60 p-2 rounded-xl">
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  <div className="w-7 h-7 bg-amber-950 text-amber-400 border border-amber-800 rounded-lg flex items-center justify-center">
-                    <UserCheck className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1.5 space-x-reverse">
-                      <span className="text-xs font-bold text-stone-100">
-                        العميل: {selectedCustomer.name}
-                      </span>
-                      <span className="text-[9px] text-amber-400 font-mono bg-stone-900 px-1 py-0.2 rounded border border-stone-800">
-                        📞 {selectedCustomer.phone}
+              <div className="bg-amber-950/30 border border-amber-800/60 p-2.5 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 space-x-reverse">
+                    <div className="w-8 h-8 bg-amber-950 text-amber-400 border border-amber-800 rounded-xl flex items-center justify-center shrink-0">
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1.5 space-x-reverse">
+                        <span className="text-xs font-bold text-stone-100">
+                          العميل: {selectedCustomer.name}
+                        </span>
+                        <span className="text-[9px] text-amber-400 font-mono bg-stone-900 px-1.5 py-0.5 rounded-md border border-stone-800">
+                          📞 {selectedCustomer.phone}
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-stone-400 block mt-0.5">
+                        نقاط الولاء: {selectedCustomer.loyaltyPoints} | المبيعات: {selectedCustomer.totalSpent.toLocaleString()} ج.م
                       </span>
                     </div>
-                    <span className="text-[9px] text-stone-400 block mt-0.5">
-                      نقاط الولاء: {selectedCustomer.loyaltyPoints} | إجمالي المشتريات: {selectedCustomer.totalSpent.toLocaleString()} ج.م
-                    </span>
-                    {selectedCustomer.notes && (
-                      <span className="text-[9px] text-amber-400 bg-amber-500/5 border border-amber-500/15 px-1.5 py-0.5 rounded block mt-1 font-medium max-w-[280px] truncate" title={selectedCustomer.notes}>
-                        📝 {selectedCustomer.notes}
-                      </span>
-                    )}
-                    {selectedCustomer.address && (
-                      <span className="text-[9px] text-stone-300 bg-stone-900/60 border border-stone-800 px-1.5 py-0.5 rounded block mt-0.5 font-medium max-w-[280px] truncate" title={selectedCustomer.address}>
-                        📍 {selectedCustomer.address}
-                      </span>
-                    )}
                   </div>
+                  <button
+                    onClick={() => setSelectedCustomer(null)}
+                    className="p-1 text-stone-400 hover:text-white rounded-lg hover:bg-stone-800 transition-colors"
+                    title="إلغاء ربط الفاتورة بالعميل"
+                  >
+                    <X className="w-3.5 h-3.5 text-rose-400" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setSelectedCustomer(null)}
-                  className="p-1 text-stone-400 hover:text-white rounded-lg hover:bg-stone-800 transition-colors"
-                  title="إلغاء ربط الفاتورة بالعميل"
-                >
-                  <X className="w-3.5 h-3.5 text-rose-400" />
-                </button>
+
+                {/* Debt info & Debt Payment Quick Action */}
+                <div className="flex items-center justify-between bg-stone-950/80 p-2 rounded-xl border border-stone-850 text-xs">
+                  <div className="flex items-center space-x-1.5 space-x-reverse">
+                    <span className="text-[10px] text-stone-400 font-bold">المديونية الحالية:</span>
+                    <span className={`font-mono text-xs font-black ${selectedCustomer.currentDebt && selectedCustomer.currentDebt > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {(selectedCustomer.currentDebt || 0).toLocaleString()} ج.م
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsPayModalOpen(true)}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-stone-950 rounded-lg text-[10px] font-black flex items-center space-x-1 space-x-reverse transition-all shadow"
+                    title="سداد مديونية العميل من صفحة الفواتير"
+                  >
+                    <DollarSign className="w-3 h-3" />
+                    <span>تحصيل / سداد</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div>
@@ -243,9 +272,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                     )}
                     <button
                       type="button"
-                      onClick={() => setShowAddCustomerForm(!showAddCustomerForm)}
+                      onClick={handleOpenAddCustomerForm}
                       className="px-1.5 py-0.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[9px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
-                      title="إضافة عميل جديد"
+                      title="إضافة عميل جديد بنقل رقم الهاتف"
                     >
                       <UserPlus className="w-2.5 h-2.5" />
                       <span>جديد</span>
@@ -255,8 +284,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                 {/* Quick Add Customer Modal / Inline Form */}
                 {showAddCustomerForm && (
-                  <form onSubmit={handleCreateCustomer} className="mt-1.5 p-2 bg-stone-950 border border-stone-800 rounded-xl space-y-1.5">
-                    <p className="text-[10px] font-bold text-amber-400">إضافة عميل جديد لقاعدة البيانات:</p>
+                  <form onSubmit={handleCreateCustomer} className="mt-1.5 p-2.5 bg-stone-950 border border-amber-500/30 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-amber-400">إضافة عميل جديد لقاعدة البيانات:</p>
+                      {newCustPhone && (
+                        <span className="text-[9px] bg-amber-500/10 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/20">
+                          تم نقل الهاتف: {newCustPhone}
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-1.5">
                       <input
                         type="text"
@@ -285,7 +321,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl"
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow"
                       >
                         حفظ وربط بالفاتورة
                       </button>
@@ -307,13 +343,14 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                     </div>
 
                     {filteredCustomers.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-stone-500">
-                        لم يتم العثور على عميل بهذا الاسم أو الرقم.
+                      <div className="p-3 text-center text-xs text-stone-400 space-y-1">
+                        <p>لم يتم العثور على عميل بهذا الاسم أو الرقم.</p>
                         <button
-                          onClick={() => setShowAddCustomerForm(true)}
-                          className="block mx-auto mt-1 text-amber-400 font-bold underline"
+                          type="button"
+                          onClick={handleOpenAddCustomerForm}
+                          className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all block mx-auto"
                         >
-                          + اضغط هنا لإضافة عميل جديد
+                          + إضافة عميل جديد {customerSearch ? `(برقم: ${customerSearch})` : ''}
                         </button>
                       </div>
                     ) : (
@@ -615,6 +652,13 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
       <SplitAssociateModal
         isOpen={isSplitModalOpen}
         onClose={() => setIsSplitModalOpen(false)}
+      />
+
+      {/* Customer Debt Payment Modal */}
+      <CustomerPaymentModal
+        isOpen={isPayModalOpen}
+        onClose={() => setIsPayModalOpen(false)}
+        initialCustomerId={selectedCustomer?.id}
       />
     </>
   );

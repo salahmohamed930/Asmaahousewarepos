@@ -237,6 +237,7 @@ export function mapDbCustomerToCustomer(c: any): Customer {
     creditLimit: Number(c.credit_limit ?? c.creditLimit ?? 0),
     currentDebt: Number(c.current_debt ?? c.currentDebt ?? 0),
     notes: String(c.notes || ''),
+    monthlyInstallmentAmount: Number(c.monthly_installment_amount ?? c.monthlyInstallmentAmount ?? 0),
   };
 }
 
@@ -254,6 +255,7 @@ export function mapCustomerToDbPayload(customer: Customer): any {
     credit_limit: customer.creditLimit || 0,
     current_debt: customer.currentDebt || 0,
     notes: customer.notes || '',
+    monthly_installment_amount: customer.monthlyInstallmentAmount || 0,
     updated_at: new Date().toISOString(),
   };
 }

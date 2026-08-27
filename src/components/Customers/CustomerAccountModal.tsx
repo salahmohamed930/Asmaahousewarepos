@@ -47,6 +47,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   // Credit eligibility states
   const [isCreditEligible, setIsCreditEligible] = useState<boolean>(customer.isCreditEligible || false);
   const [creditLimitInput, setCreditLimitInput] = useState<string>(String(customer.creditLimit || 0));
+  const [monthlyInstallmentInput, setMonthlyInstallmentInput] = useState<string>(String(customer.monthlyInstallmentAmount || 0));
   const [creditSuccess, setCreditSuccess] = useState<string>('');
 
   // Customer notes state
@@ -63,6 +64,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     setCustomerEmail(customer.email || '');
     setIsCreditEligible(customer.isCreditEligible || false);
     setCreditLimitInput(String(customer.creditLimit || 0));
+    setMonthlyInstallmentInput(String(customer.monthlyInstallmentAmount || 0));
     setCustomerNotes(customer.notes || '');
     setCustomerAddress(customer.address || '');
   }, [customer]);
@@ -107,7 +109,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const creditLimit = customer.creditLimit || 0;
   const remainingLimit = customer.isCreditEligible ? Math.max(0, creditLimit - currentDebt) : 0;
 
-  const handlePayDebt = (e: React.FormEvent) => {
+  const handlePayDebt = async (e: React.FormEvent) => {
     e.preventDefault();
     setPaymentError('');
     setPaymentSuccess('');
@@ -118,14 +120,15 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
       return;
     }
 
-    if (amt > currentDebt) {
-      setPaymentError(`المبلغ المدخل (${amt.toLocaleString()} ج.م) أكبر من قيمة المديونية الحالية (${currentDebt.toLocaleString()} ج.م).`);
-      return;
+    if (amt > currentDebt && currentDebt > 0) {
+      if (!confirm(`المبلغ المدخل (${amt.toLocaleString()} ج.م) أكبر من قيمة المديونية الحالية (${currentDebt.toLocaleString()} ج.م). هل تريد الاستمرار؟`)) {
+        return;
+      }
     }
 
     try {
-      payCustomerDebt(customer.id, amt, paymentMethod, paymentNotes);
-      setPaymentSuccess(`تم تسجيل دفعة السداد بقيمة ${amt.toLocaleString()} ج.م بنجاح!`);
+      await payCustomerDebt(customer.id, amt, paymentMethod, paymentNotes);
+      setPaymentSuccess(`تم تسجيل دفعة السداد بقيمة ${amt.toLocaleString()} ج.م بنجاح وتخفيض مديونية العميل!`);
       setPaymentAmount('');
       setPaymentNotes('');
     } catch (err: any) {
@@ -273,24 +276,31 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
               <div className="md:col-span-2 space-y-6">
                 
                 {/* Credit Stats Cards */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-2xl text-center">
-                    <span className="text-[10px] text-stone-500 block mb-1 font-bold">إجمالي المديونية الحالية</span>
-                    <span className={`font-mono text-lg font-extrabold block ${currentDebt > 0 ? 'text-rose-400 animate-pulse' : 'text-stone-400'}`}>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl text-center">
+                    <span className="text-[10px] text-stone-500 block mb-1 font-bold">المديونية الحالية</span>
+                    <span className={`font-mono text-base font-extrabold block ${currentDebt > 0 ? 'text-rose-400 animate-pulse' : 'text-stone-400'}`}>
                       {currentDebt.toLocaleString()} ج.م
                     </span>
                   </div>
 
-                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-2xl text-center">
-                    <span className="text-[10px] text-stone-500 block mb-1 font-bold">الحد الائتماني الكلي</span>
-                    <span className="font-mono text-lg font-extrabold text-stone-300 block">
+                  <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl text-center">
+                    <span className="text-[10px] text-amber-400 block mb-1 font-bold">القسط الشهري المفترض</span>
+                    <span className="font-mono text-base font-extrabold text-amber-300 block">
+                      {(customer.monthlyInstallmentAmount || 0) > 0 ? `${(customer.monthlyInstallmentAmount || 0).toLocaleString()} ج.م` : 'غير محدد'}
+                    </span>
+                  </div>
+
+                  <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl text-center">
+                    <span className="text-[10px] text-stone-500 block mb-1 font-bold">الحد الائتماني</span>
+                    <span className="font-mono text-base font-extrabold text-stone-300 block">
                       {customer.isCreditEligible ? `${creditLimit.toLocaleString()} ج.م` : 'غير مفعل'}
                     </span>
                   </div>
 
-                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-2xl text-center">
-                    <span className="text-[10px] text-stone-500 block mb-1 font-bold">الحد المتبقي للآجل</span>
-                    <span className="font-mono text-lg font-extrabold text-emerald-400 block">
+                  <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl text-center">
+                    <span className="text-[10px] text-stone-500 block mb-1 font-bold">الحد المتبقي</span>
+                    <span className="font-mono text-base font-extrabold text-emerald-400 block">
                       {customer.isCreditEligible ? `${remainingLimit.toLocaleString()} ج.م` : '0 ج.م'}
                     </span>
                   </div>
@@ -534,6 +544,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-700 font-mono text-left focus:border-amber-500 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
                       />
                     </div>
+
+                    <div className="sm:col-span-2 space-y-1">
+                      <label className="text-amber-400 block font-bold">المبلغ المفترض تسديده شهرياً / القسط الشهري (ج.م)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={monthlyInstallmentInput}
+                        onChange={(e) => setMonthlyInstallmentInput(e.target.value)}
+                        placeholder="أدخل قيمة القسط المفترض تسديده شهرياً..."
+                        className="w-full bg-stone-900 border border-amber-500/30 rounded-xl px-3 py-2 text-amber-300 font-mono font-bold focus:border-amber-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-stone-500">سيظهر هذا المبلغ تلقائياً كخيار سريع عند تحصيل أقساط العميل</p>
+                    </div>
                   </div>
 
                   <div className="flex justify-end pt-2 border-t border-stone-900">
@@ -541,17 +564,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                       type="button"
                       onClick={() => {
                         const limit = parseFloat(creditLimitInput) || 0;
+                        const instAmt = parseFloat(monthlyInstallmentInput) || 0;
                         updateCustomer({
                           ...customer,
                           isCreditEligible,
-                          creditLimit: isCreditEligible ? limit : 0
+                          creditLimit: isCreditEligible ? limit : 0,
+                          monthlyInstallmentAmount: instAmt,
                         });
-                        setCreditSuccess('تم تحديث بيانات تأهيل الشراء الآجل بنجاح!');
+                        setCreditSuccess('تم تحديث بيانات التأهيل والقسط الشهري بنجاح!');
                         setTimeout(() => setCreditSuccess(''), 3000);
                       }}
                       className="px-4 py-2 bg-amber-600 hover:bg-amber-500 active:scale-[0.98] text-white font-bold rounded-xl transition-all text-xs"
                     >
-                      حفظ تعديلات التأهيل
+                      حفظ تعديلات التأهيل والقسط
                     </button>
                   </div>
                 </div>
@@ -588,7 +613,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   ) : (
                     <form onSubmit={handlePayDebt} className="space-y-4 text-xs">
                       <div>
-                        <label className="block text-stone-400 mb-1 font-medium">مبلغ السداد المستلم (ج.م)</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-stone-400 font-medium">مبلغ السداد المستلم (ج.م)</label>
+                          {(customer.monthlyInstallmentAmount || 0) > 0 && (
+                            <span className="text-[10px] text-amber-400 font-bold">
+                              القسط: {(customer.monthlyInstallmentAmount || 0).toLocaleString()} ج.م
+                            </span>
+                          )}
+                        </div>
                         <div className="relative">
                           <input
                             type="number"
@@ -598,13 +630,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             onChange={(e) => setPaymentAmount(e.target.value)}
                             className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 placeholder-stone-700 text-left font-mono focus:border-amber-500 focus:outline-none"
                           />
-                          <button
-                            type="button"
-                            onClick={() => setPaymentAmount(currentDebt.toString())}
-                            className="absolute left-2.5 top-1.5 text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-2 py-1 rounded-lg border border-amber-500/20 transition-all font-bold"
-                          >
-                            سداد الكل
-                          </button>
+                          <div className="absolute left-2.5 top-1.5 flex items-center space-x-1 space-x-reverse">
+                            {(customer.monthlyInstallmentAmount || 0) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setPaymentAmount((customer.monthlyInstallmentAmount || 0).toString())}
+                                className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2 py-1 rounded-lg border border-amber-500/30 transition-all font-bold"
+                              >
+                                القسط
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setPaymentAmount(currentDebt.toString())}
+                              className="text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-2 py-1 rounded-lg border border-amber-500/20 transition-all font-bold"
+                            >
+                              سداد الكل
+                            </button>
+                          </div>
                         </div>
                       </div>
 

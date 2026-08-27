@@ -119,6 +119,7 @@ export interface Customer {
   currentDebt?: number;       // المديونية الحالية
   notes?: string;             // ملاحظات حول العميل
   address?: string;           // عنوان العميل
+  monthlyInstallmentAmount?: number; // المبلغ المفترض تسديده شهرياً (الأقساط)
 }
 
 export type PaymentMethod = 'كاش' | 'فيزا / كارت' | 'تقسيط شهري' | 'آجل / حساب جملة' | 'محفظة إلكترونية' | 'دفع متعدد' | 'نقاط ولاء';

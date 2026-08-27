@@ -11,7 +11,7 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose }) => {
-  const { associates, settings } = usePOS();
+  const { associates, settings, customers } = usePOS();
 
   const defaultPrintSettings = settings?.printSettings || {
     headerText: 'أسماء للأدوات المنزليه',
@@ -52,6 +52,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   const grandTotal = transaction.grandTotal || (totalBeforeDiscount - discountTotal);
   const totalAfterDiscount = grandTotal;
   const isReturn = transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0);
+
+  // Find linked customer to get overall current debt
+  const customer = customers.find(
+    (c) =>
+      (transaction.customerId && c.id === transaction.customerId) ||
+      (transaction.customerName && c.name.trim().toLowerCase() === transaction.customerName.trim().toLowerCase())
+  );
+
+  // The printed "المتبقي" on the receipt is the customer's total overall debt in the system
+  const remainingDebtAmount = customer
+    ? (customer.currentDebt || 0)
+    : (transaction.amountDeferred ?? 0);
 
   // Price & number formatting helper (e.g. 520.0, 135.0, 2.0)
   const formatPrice = (val: number | string | undefined): string => {
@@ -332,6 +344,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 <span className="font-extrabold">اسم الكاشير : </span>
                 <span className="font-black text-black">{sellerName}</span>
               </div>
+              {(transaction.customerName || customer?.name) && (
+                <div>
+                  <span className="font-extrabold">اسم العميل : </span>
+                  <span className="font-black text-black">{transaction.customerName || customer?.name}</span>
+                </div>
+              )}
             </div>
 
             {/* 3. Items Section (Shaded header, no vertical lines, clean columns) */}
@@ -398,7 +416,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               </div>
               <div>
                 <span className="font-extrabold">المتبقي : </span>
-                <span className="font-mono font-black">{formatPrice(transaction.amountDeferred ?? 0)}</span>
+                <span className="font-mono font-black">{formatPrice(remainingDebtAmount)}</span>
               </div>
             </div>
 

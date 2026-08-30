@@ -15,24 +15,17 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
   onClose,
   initialCustomerId,
 }) => {
-  const { customers, payCustomerDebt, currentAssociate, associates } = usePOS();
+  const { customers, payCustomerDebt, currentAssociate } = usePOS();
 
   const [selectedCustId, setSelectedCustId] = useState<string>(initialCustomerId || '');
   const [customerSearch, setCustomerSearch] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('كاش');
-  const [selectedAssociateId, setSelectedAssociateId] = useState<string>(currentAssociate?.id || '');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [completedTx, setCompletedTx] = useState<Transaction | null>(null);
-
-  useEffect(() => {
-    if (currentAssociate?.id && !selectedAssociateId) {
-      setSelectedAssociateId(currentAssociate.id);
-    }
-  }, [currentAssociate]);
 
   useEffect(() => {
     if (initialCustomerId) {
@@ -94,8 +87,7 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
         selectedCustomer.id,
         amt,
         paymentMethod,
-        paymentNotes,
-        selectedAssociateId || currentAssociate?.id
+        paymentNotes
       );
       setCompletedTx(newTx);
       setSuccessMsg(`تم تسديد مبلغ ${amt.toLocaleString()} ج.م بنجاح لحساب العميل (${selectedCustomer.name})!`);
@@ -268,23 +260,6 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
               className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2.5 text-amber-300 font-mono text-base font-extrabold focus:outline-none focus:border-amber-500"
               required
             />
-          </div>
-
-          {/* Seller / Associate Selection */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-amber-400">البائع المستلم / كود البائع:</label>
-            <select
-              value={selectedAssociateId}
-              onChange={(e) => setSelectedAssociateId(e.target.value)}
-              className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none focus:border-amber-500"
-              required
-            >
-              {associates.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.role}) - كود البائع: {a.pin}
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Payment Method */}

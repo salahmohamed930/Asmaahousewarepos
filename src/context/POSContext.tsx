@@ -115,6 +115,7 @@ interface POSContextType {
     amountDeferred?: number,
     splitPayments?: SplitPaymentItem[]
   ) => Promise<Transaction>;
+  updateTransaction: (transaction: Transaction) => Promise<void>;
   voidTransaction: (transactionId: string) => void;
   holdCart: (notes?: string) => Promise<void>;
   restoreHeldTransaction: (transactionId: string) => void;
@@ -1318,6 +1319,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await loadFromSupabase();
   };
 
+  const updateTransaction = async (updatedTx: Transaction) => {
+    await insertTransactionToSupabase(updatedTx);
+    await loadFromSupabase();
+  };
+
   const voidTransaction = async (transactionId: string) => {
     const targetTx = transactions.find((t) => t.id === transactionId);
     if (targetTx) {
@@ -1499,6 +1505,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSplitAssociates,
         setSelectedCustomer,
         completeTransaction,
+        updateTransaction,
         voidTransaction,
         holdCart,
         restoreHeldTransaction,

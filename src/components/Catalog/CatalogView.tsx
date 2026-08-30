@@ -77,6 +77,24 @@ export const CatalogView: React.FC = () => {
   });
 
   const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
+  const [extraBarcodeEntry, setExtraBarcodeEntry] = useState('');
+
+  const handleAddExtraBarcode = () => {
+    const trimmed = extraBarcodeEntry.trim();
+    if (!trimmed) return;
+    const newCodes = trimmed.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+    const existing = formData.barcodes || [];
+    const updated = Array.from(new Set([...existing, ...newCodes]));
+    setFormData((prev) => ({ ...prev, barcodes: updated }));
+    setExtraBarcodeEntry('');
+  };
+
+  const handleRemoveExtraBarcode = (codeToRemove: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      barcodes: (prev.barcodes || []).filter(c => c !== codeToRemove)
+    }));
+  };
 
   // Bulk selection states
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
@@ -382,6 +400,8 @@ export const CatalogView: React.FC = () => {
       if (bulkForm.changePrices) {
         const val = Number(bulkForm.priceValue);
         const applyToPrice = (current: number) => {
+          if (bulkForm.priceAction === 'increase_percent') return Math.round(current * (1 + val / 100));
+          if (bulkForm.priceAction === 'decrease_percent') return Math.round(Math.max(0, current * (1 - val / 100)));
           if (bulkForm.priceAction === 'fixed') return val;
           if (bulkForm.priceAction === 'increase') return current + val;
           if (bulkForm.priceAction === 'decrease') return Math.max(0, current - val);
@@ -1016,6 +1036,63 @@ export const CatalogView: React.FC = () => {
                     className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
+
+                {/* Additional Barcodes Section (Multi-Barcode Support) */}
+                <div className="md:col-span-2 bg-stone-950/80 border border-stone-800/80 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-amber-400">
+                      أكواد وباركودات إضافية (دعم أكثر من كود للمنتج الواحد)
+                    </label>
+                    <span className="text-[10px] text-stone-400 font-mono font-bold bg-stone-900 border border-stone-800 px-2 py-0.5 rounded-md">
+                      الأكواد الإضافية: {formData.barcodes?.length || 0}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="أدخل كود أو باركود إضافي ثم اضغط إضافة (أو مفتاح Enter)..."
+                      value={extraBarcodeEntry}
+                      onChange={(e) => setExtraBarcodeEntry(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddExtraBarcode();
+                        }
+                      }}
+                      className="flex-1 bg-stone-900 border border-stone-800 rounded-lg px-2.5 py-1.5 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddExtraBarcode}
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition-all flex items-center space-x-1 space-x-reverse shrink-0 shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>إضافة كود</span>
+                    </button>
+                  </div>
+
+                  {formData.barcodes && formData.barcodes.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1.5">
+                      {formData.barcodes.map((code, idx) => (
+                        <span
+                          key={`extra_bc_${code}_${idx}`}
+                          className="inline-flex items-center space-x-1.5 space-x-reverse px-2.5 py-1 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs font-mono font-bold shadow-sm"
+                        >
+                          <Barcode className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{code}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExtraBarcode(code)}
+                            className="text-stone-400 hover:text-rose-400 p-0.5 rounded hover:bg-stone-800 transition-colors mr-1"
+                            title="حذف هذا الكود"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Category selector */}
@@ -1363,19 +1440,28 @@ export const CatalogView: React.FC = () => {
                     <select
                       value={bulkForm.priceAction}
                       onChange={(e) => setBulkForm({ ...bulkForm, priceAction: e.target.value })}
-                      className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-stone-200"
+                      className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-stone-200 font-bold"
                     >
-                      <option value="increase">زيادة بـ (ج.م)</option>
-                      <option value="decrease">خصم بـ (ج.م)</option>
-                      <option value="fixed">مبلغ ثابت</option>
+                      <option value="increase_percent">زيادة بنسبة مئوية (%)</option>
+                      <option value="decrease_percent">خصم بنسبة مئوية (%)</option>
+                      <option value="increase">زيادة بمبلغ (ج.م)</option>
+                      <option value="decrease">خصم بمبلغ (ج.م)</option>
+                      <option value="fixed">مبلغ ثابت (ج.م)</option>
                     </select>
 
-                    <input
-                      type="number"
-                      value={bulkForm.priceValue}
-                      onChange={(e) => setBulkForm({ ...bulkForm, priceValue: Number(e.target.value) })}
-                      className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono text-stone-100 text-center"
-                    />
+                    <div className="relative flex items-center">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={bulkForm.priceValue}
+                        onChange={(e) => setBulkForm({ ...bulkForm, priceValue: Number(e.target.value) })}
+                        className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono text-stone-100 text-center font-bold"
+                      />
+                      <span className="absolute left-2 text-[10px] font-bold text-amber-400 font-mono">
+                        {bulkForm.priceAction.includes('percent') ? '%' : 'ج.م'}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

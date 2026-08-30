@@ -145,6 +145,18 @@ export const RegisterView: React.FC = () => {
   // Seller PIN input state inside catalog
   const [sellerPinInput, setSellerPinInput] = useState<string>(currentAssociate?.pin || '');
 
+  const barcodeInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Auto-focus barcode input when opening invoice creation page
+  useEffect(() => {
+    if (viewMode === 'create' && !isPaymentOpen) {
+      const timer = setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [viewMode, isPaymentOpen]);
+
   // Keep seller PIN synchronized when associate switches
   useEffect(() => {
     if (currentAssociate?.pin && currentAssociate.pin !== sellerPinInput) {
@@ -219,6 +231,9 @@ export const RegisterView: React.FC = () => {
       }
     } finally {
       setIsBarcodeLoading(false);
+      setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 50);
     }
   };
 
@@ -886,6 +901,8 @@ export const RegisterView: React.FC = () => {
                   <Barcode className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2.5" />
                   <input
                     id="pos-barcode-input"
+                    ref={barcodeInputRef}
+                    autoFocus
                     type="text"
                     placeholder={isBarcodeLoading ? 'جاري الفحص...' : 'باركود + Enter'}
                     value={barcodeInput}

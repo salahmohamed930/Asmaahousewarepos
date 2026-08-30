@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ClosedShift, Transaction } from '../../types';
 import { printElementById } from '../../utils/printHelper';
+import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
 
 export const AnalyticsView: React.FC = () => {
   const {
@@ -35,8 +36,11 @@ export const AnalyticsView: React.FC = () => {
     currentAssociate,
   } = usePOS();
 
-  // Sub-tab selection: overview (التحليلات العامة), revenues (قسم الإيرادات المتقدم), shifts (تقفيل وأرشيف الورديات)
+  // Sub-tab selection: overview, revenues, shifts
   const [subTab, setSubTab] = useState<'overview' | 'revenues' | 'shifts'>('overview');
+
+  // Modal state for opening/editing old invoices
+  const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
 
   // Print modal states for completed shifts
   const [selectedShiftToPrint, setSelectedShiftToPrint] = useState<ClosedShift | null>(null);
@@ -674,7 +678,13 @@ export const AnalyticsView: React.FC = () => {
                           {tx.status}
                         </span>
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center flex items-center justify-center space-x-2 space-x-reverse">
+                        <button
+                          onClick={() => setSelectedTxForDetail(tx)}
+                          className="px-2.5 py-1 bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-lg hover:bg-amber-500/25 transition-all font-bold text-[11px] flex items-center space-x-1 space-x-reverse"
+                        >
+                          <span>فتح / تعديل</span>
+                        </button>
                         {tx.status === 'مكتملة' && !tx.id.startsWith('pay_') && (
                           <button
                             onClick={() => {
@@ -684,7 +694,7 @@ export const AnalyticsView: React.FC = () => {
                             }}
                             className="text-stone-500 hover:text-rose-400 text-[11px] font-bold underline"
                           >
-                            إلغاء الفاتورة
+                            إلغاء
                           </button>
                         )}
                       </td>
@@ -879,6 +889,7 @@ export const AnalyticsView: React.FC = () => {
                       <th className="p-3">البائع المسؤول</th>
                       <th className="p-3">طريقة التحصيل</th>
                       <th className="p-3">المبلغ المحصل</th>
+                      <th className="p-3 text-center">الإجراءات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-800/60 text-stone-300">
@@ -924,6 +935,14 @@ export const AnalyticsView: React.FC = () => {
                           </td>
                           <td className="p-3 font-mono font-extrabold text-white text-sm">
                             {actualInflowAmount.toLocaleString()} ج.م
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              onClick={() => setSelectedTxForDetail(tx)}
+                              className="px-2.5 py-1 bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-lg hover:bg-amber-500/25 transition-all font-bold text-[11px]"
+                            >
+                              فتح / تعديل
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1412,6 +1431,14 @@ export const AnalyticsView: React.FC = () => {
 
           </div>
         </div>
+      )}
+
+      {/* Invoice Detail / Edit Modal */}
+      {selectedTxForDetail && (
+        <InvoiceDetailModal
+          transaction={selectedTxForDetail}
+          onClose={() => setSelectedTxForDetail(null)}
+        />
       )}
 
     </div>

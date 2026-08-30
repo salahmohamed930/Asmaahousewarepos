@@ -253,9 +253,19 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
       .from('products')
       .select('*')
       .or(`barcode.eq."${cleanSearch}",sku.eq."${cleanSearch}"`)
-      .limit(1);
+      .limit(10);
 
     if (directData && directData.length > 0) {
+      for (const item of directData) {
+        const mapped = mapDbProductToProduct(item);
+        if (
+          mapped.barcode.toLowerCase() === cleanBarcode.toLowerCase() ||
+          mapped.sku.toLowerCase() === cleanBarcode.toLowerCase() ||
+          (mapped.barcodes && mapped.barcodes.some((b) => b.toLowerCase() === cleanBarcode.toLowerCase()))
+        ) {
+          return mapped;
+        }
+      }
       return mapDbProductToProduct(directData[0]);
     }
 
@@ -263,8 +273,8 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
     const { data: searchData } = await supabase
       .from('products')
       .select('*')
-      .or(`name.ilike."%${cleanSearch}%",description.ilike."%${cleanSearch}%"`)
-      .limit(10);
+      .or(`name.ilike."%${cleanSearch}%",description.ilike."%${cleanSearch}%",barcodes.cs.{"${cleanSearch}"}`)
+      .limit(20);
 
     if (searchData && searchData.length > 0) {
       for (const item of searchData) {

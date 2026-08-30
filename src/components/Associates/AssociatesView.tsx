@@ -55,6 +55,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { id: 'override_cart_price', label: 'تعديل سعر الصنف بالسلة', desc: 'تعديل سعر بيع المنتج يدوياً داخل السلة' },
       { id: 'return_invoice', label: 'إجراء مرتجع للفواتير', desc: 'استرداد الفواتير وإرجاع المنتجات للمخزن' },
       { id: 'void_invoice', label: 'إلغاء الفواتير نهائياً', desc: 'إلغاء الفواتير السابقة وحذفها' },
+      { id: 'edit_invoice', label: 'تعديل الفواتير القديمة', desc: 'فتح وتعديل بيانات الفواتير القديمة والكميات والمبالغ' },
     ],
   },
   {

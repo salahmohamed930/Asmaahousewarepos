@@ -225,6 +225,24 @@ export interface PrintSettings {
   facebookUrl?: string;
 }
 
+export type ShortcutActionId =
+  | 'none'
+  | 'open_register'
+  | 'checkout_payment'
+  | 'print_last_receipt'
+  | 'pay_installment'
+  | 'add_expense'
+  | 'open_catalog'
+  | 'open_customers'
+  | 'open_suppliers'
+  | 'open_analytics'
+  | 'open_discounts'
+  | 'open_associates'
+  | 'open_settings'
+  | 'focus_search'
+  | 'clear_cart'
+  | 'quick_lock';
+
 export interface AppSettings {
   theme: 'dark' | 'light';
   profitMargins: {
@@ -235,6 +253,7 @@ export interface AppSettings {
   categories: string[];
   loyaltyPointsRatio?: number; // كم جنيه ينفقه العميل ليحصل على نقطة واحدة
   loyaltyPointValue?: number;  // القيمة المالية للنقطة الواحدة بالجنيه
+  shortcutKeys?: Record<string, ShortcutActionId>; // تخصيص أزرار الاختصارات (F1 - F12)
   supabaseUrl?: string;        // عنوان قاعدة بيانات Supabase مخصص
   supabaseAnonKey?: string;    // مفتاح anon لقاعدة بيانات Supabase مخصص
 }

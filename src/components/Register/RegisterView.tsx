@@ -222,6 +222,45 @@ export const RegisterView: React.FC = () => {
     }
   };
 
+  // Shortcut Action Listener for RegisterView
+  useEffect(() => {
+    const handleShortcutAction = (e: Event) => {
+      const customEvent = e as CustomEvent<{ action: string; key: string }>;
+      const action = customEvent.detail?.action;
+
+      if (action === 'checkout_payment') {
+        setViewMode('create');
+        if (cart.length > 0) {
+          setIsPaymentOpen(true);
+        } else {
+          alert('سلة المبيعات فارغة! يرجى إضافة أصناف أولاً لإتمام الفاتورة.');
+        }
+      } else if (action === 'add_expense') {
+        setViewMode('history');
+        setIsAddExpenseModalOpen(true);
+      } else if (action === 'focus_search') {
+        setViewMode('create');
+        setTimeout(() => {
+          const searchInput = document.getElementById('pos-search-input');
+          if (searchInput) {
+            searchInput.focus();
+          }
+        }, 50);
+      } else if (action === 'print_last_receipt') {
+        if (transactions.length > 0) {
+          setCompletedTransaction(transactions[0]);
+        } else {
+          alert('لا توجد فواتير سابقة لطباعتها حالياً.');
+        }
+      }
+    };
+
+    window.addEventListener('pos-shortcut-action', handleShortcutAction);
+    return () => {
+      window.removeEventListener('pos-shortcut-action', handleShortcutAction);
+    };
+  }, [cart.length, transactions]);
+
   const triggerAddToCart = (product: Product) => {
     addToCart(product, 1);
     setAddedAnimationId(product.id);
@@ -823,6 +862,7 @@ export const RegisterView: React.FC = () => {
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-stone-400 absolute right-2.5 top-2.5" />
                   <input
+                    id="pos-search-input"
                     type="text"
                     placeholder="بحث منتج أو كود..."
                     value={searchQuery}
@@ -845,6 +885,7 @@ export const RegisterView: React.FC = () => {
                 <form onSubmit={handleBarcodeScan} className="relative">
                   <Barcode className="w-3.5 h-3.5 text-amber-400 absolute right-2.5 top-2.5" />
                   <input
+                    id="pos-barcode-input"
                     type="text"
                     placeholder={isBarcodeLoading ? 'جاري الفحص...' : 'باركود + Enter'}
                     value={barcodeInput}

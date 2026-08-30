@@ -18,7 +18,7 @@ import {
   POSExpense,
   Permission,
 } from '../types';
-import { DEFAULT_ADMIN_ASSOCIATE } from '../data/initialData';
+import { DEFAULT_ADMIN_ASSOCIATE, DEFAULT_SHORTCUT_KEYS } from '../data/initialData';
 import {
   checkSupabaseConnection,
   fetchProductsFromSupabase,
@@ -137,7 +137,7 @@ interface POSContextType {
   addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Promise<Customer>;
   updateCustomer: (cust: Customer) => Promise<void>;
   deleteCustomer: (customerId: string) => Promise<void>;
-  payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string) => Promise<void>;
+  payCustomerDebt: (customerId: string, amount: number, paymentMethod: PaymentMethod, notes?: string, associateId?: string) => Promise<Transaction>;
 
   // Supplier Actions
   addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<Supplier>;
@@ -241,6 +241,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           categories: parsed.categories || defaultCats,
           loyaltyPointsRatio: parsed.loyaltyPointsRatio !== undefined ? parsed.loyaltyPointsRatio : 10,
           loyaltyPointValue: parsed.loyaltyPointValue !== undefined ? parsed.loyaltyPointValue : 0.1,
+          shortcutKeys: parsed.shortcutKeys ? { ...DEFAULT_SHORTCUT_KEYS, ...parsed.shortcutKeys } : DEFAULT_SHORTCUT_KEYS,
         };
       } catch (e) {
         // ignore
@@ -253,8 +254,72 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       categories: defaultCats,
       loyaltyPointsRatio: 10,
       loyaltyPointValue: 0.1,
+      shortcutKeys: DEFAULT_SHORTCUT_KEYS,
     };
   });
+
+  // Global Function Key Shortcuts Listener (F1 - F12)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Intercept Function Keys F1 through F12
+      if (!e.key || !/^F(1[0-2]|[1-9])$/.test(e.key)) return;
+
+      const activeShortcuts = { ...DEFAULT_SHORTCUT_KEYS, ...(settings.shortcutKeys || {}) };
+      const actionId = activeShortcuts[e.key];
+
+      if (!actionId || actionId === 'none') return;
+
+      // Stop browser default action (F1 help, F3 find, F5 reload, F11 fullscreen, F12 devtools)
+      e.preventDefault();
+      e.stopPropagation();
+
+      console.log(`[POS Shortcuts] Key ${e.key} triggered action: ${actionId}`);
+
+      // Handle Direct Navigation and State actions
+      if (actionId === 'open_register') {
+        setActiveTab('register');
+      } else if (actionId === 'open_catalog') {
+        setActiveTab('catalog');
+      } else if (actionId === 'open_customers') {
+        setActiveTab('customers');
+      } else if (actionId === 'open_suppliers') {
+        setActiveTab('suppliers');
+      } else if (actionId === 'open_analytics') {
+        setActiveTab('analytics');
+      } else if (actionId === 'open_discounts') {
+        setActiveTab('discounts');
+      } else if (actionId === 'open_associates') {
+        setActiveTab('associates');
+      } else if (actionId === 'open_settings') {
+        setActiveTab('settings');
+      } else if (actionId === 'clear_cart') {
+        if (cart.length > 0) {
+          if (window.confirm('هل أنت متأكد من تفريغ سلة المبيعات بالكامل؟')) {
+            setCart([]);
+          }
+        }
+      } else if (actionId === 'checkout_payment') {
+        setActiveTab('register');
+        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
+      } else if (actionId === 'add_expense') {
+        setActiveTab('register');
+        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
+      } else if (actionId === 'pay_installment') {
+        setActiveTab('customers');
+        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
+      } else if (actionId === 'focus_search') {
+        setActiveTab('register');
+        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown, true);
+    };
+  }, [settings.shortcutKeys, cart.length, setActiveTab, setCart]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_settings`, JSON.stringify(settings));
@@ -1302,8 +1367,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     customerId: string,
     amount: number,
     paymentMethod: PaymentMethod,
-    notes?: string
-  ) => {
+    notes?: string,
+    associateId?: string
+  ): Promise<Transaction> => {
     const cust = customers.find((c) => c.id === customerId);
     if (cust) {
       const updatedCust: Customer = {
@@ -1317,6 +1383,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await updateCustomerInSupabase(updatedCust);
     }
 
+    const selAssoc = associateId ? associates.find((a) => a.id === associateId) : currentAssociate;
+    const primaryAssocId = selAssoc?.id || currentAssociate?.id || 'system';
+    const primaryAssocName = selAssoc?.name || currentAssociate?.name || 'النظام';
+
     const receiptNumber = `PAY-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
     const newTransaction: Transaction = {
       id: `pay_${Date.now()}`,
@@ -1329,29 +1399,31 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           sku: 'DEBT_PAY',
           quantity: 1,
           priceTier: 'cash',
-          unitPrice: -amount,
-          totalPrice: -amount,
+          unitPrice: amount,
+          totalPrice: amount,
+          assignedAssociateId: primaryAssocId,
         },
       ],
-      subtotal: -amount,
+      subtotal: amount,
       discountTotal: 0,
       taxTotal: 0,
-      grandTotal: -amount,
+      grandTotal: amount,
       paymentMethod,
       paymentDetails: `سداد جزء من مديونية الآجل: ${amount.toLocaleString()} ج.م`,
       customerId,
       customerName: cust?.name || 'عميل',
-      primaryAssociateId: currentAssociate?.id || 'system',
-      primaryAssociateName: currentAssociate?.name || 'النظام',
+      primaryAssociateId: primaryAssocId,
+      primaryAssociateName: primaryAssocName,
       commissions: [],
-      notes: notes || 'سداد مديونية',
+      notes: notes || 'سداد مديونية / قسط',
       status: 'مكتملة',
       amountPaid: amount,
-      amountDeferred: -amount,
+      amountDeferred: 0,
     };
 
     await insertTransactionToSupabase(newTransaction);
     await loadFromSupabase();
+    return newTransaction;
   };
 
   const hasPermission = useCallback((perm: Permission): boolean => {

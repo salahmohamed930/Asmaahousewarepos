@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { Customer, PaymentMethod } from '../../types';
-import { X, DollarSign, UserCheck, CheckCircle, AlertCircle, Search, CreditCard } from 'lucide-react';
+import { Customer, PaymentMethod, Transaction } from '../../types';
+import { X, DollarSign, UserCheck, CheckCircle, AlertCircle, Search, CreditCard, Printer } from 'lucide-react';
+import { ReceiptModal } from '../Register/ReceiptModal';
 
 interface CustomerPaymentModalProps {
   isOpen: boolean;
@@ -14,16 +15,24 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
   onClose,
   initialCustomerId,
 }) => {
-  const { customers, payCustomerDebt, currentAssociate } = usePOS();
+  const { customers, payCustomerDebt, currentAssociate, associates } = usePOS();
 
   const [selectedCustId, setSelectedCustId] = useState<string>(initialCustomerId || '');
   const [customerSearch, setCustomerSearch] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('كاش');
+  const [selectedAssociateId, setSelectedAssociateId] = useState<string>(currentAssociate?.id || '');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [completedTx, setCompletedTx] = useState<Transaction | null>(null);
+
+  useEffect(() => {
+    if (currentAssociate?.id && !selectedAssociateId) {
+      setSelectedAssociateId(currentAssociate.id);
+    }
+  }, [currentAssociate]);
 
   useEffect(() => {
     if (initialCustomerId) {
@@ -43,7 +52,12 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
   const filteredCustomers = customers.filter((c) => {
     const q = customerSearch.trim().toLowerCase();
     if (!q) return true;
-    return c.name.toLowerCase().includes(q) || c.phone.includes(q);
+    return (
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.phone || '').includes(q) ||
+      (c.address || '').toLowerCase().includes(q) ||
+      (c.notes || '').toLowerCase().includes(q)
+    );
   });
 
   const handlePayFull = () => {
@@ -76,14 +90,17 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      await payCustomerDebt(selectedCustomer.id, amt, paymentMethod, paymentNotes);
+      const newTx = await payCustomerDebt(
+        selectedCustomer.id,
+        amt,
+        paymentMethod,
+        paymentNotes,
+        selectedAssociateId || currentAssociate?.id
+      );
+      setCompletedTx(newTx);
       setSuccessMsg(`تم تسديد مبلغ ${amt.toLocaleString()} ج.م بنجاح لحساب العميل (${selectedCustomer.name})!`);
       setPaymentAmount('');
       setPaymentNotes('');
-      setTimeout(() => {
-        setSuccessMsg('');
-        onClose();
-      }, 1500);
     } catch (err: any) {
       setErrorMsg(err.message || 'حدث خطأ أثناء تسجيل دفعة السداد.');
     } finally {
@@ -92,78 +109,88 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 dir-rtl">
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative text-stone-100 space-y-5">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-stone-800 pb-4">
-          <div className="flex items-center space-x-3 space-x-reverse">
-            <div className="w-10 h-10 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center shrink-0">
-              <DollarSign className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-stone-100">تسجيل سداد / تحصيل مديونية عميل</h3>
-              <p className="text-[11px] text-stone-400 mt-0.5">خصم المبالغ المسددة مباشرة من مديونية العميل وتسجيل العملية بالفواتير</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Notifications */}
-        {successMsg && (
-          <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs rounded-2xl p-3 flex items-center space-x-2 space-x-reverse">
-            <CheckCircle className="w-4 h-4 shrink-0" />
-            <span className="font-bold">{successMsg}</span>
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="bg-rose-500/15 border border-rose-500/40 text-rose-400 text-xs rounded-2xl p-3 flex items-center space-x-2 space-x-reverse">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span className="font-bold">{errorMsg}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <>
+      <div className="fixed inset-0 bg-stone-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 dir-rtl">
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative text-stone-100 space-y-5">
           
-          {/* Customer Selection */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-amber-400">اختيار العميل:</label>
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-stone-800 pb-4">
+            <div className="flex items-center space-x-3 space-x-reverse">
+              <div className="w-10 h-10 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-2xl flex items-center justify-center shrink-0">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-stone-100">تسجيل سداد / تحصيل مديونية عميل</h3>
+                <p className="text-[11px] text-stone-400 mt-0.5">خصم المبالغ المسددة مباشرة من مديونية العميل وطباعة إيصال الفاتورة</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Notifications */}
+          {successMsg && (
+            <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs rounded-2xl p-3 flex items-center justify-between gap-2">
+              <div className="flex items-center space-x-2 space-x-reverse">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span className="font-bold">{successMsg}</span>
+              </div>
+              {completedTx && (
+                <button
+                  type="button"
+                  onClick={() => setCompletedTx(completedTx)}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse shrink-0"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة الإيصال</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="bg-rose-500/15 border border-rose-500/40 text-rose-400 text-xs rounded-2xl p-3 flex items-center space-x-2 space-x-reverse">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span className="font-bold">{errorMsg}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             
-            {/* Search filter for long customer lists */}
-            {customers.length > 5 && (
+            {/* Customer Selection & Search */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-amber-400">اختيار / البحث عن العميل:</label>
+              
               <div className="relative mb-2">
                 <Search className="w-3.5 h-3.5 text-stone-500 absolute right-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="فلترة بالاسم أو رقم الهاتف..."
+                  placeholder="بحث باسم العميل، رقم الهاتف، أو العنوان..."
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
                   className="w-full bg-stone-950 border border-stone-800 rounded-xl pr-9 pl-3 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
-            )}
 
-            <select
-              value={selectedCustId}
-              onChange={(e) => setSelectedCustId(e.target.value)}
-              className="w-full bg-stone-950 border border-stone-800 text-xs font-bold text-stone-100 rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
-              required
-            >
-              <option value="">-- اختر عميل من القائمة --</option>
-              {filteredCustomers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.phone}) - {c.currentDebt && c.currentDebt > 0 ? `مديونية: ${c.currentDebt.toLocaleString()} ج.م` : 'خالي المديونية'}
-                </option>
-              ))}
-            </select>
-          </div>
+              <select
+                value={selectedCustId}
+                onChange={(e) => setSelectedCustId(e.target.value)}
+                className="w-full bg-stone-950 border border-stone-800 text-xs font-bold text-stone-100 rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
+                required
+              >
+                <option value="">-- اختر عميل من القائمة --</option>
+                {filteredCustomers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.phone}) - {c.currentDebt && c.currentDebt > 0 ? `مديونية: ${c.currentDebt.toLocaleString()} ج.م` : 'خالي المديونية'}
+                  </option>
+                ))}
+              </select>
+            </div>
 
           {/* Customer Info Card */}
           {selectedCustomer && (
@@ -243,6 +270,23 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
             />
           </div>
 
+          {/* Seller / Associate Selection */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-amber-400">البائع المستلم / كود البائع:</label>
+            <select
+              value={selectedAssociateId}
+              onChange={(e) => setSelectedAssociateId(e.target.value)}
+              className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none focus:border-amber-500"
+              required
+            >
+              {associates.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.role}) - كود البائع: {a.pin}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Payment Method */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-amber-400">طريقة الدفع / التحصيل:</label>
@@ -300,5 +344,17 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
 
       </div>
     </div>
-  );
+
+    {/* Receipt Printable Modal */}
+    {completedTx && (
+      <ReceiptModal
+        transaction={completedTx}
+        onClose={() => {
+          setCompletedTx(null);
+          onClose();
+        }}
+      />
+    )}
+  </>
+);
 };

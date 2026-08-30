@@ -341,9 +341,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 <span className="font-mono font-black text-black">{formatReceiptTime(transaction.timestamp)}</span>
               </div>
               <div>
-                <span className="font-extrabold">اسم الكاشير : </span>
+                <span className="font-extrabold">اسم البائع / الكاشير : </span>
                 <span className="font-black text-black">{sellerName}</span>
               </div>
+              {primaryAssoc?.pin && (
+                <div>
+                  <span className="font-extrabold">كود البائع : </span>
+                  <span className="font-mono font-black text-black">{primaryAssoc.pin}</span>
+                </div>
+              )}
               {(transaction.customerName || customer?.name) && (
                 <div>
                   <span className="font-extrabold">اسم العميل : </span>

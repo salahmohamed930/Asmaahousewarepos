@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePOS } from '../context/POSContext';
+import { DEFAULT_SHORTCUT_KEYS } from '../data/initialData';
+import { QuickPinModal } from './QuickPinModal';
 import {
   FileText,
   Users,
@@ -30,9 +32,33 @@ export const Header: React.FC = () => {
     dbStatus,
     refreshDataFromSupabase,
     hasPermission,
+    settings,
   } = usePOS();
 
   const [isAssociateDropdownOpen, setIsAssociateDropdownOpen] = useState(false);
+  const [isQuickPinModalOpen, setIsQuickPinModalOpen] = useState(false);
+
+  // Shortcut Listener for Quick Pin / Lock
+  useEffect(() => {
+    const handleShortcutAction = (e: Event) => {
+      const customEvent = e as CustomEvent<{ action: string; key: string }>;
+      const action = customEvent.detail?.action;
+      if (action === 'quick_lock') {
+        setIsQuickPinModalOpen(true);
+      }
+    };
+
+    window.addEventListener('pos-shortcut-action', handleShortcutAction);
+    return () => {
+      window.removeEventListener('pos-shortcut-action', handleShortcutAction);
+    };
+  }, []);
+
+  const getShortcutKeyForAction = (actionId: string): string | null => {
+    const activeMap = { ...DEFAULT_SHORTCUT_KEYS, ...(settings.shortcutKeys || {}) };
+    const entry = Object.entries(activeMap).find(([_, act]) => act === actionId);
+    return entry ? entry[0] : null;
+  };
 
   // Navigation tabs with permissions check:
   const allTabs = [
@@ -104,11 +130,12 @@ export const Header: React.FC = () => {
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
+                const shortcutKey = getShortcutKeyForAction(`open_${tab.id}`);
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 space-x-reverse px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex items-center space-x-2 space-x-reverse px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       isActive
                         ? 'bg-amber-600 text-white shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/60'
@@ -116,6 +143,15 @@ export const Header: React.FC = () => {
                   >
                     <Icon className="w-4 h-4" />
                     <span>{tab.label}</span>
+                    {shortcutKey && (
+                      <span className={`text-[9px] font-mono px-1 py-0.2 rounded border font-black ${
+                        isActive
+                          ? 'bg-amber-700/60 text-amber-100 border-amber-400/50'
+                          : 'bg-stone-900 text-amber-400 border-stone-800'
+                      }`}>
+                        {shortcutKey}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -308,6 +344,8 @@ export const Header: React.FC = () => {
           })}
         </div>
       </header>
+
+      <QuickPinModal isOpen={isQuickPinModalOpen} onClose={() => setIsQuickPinModalOpen(false)} />
     </>
   );
 };

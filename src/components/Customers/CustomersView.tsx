@@ -46,6 +46,27 @@ export const CustomersView: React.FC = () => {
   const [selectedAccountCust, setSelectedAccountCust] = useState<Customer | null>(null);
   const [payModalCustId, setPayModalCustId] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    const handleShortcutAction = (e: Event) => {
+      const customEvent = e as CustomEvent<{ action: string; key: string }>;
+      const action = customEvent.detail?.action;
+
+      if (action === 'pay_installment') {
+        const indebtedCust = customers.find((c) => (c.currentDebt || 0) > 0);
+        if (indebtedCust) {
+          setPayModalCustId(indebtedCust.id);
+        } else {
+          setDebtFilter('indebted');
+        }
+      }
+    };
+
+    window.addEventListener('pos-shortcut-action', handleShortcutAction);
+    return () => {
+      window.removeEventListener('pos-shortcut-action', handleShortcutAction);
+    };
+  }, [customers]);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -128,11 +149,11 @@ export const CustomersView: React.FC = () => {
     const q = search.trim().toLowerCase();
     const matchSearch =
       !q ||
-      c.name.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      c.phone.includes(q) ||
-      (c.address && c.address.toLowerCase().includes(q)) ||
-      (c.notes && c.notes.toLowerCase().includes(q));
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (c.phone || '').includes(q) ||
+      (c.address || '').toLowerCase().includes(q) ||
+      (c.notes || '').toLowerCase().includes(q);
 
     if (!matchSearch) return false;
 

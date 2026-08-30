@@ -18,8 +18,10 @@ import {
   MapPin,
   Edit,
   Save,
-  User
+  User,
+  Printer
 } from 'lucide-react';
+import { ReceiptModal } from '../Register/ReceiptModal';
 
 interface CustomerAccountModalProps {
   customer: Customer;
@@ -34,13 +36,20 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const { transactions, payCustomerDebt, currentAssociate, updateCustomer } = usePOS();
+  const { transactions, payCustomerDebt, currentAssociate, associates, updateCustomer } = usePOS();
   const [activeTab, setActiveTab] = useState<ActiveSubTab>('overview');
   
   // Basic Info States (Name, Phone, Email)
   const [customerName, setCustomerName] = useState<string>(customer.name || '');
   const [customerPhone, setCustomerPhone] = useState<string>(customer.phone || '');
   const [customerEmail, setCustomerEmail] = useState<string>(customer.email || '');
+  const [selectedAssociateId, setSelectedAssociateId] = useState<string>(currentAssociate?.id || '');
+
+  React.useEffect(() => {
+    if (currentAssociate?.id && !selectedAssociateId) {
+      setSelectedAssociateId(currentAssociate.id);
+    }
+  }, [currentAssociate]);
   const [isEditingBasicInfo, setIsEditingBasicInfo] = useState<boolean>(false);
   const [basicInfoSuccess, setBasicInfoSuccess] = useState<string>('');
 
@@ -75,6 +84,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentSuccess, setPaymentSuccess] = useState<string>('');
   const [paymentError, setPaymentError] = useState<string>('');
+  const [completedTx, setCompletedTx] = useState<Transaction | null>(null);
 
   if (!isOpen) return null;
 
@@ -127,7 +137,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
     }
 
     try {
-      await payCustomerDebt(customer.id, amt, paymentMethod, paymentNotes);
+      const newTx = await payCustomerDebt(
+        customer.id,
+        amt,
+        paymentMethod,
+        paymentNotes,
+        selectedAssociateId || currentAssociate?.id
+      );
+      setCompletedTx(newTx);
       setPaymentSuccess(`تم تسجيل دفعة السداد بقيمة ${amt.toLocaleString()} ج.م بنجاح وتخفيض مديونية العميل!`);
       setPaymentAmount('');
       setPaymentNotes('');
@@ -592,9 +609,21 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   </div>
 
                   {paymentSuccess && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl p-3 mb-4 flex items-start space-x-2 space-x-reverse">
-                      <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span>{paymentSuccess}</span>
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl p-3 mb-4 flex items-center justify-between gap-2">
+                      <div className="flex items-start space-x-2 space-x-reverse">
+                        <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{paymentSuccess}</span>
+                      </div>
+                      {completedTx && (
+                        <button
+                          type="button"
+                          onClick={() => setCompletedTx(completedTx)}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse shrink-0"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>طباعة الإيصال</span>
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -649,6 +678,22 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                             </button>
                           </div>
                         </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-stone-400 mb-1 font-medium text-amber-400">البائع المستلم / كود البائع</label>
+                        <select
+                          value={selectedAssociateId}
+                          onChange={(e) => setSelectedAssociateId(e.target.value)}
+                          className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 font-bold focus:border-amber-500 focus:outline-none"
+                          required
+                        >
+                          {associates.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name} ({a.role}) - كود البائع: {a.pin}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div>
@@ -741,21 +786,32 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                         </div>
 
                         {/* Totals & Debt info */}
-                        <div className="text-left font-mono shrink-0 flex flex-col justify-end">
-                          <div className="text-stone-300 font-extrabold text-sm mb-1">
-                            {tx.grandTotal.toLocaleString()} ج.م
+                        <div className="text-left font-mono shrink-0 flex flex-col justify-between items-end gap-2">
+                          <div>
+                            <div className="text-stone-300 font-extrabold text-sm mb-1">
+                              {tx.grandTotal.toLocaleString()} ج.م
+                            </div>
+                            
+                            {tx.amountDeferred !== undefined && tx.amountDeferred > 0 && (
+                              <div className="text-[10px] text-rose-400 font-bold bg-rose-500/5 border border-rose-500/10 px-1.5 py-0.5 rounded">
+                                مرحل آجل: {tx.amountDeferred.toLocaleString()} ج.م
+                              </div>
+                            )}
+                            {tx.amountPaid !== undefined && tx.amountPaid > 0 && (
+                              <div className="text-[10px] text-emerald-400 mt-0.5">
+                                مدفوع كاشير: {tx.amountPaid.toLocaleString()} ج.م
+                              </div>
+                            )}
                           </div>
                           
-                          {tx.amountDeferred !== undefined && tx.amountDeferred > 0 && (
-                            <div className="text-[10px] text-rose-400 font-bold bg-rose-500/5 border border-rose-500/10 px-1.5 py-0.5 rounded">
-                              مرحل آجل: {tx.amountDeferred.toLocaleString()} ج.م
-                            </div>
-                          )}
-                          {tx.amountPaid !== undefined && tx.amountPaid > 0 && (
-                            <div className="text-[10px] text-emerald-400 mt-0.5">
-                              مدفوع كاشير: {tx.amountPaid.toLocaleString()} ج.م
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCompletedTx(tx)}
+                            className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>طباعة الفاتورة</span>
+                          </button>
                         </div>
                       </div>
                     );
@@ -779,7 +835,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                     return (
                       <div 
                         key={p.id && p.id !== 'null' ? p.id : `pmt_${idx}`}
-                        className="bg-stone-950 border border-stone-800/80 rounded-2xl p-4 hover:border-stone-700 transition-all text-xs flex items-center justify-between"
+                        className="bg-stone-950 border border-stone-800/80 rounded-2xl p-4 hover:border-stone-700 transition-all text-xs flex items-center justify-between gap-3"
                       >
                         <div className="space-y-1">
                           <div className="flex items-center space-x-2 space-x-reverse">
@@ -803,11 +859,19 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                           )}
                         </div>
 
-                        <div className="text-left font-mono">
+                        <div className="text-left font-mono flex flex-col items-end gap-1.5 shrink-0">
                           <div className="text-emerald-400 font-extrabold text-base">
                             + {Math.abs(p.grandTotal).toLocaleString()} ج.م
                           </div>
                           <span className="text-[10px] text-stone-500">طريقة السداد: {p.paymentMethod}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCompletedTx(p)}
+                            className="px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse mt-1"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>طباعة إيصال السداد</span>
+                          </button>
                         </div>
                       </div>
                     );
@@ -820,6 +884,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         </div>
 
       </div>
+
+      {/* Receipt Printable Modal */}
+      {completedTx && (
+        <ReceiptModal
+          transaction={completedTx}
+          onClose={() => setCompletedTx(null)}
+        />
+      )}
     </div>
   );
 };

@@ -2,6 +2,12 @@ import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { getSupabaseKeys } from '../../lib/supabase';
 import {
+  FUNCTION_KEYS_LIST,
+  DEFAULT_SHORTCUT_KEYS,
+  SHORTCUT_ACTION_LABELS,
+} from '../../data/initialData';
+import { ShortcutActionId } from '../../types';
+import {
   Sun,
   Moon,
   Percent,
@@ -16,6 +22,8 @@ import {
   Sliders,
   Sparkles,
   Database,
+  Keyboard,
+  Command,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -184,6 +192,34 @@ export const SettingsView: React.FC = () => {
         [key]: value,
       },
     }));
+  };
+
+  // 8. Keyboard Shortcuts (F1 - F12) Handlers
+  const activeShortcutMap = {
+    ...DEFAULT_SHORTCUT_KEYS,
+    ...(settings.shortcutKeys || {}),
+  };
+
+  const handleShortcutKeyChange = (key: string, actionId: ShortcutActionId) => {
+    updateSettings((prev) => ({
+      ...prev,
+      shortcutKeys: {
+        ...DEFAULT_SHORTCUT_KEYS,
+        ...(prev.shortcutKeys || {}),
+        [key]: actionId,
+      },
+    }));
+    triggerSuccess(`تم حفظ اختصار الزر ${key}: "${SHORTCUT_ACTION_LABELS[actionId]?.label || actionId}"`);
+  };
+
+  const handleResetShortcuts = () => {
+    if (window.confirm('هل أنت متأكد من إعادة تعيين جميع مفاتيح الاختصارات F1-F12 للإعدادات الافتراضية؟')) {
+      updateSettings((prev) => ({
+        ...prev,
+        shortcutKeys: DEFAULT_SHORTCUT_KEYS,
+      }));
+      triggerSuccess('تمت إعادة تعيين مفاتيح الاختصارات للافتراضية بنجاح.');
+    }
   };
 
   return (
@@ -589,6 +625,74 @@ export const SettingsView: React.FC = () => {
 
         {/* LEFT COLUMN: Profit Ratios & Categories */}
         <div className="lg:col-span-2 space-y-6">
+          
+          {/* SECTION: Custom Keyboard Shortcuts F1 - F12 */}
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-stone-800">
+              <div>
+                <h2 className="text-sm font-black text-amber-500 flex items-center space-x-2 space-x-reverse">
+                  <Keyboard className="w-4 h-4 text-amber-500" />
+                  <span>تخصيص اختصارات لوحة المفاتيح (F1 - F12)</span>
+                </h2>
+                <p className="text-[11px] text-stone-400 mt-1 leading-relaxed">
+                  يمكنك تحديد وظيفة كل زر من أزرار (F1 إلى F12) لسرعة إنجاز الفواتير، الدفع السريع، تسديد القسط، تسجيل المصروف، أو التنقل المباشر.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleResetShortcuts}
+                className="px-3 py-1.5 bg-stone-950 border border-stone-800 hover:border-amber-500/50 text-stone-300 hover:text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                <span>إعادة الافتراضي</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {FUNCTION_KEYS_LIST.map((keyName) => {
+                const currentAction = activeShortcutMap[keyName] || 'none';
+                const actionInfo = SHORTCUT_ACTION_LABELS[currentAction];
+
+                return (
+                  <div
+                    key={keyName}
+                    className="bg-stone-950/80 border border-stone-800 hover:border-amber-500/40 p-3 rounded-xl transition-all flex flex-col justify-between space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2 space-x-reverse">
+                        <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-black text-xs rounded-lg shadow-sm">
+                          {keyName}
+                        </span>
+                        <span className="text-xs font-bold text-stone-200">
+                          {actionInfo?.label || 'غير مفعّل'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <select
+                        value={currentAction}
+                        onChange={(e) => handleShortcutKeyChange(keyName, e.target.value as ShortcutActionId)}
+                        className="w-full bg-stone-900 border border-stone-800 focus:border-amber-500 text-stone-100 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none"
+                      >
+                        {(Object.keys(SHORTCUT_ACTION_LABELS) as ShortcutActionId[]).map((actId) => (
+                          <option key={`${keyName}_${actId}`} value={actId}>
+                            {SHORTCUT_ACTION_LABELS[actId].label}
+                          </option>
+                        ))}
+                      </select>
+                      {actionInfo?.description && (
+                        <p className="text-[10px] text-stone-500 mt-1.5 leading-tight mr-0.5">
+                          {actionInfo.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           
           {/* SECTION 3: Add/Manage Categories */}
           <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md">

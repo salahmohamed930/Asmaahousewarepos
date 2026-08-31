@@ -758,9 +758,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCustomer = async (custData: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>): Promise<Customer> => {
+    const numId = String(Math.floor(Date.now() % 1000000000) + Math.floor(Math.random() * 1000));
     const newCustomer: Customer = {
       ...custData,
-      id: `cust_${Date.now()}`,
+      id: numId,
       totalSpent: 0,
       loyaltyPoints: 50,
     };
@@ -770,9 +771,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       alert(`خطأ: ${msg}`);
       throw new Error(msg);
     }
-    setSelectedCustomer(newCustomer);
+    const savedCustomer = res.data || newCustomer;
+    setSelectedCustomer(savedCustomer);
     await loadFromSupabase();
-    return newCustomer;
+    return savedCustomer;
   };
 
   const updateCustomer = async (cust: Customer) => {

@@ -217,6 +217,36 @@ export function mapProductToDbPayload(product: Product): any {
   return payload;
 }
 
+export function toSafeDbId(id: any): number | string | null {
+  if (id === null || id === undefined || id === '' || id === 'null' || id === 'undefined') {
+    return null;
+  }
+  const str = String(id).trim();
+  if (!str) return null;
+
+  // Pure digits check
+  if (/^\d+$/.test(str)) {
+    const num = Number(str);
+    if (!isNaN(num)) {
+      if (num > 2147483647) {
+        return Number(str.slice(-9));
+      }
+      return num;
+    }
+  }
+
+  // String with non-digits like "cust_1788218330932" or "supp_99"
+  const digits = str.replace(/\D/g, '');
+  if (digits.length > 0) {
+    const num = Number(digits.slice(-9));
+    if (!isNaN(num) && num > 0) {
+      return num;
+    }
+  }
+
+  return str;
+}
+
 export function mapDbCustomerToCustomer(c: any): Customer {
   const safeId = (c.id !== null && c.id !== undefined && String(c.id) !== 'null' && String(c.id) !== 'undefined')
     ? String(c.id)
@@ -242,8 +272,8 @@ export function mapDbCustomerToCustomer(c: any): Customer {
 }
 
 export function mapCustomerToDbPayload(customer: Customer): any {
-  return {
-    id: customer.id,
+  const safeId = toSafeDbId(customer.id);
+  const payload: any = {
     name: customer.name,
     phone: customer.phone || '',
     email: customer.email || '',
@@ -258,6 +288,12 @@ export function mapCustomerToDbPayload(customer: Customer): any {
     monthly_installment_amount: customer.monthlyInstallmentAmount || 0,
     updated_at: new Date().toISOString(),
   };
+
+  if (safeId !== null && safeId !== undefined) {
+    payload.id = safeId;
+  }
+
+  return payload;
 }
 
 export function mapDbSupplierToSupplier(s: any): Supplier {
@@ -282,8 +318,8 @@ export function mapDbSupplierToSupplier(s: any): Supplier {
 }
 
 export function mapSupplierToDbPayload(supplier: Supplier): any {
-  return {
-    id: supplier.id,
+  const safeId = toSafeDbId(supplier.id);
+  const payload: any = {
     name: supplier.name,
     company_name: supplier.companyName || '',
     phone: supplier.phone || '',
@@ -295,6 +331,12 @@ export function mapSupplierToDbPayload(supplier: Supplier): any {
     tax_number: supplier.taxNumber || '',
     updated_at: new Date().toISOString(),
   };
+
+  if (safeId !== null && safeId !== undefined) {
+    payload.id = safeId;
+  }
+
+  return payload;
 }
 
 export function mapDbSupplierTxToSupplierTx(t: any): SupplierTransaction {
@@ -317,9 +359,10 @@ export function mapDbSupplierTxToSupplierTx(t: any): SupplierTransaction {
 }
 
 export function mapSupplierTxToDbPayload(tx: SupplierTransaction): any {
-  return {
-    id: tx.id,
-    supplier_id: tx.supplierId,
+  const safeId = toSafeDbId(tx.id);
+  const safeSuppId = toSafeDbId(tx.supplierId);
+  const payload: any = {
+    supplier_id: safeSuppId,
     supplier_name: tx.supplierName,
     type: tx.type,
     amount: tx.amount,
@@ -329,6 +372,12 @@ export function mapSupplierTxToDbPayload(tx: SupplierTransaction): any {
     notes: tx.notes || '',
     associate_name: tx.associateName || '',
   };
+
+  if (safeId !== null && safeId !== undefined) {
+    payload.id = safeId;
+  }
+
+  return payload;
 }
 
 export function mapDbExpenseToExpense(e: any): POSExpense {
@@ -352,19 +401,25 @@ export function mapDbExpenseToExpense(e: any): POSExpense {
 }
 
 export function mapExpenseToDbPayload(expense: POSExpense): any {
-  return {
-    id: expense.id,
+  const safeId = toSafeDbId(expense.id);
+  const payload: any = {
     amount: expense.amount,
     category: expense.category,
     description: expense.description || '',
     timestamp: expense.timestamp || new Date().toISOString(),
-    associate_id: expense.associateId || null,
+    associate_id: toSafeDbId(expense.associateId),
     associate_name: expense.associateName || null,
-    linked_supplier_id: expense.linkedSupplierId || null,
+    linked_supplier_id: toSafeDbId(expense.linkedSupplierId),
     linked_supplier_name: expense.linkedSupplierName || null,
-    linked_associate_id: expense.linkedAssociateId || null,
+    linked_associate_id: toSafeDbId(expense.linkedAssociateId),
     linked_associate_name: expense.linkedAssociateName || null,
   };
+
+  if (safeId !== null && safeId !== undefined) {
+    payload.id = safeId;
+  }
+
+  return payload;
 }
 
 export function mapDbAssociateToAssociate(a: any): Associate {
@@ -634,7 +689,8 @@ export async function updateCustomerInSupabase(customer: Customer): Promise<{ su
   console.log('[SUPABASE] Updating customer:', customer.id);
   try {
     const payload = mapCustomerToDbPayload(customer);
-    const { data, error } = await supabase.from('customers').update(payload).eq('id', customer.id).select().single();
+    const targetId = payload.id || toSafeDbId(customer.id) || customer.id;
+    const { data, error } = await supabase.from('customers').update(payload).eq('id', targetId).select().single();
     if (error) {
       const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
       if (upsertErr) {
@@ -653,7 +709,8 @@ export async function updateCustomerInSupabase(customer: Customer): Promise<{ su
 export async function deleteCustomerFromSupabase(customerId: string): Promise<{ success: boolean; error?: any }> {
   console.log('[SUPABASE] Deleting customer:', customerId);
   try {
-    const { error } = await supabase.from('customers').delete().eq('id', customerId);
+    const targetId = toSafeDbId(customerId) || customerId;
+    const { error } = await supabase.from('customers').delete().eq('id', targetId);
     if (error) {
       console.error('[SUPABASE ERROR] deleteCustomerFromSupabase:', error);
       return { success: false, error };
@@ -872,7 +929,7 @@ export async function insertTransactionToSupabase(transaction: Transaction): Pro
       grand_total: transaction.grandTotal,
       payment_method: transaction.paymentMethod,
       payment_details: transaction.paymentDetails || null,
-      customer_id: transaction.customerId || null,
+      customer_id: toSafeDbId(transaction.customerId),
       customer_name: transaction.customerName || null,
       primary_associate_id: transaction.primaryAssociateId,
       primary_associate_name: transaction.primaryAssociateName,

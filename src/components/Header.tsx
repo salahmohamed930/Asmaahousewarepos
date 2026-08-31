@@ -121,7 +121,6 @@ export const Header: React.FC = () => {
                     أسماء للأدوات المنزلية
                   </span>
                 </div>
-                <p className="text-[11px] text-stone-400">نظام إدارة المبيعات والفواتير ونقاط البيع</p>
               </div>
             </div>
 

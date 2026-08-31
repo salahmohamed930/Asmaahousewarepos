@@ -904,6 +904,7 @@ export const RegisterView: React.FC = () => {
               <div className="flex items-center justify-between gap-2 border-b border-stone-800/80 pb-2">
                 <button
                   onClick={() => setViewMode('history')}
+                  style={{ marginLeft: '550px', paddingLeft: '7px' }}
                   className="px-2.5 py-1.5 bg-stone-800 hover:bg-amber-600 text-stone-200 hover:text-white rounded-xl text-[11px] font-bold flex items-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-sm"
                 >
                   <ArrowRight className="w-3.5 h-3.5 text-amber-400" />

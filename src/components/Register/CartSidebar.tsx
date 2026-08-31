@@ -46,6 +46,8 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     activeHeldTransactionId,
     transactions,
     hasPermission,
+    editingTransaction,
+    cancelEditingTransaction,
   } = usePOS();
 
   const canApplyDiscount = hasPermission('apply_discount');
@@ -575,7 +577,26 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             </div>
           </div>
 
-          {activeHeldTransactionId && (
+          {editingTransaction && (
+            <div className="p-2 bg-amber-950/90 border border-amber-600/80 rounded-xl flex items-center justify-between text-xs text-amber-200 shadow-md">
+              <div className="flex items-center space-x-1.5 space-x-reverse font-bold text-[11px]">
+                <span className="text-amber-400">✏️</span>
+                <span>
+                  تعديل الفاتورة رقم #{editingTransaction.receiptNumber}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={cancelEditingTransaction}
+                className="text-[10px] text-rose-400 hover:text-rose-300 underline font-bold"
+                title="إلغاء التعديل"
+              >
+                إلغاء التعديل
+              </button>
+            </div>
+          )}
+
+          {activeHeldTransactionId && !editingTransaction && (
             <div className="p-2 bg-amber-950/80 border border-amber-800/80 rounded-xl flex items-center justify-between text-xs text-amber-200 animate-pulse">
               <div className="flex items-center space-x-1.5 space-x-reverse font-bold text-[11px]">
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -640,7 +661,13 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
               className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:hover:bg-amber-600 text-white rounded-xl font-extrabold text-xs shadow-md shadow-amber-950 flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-[0.99]"
             >
               <CreditCard className="w-3.5 h-3.5" />
-              <span>{cart.some((item) => item.quantity < 0) ? `إتمام المرتجع وصرف المبلغ (${grandTotal.toLocaleString()} ج.م)` : `إتمام الفاتورة والدفع (${grandTotal.toLocaleString()} ج.م)`}</span>
+              <span>
+                {editingTransaction
+                  ? `حفظ تعديلات الفاتورة (${grandTotal.toLocaleString()} ج.م)`
+                  : cart.some((item) => item.quantity < 0)
+                  ? `إتمام المرتجع وصرف المبلغ (${grandTotal.toLocaleString()} ج.م)`
+                  : `إتمام الفاتورة والدفع (${grandTotal.toLocaleString()} ج.م)`}
+              </span>
             </button>
           </div>
 

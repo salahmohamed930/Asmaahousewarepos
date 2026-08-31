@@ -136,6 +136,7 @@ export interface TransactionCommission {
 export interface TransactionItem {
   productId: string;
   productName: string;
+  productBarcode?: string;
   sku: string;
   quantity: number;
   priceTier: PriceTier;
@@ -144,6 +145,7 @@ export interface TransactionItem {
   discountAmount?: number;
   discountPercent?: number;
   assignedAssociateId?: string;
+  assignedAssociateName?: string;
 }
 
 export interface SplitPaymentItem {

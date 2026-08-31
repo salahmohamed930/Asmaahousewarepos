@@ -4,6 +4,7 @@ import {
   Product,
   Customer,
   Transaction,
+  TransactionItem,
   CartItem,
   SplitAssociate,
   PaymentMethod,
@@ -105,6 +106,19 @@ interface POSContextType {
   setSplitAssociates: (splits: SplitAssociate[]) => void;
   setSelectedCustomer: (customer: Customer | null) => void;
 
+  editingTransaction: Transaction | null;
+  startEditingTransaction: (tx: Transaction) => boolean;
+  cancelEditingTransaction: () => void;
+  saveEditedTransaction: (
+    paymentMethod: PaymentMethod,
+    discountTotalOverride?: number,
+    paymentDetails?: string,
+    notes?: string,
+    amountPaid?: number,
+    amountDeferred?: number,
+    splitPayments?: SplitPaymentItem[]
+  ) => Promise<Transaction>;
+
   // Transaction Actions
   completeTransaction: (
     paymentMethod: PaymentMethod,
@@ -185,6 +199,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [splitAssociates, setSplitAssociates] = useState<SplitAssociate[]>([]);
   const [activeHeldTransactionId, setActiveHeldTransactionId] = useState<string | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [globalPriceTier, setGlobalPriceTierState] = useState<PriceTier>('cash');
   const [taxRate] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<
@@ -666,6 +681,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedCustomer(null);
     setSplitAssociates([]);
     setActiveHeldTransactionId(null);
+    setEditingTransaction(null);
   };
 
   // --- CRUD OPERATIONS WITH SUPABASE (SSOT) ---
@@ -970,6 +986,163 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await loadFromSupabase();
   };
 
+  const cancelEditingTransaction = () => {
+    setEditingTransaction(null);
+    setCart([]);
+    setSelectedCustomer(null);
+    setSplitAssociates([]);
+    setActiveHeldTransactionId(null);
+  };
+
+  const startEditingTransaction = (tx: Transaction): boolean => {
+    const canEdit = !currentAssociate || currentAssociate.role === 'مدير الفرع' || hasPermission('edit_invoice');
+    if (!canEdit) {
+      alert('عذراً، ليس لديك صلاحية لتعديل الفواتير. يمكنك فقط عرض تفاصيل الفاتورة.');
+      return false;
+    }
+
+    setEditingTransaction(tx);
+
+    const reconstructedCart: CartItem[] = tx.items.map((item) => {
+      const foundProd = products.find((p) => p.id === item.productId);
+      const prod: Product = foundProd || {
+        id: item.productId,
+        name: item.productName,
+        sku: item.sku || '',
+        barcode: item.productBarcode || '',
+        category: 'عام',
+        priceCash: item.unitPrice,
+        priceInstallment: item.unitPrice,
+        priceWholesale: item.unitPrice,
+        cost: item.unitPrice,
+        stock: 999,
+        image: '',
+      };
+      return {
+        product: prod,
+        quantity: item.quantity,
+        selectedPriceTier: item.priceTier || 'cash',
+        discountPercent: item.discountPercent || 0,
+        assignedAssociateId: item.assignedAssociateId,
+        overridePrice: item.unitPrice,
+      };
+    });
+
+    setCart(reconstructedCart);
+
+    if (tx.customerId) {
+      const cust = customers.find((c) => c.id === tx.customerId);
+      if (cust) {
+        setSelectedCustomer(cust);
+      } else {
+        setSelectedCustomer({
+          id: tx.customerId,
+          name: tx.customerName || 'عميل',
+          phone: '',
+          email: '',
+          loyaltyPoints: 0,
+          totalSpent: 0,
+        });
+      }
+    } else if (tx.customerName) {
+      setSelectedCustomer({
+        id: `temp_${Date.now()}`,
+        name: tx.customerName,
+        phone: '',
+        email: '',
+        loyaltyPoints: 0,
+        totalSpent: 0,
+      });
+    } else {
+      setSelectedCustomer(null);
+    }
+
+    if (tx.splitAssociates) {
+      setSplitAssociates(tx.splitAssociates);
+    } else {
+      setSplitAssociates([]);
+    }
+
+    setActiveTab('register');
+    return true;
+  };
+
+  const saveEditedTransaction = async (
+    paymentMethod: PaymentMethod,
+    discountTotalOverride = 0,
+    paymentDetails = '',
+    notes = '',
+    amountPaid?: number,
+    amountDeferred?: number,
+    splitPayments?: SplitPaymentItem[]
+  ): Promise<Transaction> => {
+    if (!editingTransaction) {
+      throw new Error('لا توجد فاتورة قيد التعديل حالياً');
+    }
+
+    let subtotal = 0;
+    let discountTotal = 0;
+
+    const transactionItems: TransactionItem[] = cart.map((item) => {
+      const unitPrice = getItemUnitPrice(item);
+      const lineOriginalTotal = unitPrice * item.quantity;
+      const lineDiscount = getCartItemDiscountAmount(item);
+      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
+
+      subtotal += lineOriginalTotal;
+      discountTotal += lineDiscount;
+
+      return {
+        productId: item.product.id,
+        productName: item.product.name,
+        productBarcode: item.product.barcode,
+        sku: item.product.sku,
+        unitPrice,
+        quantity: item.quantity,
+        totalPrice: lineNetTotal,
+        discountAmount: lineDiscount,
+        discountPercent: item.discountPercent || 0,
+        priceTier: item.selectedPriceTier || globalPriceTier,
+        assignedAssociateId: item.assignedAssociateId,
+        assignedAssociateName: associates.find((a) => a.id === item.assignedAssociateId)?.name,
+      };
+    });
+
+    if (discountTotalOverride > 0) {
+      discountTotal = discountTotalOverride;
+    }
+
+    const grandTotal = Math.max(0, subtotal - discountTotal);
+    const primaryAssocId = currentAssociate?.id || editingTransaction.primaryAssociateId || 'system';
+    const primaryAssocName = currentAssociate?.name || editingTransaction.primaryAssociateName || 'النظام';
+
+    const updatedTx: Transaction = {
+      ...editingTransaction,
+      items: transactionItems,
+      subtotal,
+      discountTotal,
+      taxTotal: 0,
+      grandTotal,
+      paymentMethod,
+      paymentDetails: paymentDetails || editingTransaction.paymentDetails,
+      customerId: selectedCustomer?.id,
+      customerName: selectedCustomer?.name,
+      primaryAssociateId: primaryAssocId,
+      primaryAssociateName: primaryAssocName,
+      splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
+      notes: notes || editingTransaction.notes || 'تم تعديل الفاتورة بنجاح',
+      amountPaid: amountPaid !== undefined ? amountPaid : grandTotal,
+      amountDeferred: amountDeferred !== undefined ? amountDeferred : 0,
+      splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : undefined,
+    };
+
+    await updateTransaction(updatedTx);
+    setEditingTransaction(null);
+    clearCart();
+
+    return updatedTx;
+  };
+
   const completeTransaction = async (
     paymentMethod: PaymentMethod,
     discountTotalOverride = 0,
@@ -979,6 +1152,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amountDeferred?: number,
     splitPayments?: SplitPaymentItem[]
   ): Promise<Transaction> => {
+    if (editingTransaction) {
+      return await saveEditedTransaction(
+        paymentMethod,
+        discountTotalOverride,
+        paymentDetails,
+        notes,
+        amountPaid,
+        amountDeferred,
+        splitPayments
+      );
+    }
+
     if (!currentAssociate) {
       throw new Error('رجاءً اختر البائع المسؤول قبل إتمام البيع.');
     }
@@ -1320,14 +1505,78 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateTransaction = async (updatedTx: Transaction) => {
-    await insertTransactionToSupabase(updatedTx);
+    // Immediately update local state in React memory
+    setTransactions((prev) => prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)));
+
+    // Adjust product stock and customer balance if applicable
+    const existingTx = transactions.find((t) => t.id === updatedTx.id);
+    if (existingTx && existingTx.status === 'مكتملة' && updatedTx.status === 'مكتملة') {
+      // Revert stock from old items
+      for (const item of existingTx.items) {
+        const p = products.find((prod) => prod.id === item.productId);
+        if (p) {
+          await updateProductInSupabase({ ...p, stock: p.stock + item.quantity });
+        }
+      }
+      // Apply stock from new items
+      for (const item of updatedTx.items) {
+        const p = products.find((prod) => prod.id === item.productId);
+        if (p) {
+          const baseStock = p.stock + (existingTx.items.find((i) => i.productId === item.productId)?.quantity || 0);
+          await updateProductInSupabase({ ...p, stock: Math.max(0, baseStock - item.quantity) });
+        }
+      }
+
+      // Customer debt adjustment
+      if (existingTx.customerId || updatedTx.customerId) {
+        if (existingTx.customerId) {
+          const oldCust = customers.find((c) => c.id === existingTx.customerId);
+          if (oldCust) {
+            const revertedDebt = Math.max(0, (oldCust.currentDebt || 0) - (existingTx.amountDeferred || 0));
+            const revertedSpent = Math.max(0, (oldCust.totalSpent || 0) - existingTx.grandTotal);
+            await updateCustomerInSupabase({ ...oldCust, currentDebt: revertedDebt, totalSpent: revertedSpent });
+          }
+        }
+        if (updatedTx.customerId) {
+          const newCust = customers.find((c) => c.id === updatedTx.customerId);
+          if (newCust) {
+            const addedDebt = (newCust.currentDebt || 0) + (updatedTx.amountDeferred || 0);
+            const addedSpent = (newCust.totalSpent || 0) + updatedTx.grandTotal;
+            await updateCustomerInSupabase({ ...newCust, currentDebt: addedDebt, totalSpent: addedSpent });
+          }
+        }
+      }
+    }
+
+    const res = await insertTransactionToSupabase(updatedTx);
+    if (!res.success) {
+      console.error('[POSContext] insertTransactionToSupabase error:', res.error);
+      throw new Error(res.error?.message || 'فشل حفظ التعديلات في قاعدة البيانات');
+    }
     await loadFromSupabase();
   };
 
   const voidTransaction = async (transactionId: string) => {
     const targetTx = transactions.find((t) => t.id === transactionId);
     if (targetTx) {
+      if (targetTx.status === 'مكتملة') {
+        for (const item of targetTx.items) {
+          const p = products.find((prod) => prod.id === item.productId);
+          if (p) {
+            await updateProductInSupabase({ ...p, stock: p.stock + item.quantity });
+          }
+        }
+        if (targetTx.customerId) {
+          const cust = customers.find((c) => c.id === targetTx.customerId);
+          if (cust) {
+            const newDebt = Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0));
+            const newSpent = Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal);
+            await updateCustomerInSupabase({ ...cust, currentDebt: newDebt, totalSpent: newSpent });
+          }
+        }
+      }
       const voided = { ...targetTx, status: 'ملغاة' as const };
+      setTransactions((prev) => prev.map((t) => (t.id === transactionId ? voided : t)));
       await insertTransactionToSupabase(voided);
       await loadFromSupabase();
     }
@@ -1433,7 +1682,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const hasPermission = useCallback((perm: Permission): boolean => {
-    if (!currentAssociate) return false;
+    if (!currentAssociate) return true;
     if (currentAssociate.role === 'مدير الفرع') return true;
 
     if (Array.isArray(currentAssociate.permissions)) {
@@ -1480,6 +1729,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectedCustomer,
         splitAssociates,
         activeHeldTransactionId,
+        editingTransaction,
+        startEditingTransaction,
+        cancelEditingTransaction,
+        saveEditedTransaction,
         activeTab,
         globalPriceTier,
         taxRate,

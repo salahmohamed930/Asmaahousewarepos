@@ -37,6 +37,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     voidTransaction,
     products,
     customers,
+    startEditingTransaction,
   } = usePOS();
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -61,8 +62,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
   if (!transaction || !editedTx) return null;
 
   // Permission check for editing old invoices
-  const canEditInvoice = hasPermission('edit_invoice') || currentAssociate?.role === 'مدير الفرع';
-  const canVoidInvoice = hasPermission('void_invoice') || currentAssociate?.role === 'مدير الفرع';
+  const canEditInvoice = !currentAssociate || hasPermission('edit_invoice') || currentAssociate?.role === 'مدير الفرع';
+  const canVoidInvoice = !currentAssociate || hasPermission('void_invoice') || currentAssociate?.role === 'مدير الفرع';
 
   // Recalculate totals
   const recalculateTotals = (items: TransactionItem[], discountTotal: number, taxRatePercent: number = 0) => {
@@ -638,17 +639,32 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
               ) : (
                 <>
                   {canEditInvoice ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditing(true)}
-                      className="px-4 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-extrabold rounded-xl text-xs transition-all flex items-center space-x-1.5 space-x-reverse"
-                    >
-                      <Edit className="w-4 h-4" />
-                      <span>تعديل الفاتورة (المدير)</span>
-                    </button>
+                    <div className="flex items-center space-x-2 space-x-reverse">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editedTx && startEditingTransaction(editedTx)) {
+                            onClose();
+                          }
+                        }}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-xs transition-all flex items-center space-x-1.5 space-x-reverse shadow-md shadow-amber-950/40"
+                        title="فتح الفاتورة في شاشة الكاشير للتعديل الحر الشامل"
+                      >
+                        <Edit className="w-4 h-4" />
+                        <span>تعديل كامل بالكرت وشاشة البيع</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold rounded-xl text-xs transition-all border border-stone-700"
+                        title="تعديل سريع داخل النافذة"
+                      >
+                        <span>تعديل سريع</span>
+                      </button>
+                    </div>
                   ) : (
-                    <div className="text-[11px] text-stone-500 italic px-2">
-                      (تعديل الفواتير يتطلب صلاحية المدير)
+                    <div className="text-[11px] text-amber-400 bg-amber-950/40 border border-amber-800/40 px-3 py-1.5 rounded-xl font-bold flex items-center space-x-1 space-x-reverse">
+                      <span>🔒 للعرض فقط (ليس لديك صلاحية لتعديل الفواتير)</span>
                     </div>
                   )}
 

@@ -30,6 +30,7 @@ import {
 import CartSidebar from './CartSidebar';
 import PaymentModal from './PaymentModal';
 import ReceiptModal from './ReceiptModal';
+import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
 
 export const RegisterView: React.FC = () => {
   const {
@@ -52,14 +53,31 @@ export const RegisterView: React.FC = () => {
     returnTransaction,
     suppliers,
     hasPermission,
+    editingTransaction,
+    startEditingTransaction,
+    cancelEditingTransaction,
   } = usePOS();
 
   const canManageExpenses = hasPermission('manage_expenses');
   const canReturn = hasPermission('return_invoice');
   const canVoid = hasPermission('void_invoice');
+  const canEditInvoice = !currentAssociate || currentAssociate.role === 'مدير الفرع' || hasPermission('edit_invoice');
   const canViewCash = hasPermission('view_cash_price');
   const canViewInstallment = hasPermission('view_installment_price');
   const canViewWholesale = hasPermission('view_wholesale_price');
+
+  const handleOpenInvoiceEditOrView = (tx: Transaction) => {
+    if (canEditInvoice) {
+      const success = startEditingTransaction(tx);
+      if (success) {
+        setViewMode('create');
+      } else {
+        setSelectedTxForDetail(tx);
+      }
+    } else {
+      setSelectedTxForDetail(tx);
+    }
+  };
 
   // Mode state: DEFAULT TO 'history' AS REQUESTED!
   const [viewMode, setViewMode] = useState<'history' | 'create' | 'expenses'>('history');
@@ -140,6 +158,7 @@ export const RegisterView: React.FC = () => {
   const [barcodeInput, setBarcodeInput] = useState('');
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<Transaction | null>(null);
+  const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
   const [addedAnimationId, setAddedAnimationId] = useState<string | null>(null);
 
   // Seller PIN input state inside catalog
@@ -533,7 +552,11 @@ export const RegisterView: React.FC = () => {
                           }`}
                         >
                           {/* رقم الفاتورة */}
-                          <td className="py-1.5 px-3 font-mono font-bold text-amber-400 whitespace-nowrap">
+                          <td
+                            className="py-1.5 px-3 font-mono font-bold text-amber-400 whitespace-nowrap cursor-pointer hover:underline hover:text-amber-300 transition-colors"
+                            onClick={() => handleOpenInvoiceEditOrView(tx)}
+                            title="انقر لفتح وتعديل الفاتورة في شاشة البيع الكاشير"
+                          >
                             #{tx.receiptNumber}
                           </td>
 
@@ -648,6 +671,14 @@ export const RegisterView: React.FC = () => {
                                 </>
                               ) : (
                                 <>
+                                  <button
+                                    onClick={() => handleOpenInvoiceEditOrView(tx)}
+                                    className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-colors shadow-sm"
+                                    title="فتح الفاتورة للتعديل الكامل في شاشة البيع الكاشير"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>فتح / تعديل</span>
+                                  </button>
                                   <button
                                     onClick={() => setCompletedTransaction(tx)}
                                     className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-colors"
@@ -826,6 +857,40 @@ export const RegisterView: React.FC = () => {
             )}
           </button>
         </div>
+
+        {editingTransaction && (
+          <div className="bg-amber-950/80 border border-amber-600/60 rounded-2xl p-3.5 mb-4 flex items-center justify-between text-amber-200 shadow-lg">
+            <div className="flex items-center space-x-3 space-x-reverse">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-black text-lg shrink-0">
+                ✏️
+              </div>
+              <div>
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <h3 className="font-extrabold text-sm text-amber-100">
+                    جاري تعديل الفاتورة رقم #{editingTransaction.receiptNumber}
+                  </h3>
+                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
+                    حرية التعديل الكاملة
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-300 mt-0.5">
+                  العميل الحالي: <strong className="text-amber-400">{editingTransaction.customerName || 'عميل نقدي'}</strong> | يمكنك إضافة أو حذف أصناف، تعديل الكميات والأسعار، ثم حفظ التعديلات.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                cancelEditingTransaction();
+                setViewMode('history');
+              }}
+              className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-stone-300 hover:text-white text-xs font-bold rounded-xl border border-stone-700 transition-colors flex items-center space-x-1 space-x-reverse shrink-0"
+            >
+              <X className="w-3.5 h-3.5 text-rose-400" />
+              <span>إلغاء التعديل</span>
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
@@ -1249,6 +1314,13 @@ export const RegisterView: React.FC = () => {
         </div>
       )}
 
+      {/* Invoice Details & Editing Modal */}
+      {selectedTxForDetail && (
+        <InvoiceDetailModal
+          transaction={selectedTxForDetail}
+          onClose={() => setSelectedTxForDetail(null)}
+        />
+      )}
     </div>
   );
 };

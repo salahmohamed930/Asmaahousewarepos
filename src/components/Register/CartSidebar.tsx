@@ -631,24 +631,16 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
             {cart.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  if (!selectedCustomer) {
-                    alert('⚠️ يجب اختيار أو إضافة عميل أولاً لتعليق الفاتورة!');
-                    return;
-                  }
+                onClick={async () => {
                   try {
-                    holdCart('فاتورة معلقة للعميل');
-                    alert(activeHeldTransactionId ? '✅ تم تحديث الفاتورة المعلقة بنجاح.' : '✅ تم تعليق الفاتورة وحفظها بنجاح في القائمة.');
+                    await holdCart('فاتورة معلقة');
+                    alert(activeHeldTransactionId ? '✅ تم تحديث الفاتورة المعلقة بنجاح.' : '✅ تم تعليق الفاتورة وحفظها بنجاح.');
                   } catch (e: any) {
                     alert(`خطأ: ${e.message}`);
                   }
                 }}
-                className={`px-2.5 py-2 rounded-xl border transition-all flex items-center justify-center space-x-1 space-x-reverse font-bold text-[10px] ${
-                  selectedCustomer
-                    ? 'bg-amber-950/70 hover:bg-amber-900 border-amber-800 text-amber-300'
-                    : 'bg-stone-900/40 border-stone-800 text-stone-600 cursor-not-allowed'
-                }`}
-                title={selectedCustomer ? "تعليق الفاتورة وحفظها" : "يجب اختيار عميل أولاً لتعليق الفاتورة"}
+                className="px-2.5 py-2 rounded-xl border border-amber-800 bg-amber-950/70 hover:bg-amber-900 text-amber-300 transition-all flex items-center justify-center space-x-1 space-x-reverse font-bold text-[10px]"
+                title="تعليق الفاتورة وحفظها في قائمة الانتظار"
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>{activeHeldTransactionId ? 'تحديث المعلقة' : 'تعليق'}</span>

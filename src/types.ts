@@ -231,6 +231,7 @@ export interface PrintSettings {
 export type ShortcutActionId =
   | 'none'
   | 'open_register'
+  | 'open_new_invoice'
   | 'checkout_payment'
   | 'print_last_receipt'
   | 'pay_installment'

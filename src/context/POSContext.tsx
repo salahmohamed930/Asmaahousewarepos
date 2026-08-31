@@ -131,7 +131,8 @@ interface POSContextType {
   ) => Promise<Transaction>;
   updateTransaction: (transaction: Transaction) => Promise<void>;
   voidTransaction: (transactionId: string) => void;
-  holdCart: (notes?: string) => Promise<void>;
+  holdCart: (notes?: string) => Promise<Transaction>;
+  startNewInvoice: (notes?: string) => Promise<void>;
   restoreHeldTransaction: (transactionId: string) => void;
   deleteTransaction: (transactionId: string) => Promise<void>;
 
@@ -292,7 +293,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.log(`[POS Shortcuts] Key ${e.key} triggered action: ${actionId}`);
 
       // Handle Direct Navigation and State actions
-      if (actionId === 'open_register') {
+      if (actionId === 'open_new_invoice') {
+        startNewInvoice('فتح فاتورة جديدة عبر اختصار لوحة المفاتيح').then(() => {
+          window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
+        }).catch((err) => {
+          console.error('Error starting new invoice shortcut:', err);
+        });
+      } else if (actionId === 'open_register') {
         setActiveTab('register');
       } else if (actionId === 'open_catalog') {
         setActiveTab('catalog');
@@ -1345,14 +1352,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const holdCart = async (notes = '') => {
-    if (!selectedCustomer) {
-      throw new Error('يجب اختيار عميل أولاً لتعليق الفاتورة.');
-    }
     if (cart.length === 0) {
       throw new Error('سلة الشراء فارغة لا يمكن تعليقها.');
-    }
-    if (!currentAssociate) {
-      throw new Error('يجب اختيار البائع/الكاشير المسؤول قبل تعليق الفاتورة.');
     }
 
     let subtotal = 0;
@@ -1382,13 +1383,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
-    const primaryAssocId = currentAssociate?.id || 'system';
-    const primaryAssocName = currentAssociate?.name || 'النظام';
+    const primaryAssocId = currentAssociate?.id || associates[0]?.id || 'system';
+    const primaryAssocName = currentAssociate?.name || associates[0]?.name || 'النظام';
 
     const targetTxId = activeHeldTransactionId || `tx_held_${Date.now()}`;
     const receiptNumber = activeHeldTransactionId
       ? transactions.find((t) => t.id === activeHeldTransactionId)?.receiptNumber || `HLD-${Math.floor(1000 + Math.random() * 9000)}`
       : `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const custName = selectedCustomer?.name || 'عميل نقدي';
 
     const heldTx: Transaction = {
       id: targetTxId,
@@ -1401,12 +1404,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       grandTotal,
       paymentMethod: 'كاش',
       customerId: selectedCustomer?.id,
-      customerName: selectedCustomer?.name,
+      customerName: custName,
       primaryAssociateId: primaryAssocId,
       primaryAssociateName: primaryAssocName,
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       commissions: [],
-      notes: notes || 'فاتورة معلقة للعميل',
+      notes: notes || `فاتورة معلقة لـ ${custName}`,
       status: 'معلقة',
       originalCart: JSON.parse(JSON.stringify(cart)),
     };
@@ -1420,6 +1423,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     clearCart();
     await loadFromSupabase();
+    return heldTx;
+  };
+
+  const startNewInvoice = async (notes = '') => {
+    if (cart.length > 0) {
+      const custName = selectedCustomer?.name || 'عميل نقدي';
+      await holdCart(notes || `فاتورة معلقة تلقائياً (فتح فاتورة جديدة لـ ${custName})`);
+    } else {
+      clearCart();
+    }
+    setActiveTab('register');
   };
 
   const restoreHeldTransaction = (transactionId: string) => {
@@ -1761,6 +1775,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTransaction,
         voidTransaction,
         holdCart,
+        startNewInvoice,
         restoreHeldTransaction,
         deleteTransaction,
         clockInAssociate,

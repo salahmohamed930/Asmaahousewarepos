@@ -67,6 +67,7 @@ export const DEFAULT_SHORTCUT_KEYS: Record<string, import('../types').ShortcutAc
 export const SHORTCUT_ACTION_LABELS: Record<import('../types').ShortcutActionId, { label: string; description: string }> = {
   none: { label: 'غير مفعّل (بدون إجراء)', description: 'لا يتم تنفيذ أي إجراء عند الضغط' },
   open_register: { label: 'فتح شاشة الفواتير (الكاشير)', description: 'الانتقال فورا لنقطة البيع وتحرير فاتورة جديدة' },
+  open_new_invoice: { label: 'فتح فاتورة جديدة (مع تعليق الحالية تلقائياً)', description: 'فتح فاتورة جديدة، وتلقائياً توضع الفاتورة الحالية على الانتظار إن وجدت (سواء يوجد اسم عميل أم لا)' },
   checkout_payment: { label: 'إنهاء الفاتورة والدفع السريع', description: 'فتح نافذة الدفع لاختيار طريقة السداد وتحصيل الفاتورة' },
   print_last_receipt: { label: 'طباعة أحدث فاتورة', description: 'فتح معاينة وطباعة آخر فاتورة تم إخراجها' },
   pay_installment: { label: 'تسديد قسط / سداد حساب عميل', description: 'الانتقال للعملاء أو فتح نافذة تسديد الديون والأقساط' },

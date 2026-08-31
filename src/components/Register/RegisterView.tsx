@@ -56,6 +56,7 @@ export const RegisterView: React.FC = () => {
     editingTransaction,
     startEditingTransaction,
     cancelEditingTransaction,
+    startNewInvoice,
   } = usePOS();
 
   const canManageExpenses = hasPermission('manage_expenses');
@@ -262,7 +263,15 @@ export const RegisterView: React.FC = () => {
       const customEvent = e as CustomEvent<{ action: string; key: string }>;
       const action = customEvent.detail?.action;
 
-      if (action === 'checkout_payment') {
+      if (action === 'open_new_invoice') {
+        setViewMode('create');
+        setTimeout(() => {
+          const barcodeInput = document.getElementById('pos-barcode-input');
+          if (barcodeInput) {
+            barcodeInput.focus();
+          }
+        }, 50);
+      } else if (action === 'checkout_payment') {
         setViewMode('create');
         if (cart.length > 0) {
           setIsPaymentOpen(true);
@@ -403,7 +412,14 @@ export const RegisterView: React.FC = () => {
             
             <div className="flex items-center space-x-2 space-x-reverse w-full sm:w-auto">
               <button
-                onClick={() => setViewMode('create')}
+                onClick={async () => {
+                  try {
+                    await startNewInvoice();
+                    setViewMode('create');
+                  } catch (e: any) {
+                    alert(`خطأ: ${e.message}`);
+                  }
+                }}
                 className="flex-1 sm:flex-initial py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-md shadow-amber-950/40"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -902,14 +918,30 @@ export const RegisterView: React.FC = () => {
               
               {/* Row 1: Back to Invoices List button (Top of Catalog ONLY) & Title */}
               <div className="flex items-center justify-between gap-2 border-b border-stone-800/80 pb-2">
-                <button
-                  onClick={() => setViewMode('history')}
-                  style={{ marginLeft: '550px', paddingLeft: '7px' }}
-                  className="px-2.5 py-1.5 bg-stone-800 hover:bg-amber-600 text-stone-200 hover:text-white rounded-xl text-[11px] font-bold flex items-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-sm"
-                >
-                  <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
-                  <span>العودة للفواتير</span>
-                </button>
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <button
+                    onClick={() => setViewMode('history')}
+                    className="px-2.5 py-1.5 bg-stone-800 hover:bg-amber-600 text-stone-200 hover:text-white rounded-xl text-[11px] font-bold flex items-center space-x-1.5 space-x-reverse transition-all active:scale-95 shadow-sm"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+                    <span>العودة للفواتير</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        await startNewInvoice();
+                      } catch (e: any) {
+                        alert(`خطأ: ${e.message}`);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold flex items-center space-x-1 space-x-reverse transition-all active:scale-95 shadow-sm"
+                    title="فتح فاتورة جديدة وتلقائياً توضع الفاتورة الحالية على الانتظار"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>فاتورة جديدة</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center space-x-1.5 space-x-reverse">
                   <span className="text-[11px] font-extrabold text-amber-400 bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-lg flex items-center gap-1">

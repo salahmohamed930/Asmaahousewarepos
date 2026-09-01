@@ -213,7 +213,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         </span>
                       </div>
                       <span className="text-[9px] text-stone-400 block mt-0.5">
-                        نقاط الولاء: {selectedCustomer.loyaltyPoints} | المبيعات: {selectedCustomer.totalSpent.toLocaleString()} ج.م
+                        نقاط الولاء: {selectedCustomer.loyaltyPoints || 0} | المبيعات: {(selectedCustomer.totalSpent || 0).toLocaleString()} ج.م
                       </span>
                     </div>
                   </div>
@@ -427,8 +427,8 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                     const lineDiscount = getCartItemDiscountAmount(item);
                     const lineTotal = Math.max(0, unitPrice * item.quantity - lineDiscount);
-                    const unitPriceDisplay = canViewItemPrice ? `${unitPrice.toLocaleString()} ج.م` : '***';
-                    const lineTotalDisplay = canViewItemPrice ? `${lineTotal.toLocaleString()} ج.م` : '***';
+                    const unitPriceDisplay = canViewItemPrice ? `${(unitPrice || 0).toLocaleString()} ج.م` : '***';
+                    const lineTotalDisplay = canViewItemPrice ? `${(lineTotal || 0).toLocaleString()} ج.م` : '***';
                     const overallDiscountPercent = Math.round((lineDiscount / (unitPrice * item.quantity)) * 105) > 0 
                       ? Math.round((lineDiscount / (unitPrice * item.quantity)) * 100)
                       : 0;
@@ -556,24 +556,24 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
           <div className="space-y-1 text-[11px] text-stone-400">
             <div className="flex justify-between">
               <span>الإجمالي قبل الخصم (الأصناف: {cart.reduce((a, c) => a + c.quantity, 0)})</span>
-              <span className="font-mono text-stone-200 font-bold">{subtotal.toLocaleString()} ج.م</span>
+              <span className="font-mono text-stone-200 font-bold">{(subtotal || 0).toLocaleString()} ج.م</span>
             </div>
 
             {discountTotal > 0 && (
               <div className="flex justify-between text-emerald-400 font-bold">
                 <span>إجمالي الخصم</span>
-                <span className="font-mono">-{discountTotal.toLocaleString()} ج.م</span>
+                <span className="font-mono">-{(discountTotal || 0).toLocaleString()} ج.م</span>
               </div>
             )}
 
             <div className="flex justify-between text-stone-400">
-              <span>ضريبة القيمة المضافة ({(taxRate * 100).toFixed(0)}%)</span>
-              <span className="font-mono text-stone-200">{taxTotal.toLocaleString()} ج.م</span>
+              <span>ضريبة القيمة المضافة ({((taxRate || 0) * 100).toFixed(0)}%)</span>
+              <span className="font-mono text-stone-200">{(taxTotal || 0).toLocaleString()} ج.م</span>
             </div>
 
             <div className="flex justify-between text-base font-extrabold text-white pt-1.5 border-t border-stone-800">
               <span>{cart.some((item) => item.quantity < 0) ? 'إجمالي قيمة المرتجع المسترد' : (discountTotal > 0 ? 'الإجمالي بعد الخصم' : 'إجمالي الفاتورة')}</span>
-              <span className="font-mono text-amber-400">{grandTotal.toLocaleString()} ج.م</span>
+              <span className="font-mono text-amber-400">{(grandTotal || 0).toLocaleString()} ج.م</span>
             </div>
           </div>
 
@@ -655,10 +655,10 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
               <CreditCard className="w-3.5 h-3.5" />
               <span>
                 {editingTransaction
-                  ? `حفظ تعديلات الفاتورة (${grandTotal.toLocaleString()} ج.م)`
+                  ? `حفظ تعديلات الفاتورة (${(grandTotal || 0).toLocaleString()} ج.م)`
                   : cart.some((item) => item.quantity < 0)
-                  ? `إتمام المرتجع وصرف المبلغ (${grandTotal.toLocaleString()} ج.م)`
-                  : `إتمام الفاتورة والدفع (${grandTotal.toLocaleString()} ج.م)`}
+                  ? `إتمام المرتجع وصرف المبلغ (${(grandTotal || 0).toLocaleString()} ج.م)`
+                  : `إتمام الفاتورة والدفع (${(grandTotal || 0).toLocaleString()} ج.م)`}
               </span>
             </button>
           </div>

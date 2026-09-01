@@ -343,32 +343,32 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-stone-400">
               <span>المجموع الفرعي ({cart.reduce((a, c) => a + c.quantity, 0)} أصناف)</span>
-              <span className="font-mono text-stone-200">{subtotal.toLocaleString()} ج.م</span>
+              <span className="font-mono text-stone-200">{(subtotal || 0).toLocaleString()} ج.م</span>
             </div>
 
             {discountTotal > 0 && (
               <div className="flex justify-between text-emerald-400 font-bold">
                 <span>إجمالي الخصومات المطبقة</span>
-                <span className="font-mono">-{discountTotal.toLocaleString()} ج.م</span>
+                <span className="font-mono">-{(discountTotal || 0).toLocaleString()} ج.م</span>
               </div>
             )}
 
             <div className="flex justify-between text-stone-400">
-              <span>ضريبة القيمة المضافة ({(taxRate * 100).toFixed(0)}%)</span>
-              <span className="font-mono text-stone-200">{taxTotal.toLocaleString()} ج.م</span>
+              <span>ضريبة القيمة المضافة ({((taxRate || 0) * 100).toFixed(0)}%)</span>
+              <span className="font-mono text-stone-200">{(taxTotal || 0).toLocaleString()} ج.م</span>
             </div>
 
             {tipAmount > 0 && (
               <div className="flex justify-between text-indigo-400 font-bold">
                 <span>إضافة / مكافأة البائع</span>
-                <span className="font-mono">+{tipAmount.toLocaleString()} ج.م</span>
+                <span className="font-mono">+{(tipAmount || 0).toLocaleString()} ج.م</span>
               </div>
             )}
 
             <div className="border-t border-stone-800 pt-2.5 mt-2 flex justify-between items-baseline">
               <span className="text-sm font-bold text-white">{isReturn ? 'إجمالي قيمة المرتجع المسترد للعميل' : 'الإجمالي النهائي المطلوب'}</span>
               <span className="text-2xl font-mono font-extrabold text-amber-400">
-                {grandTotal.toLocaleString()} ج.م
+                {(grandTotal || 0).toLocaleString()} ج.م
               </span>
             </div>
           </div>
@@ -532,7 +532,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                     ? 'يجب اختيار عميل لاستخدام نقاط الولاء' 
                     : (selectedCustomer.loyaltyPoints || 0) <= 0 
                     ? 'لا يملك العميل نقاط ولاء كافية' 
-                    : `رصيد العميل: ${selectedCustomer.loyaltyPoints} نقطة (تساوي ${(selectedCustomer.loyaltyPoints * (settings.loyaltyPointValue || 0.1)).toLocaleString()} ج.م)`
+                    : `رصيد العميل: ${selectedCustomer.loyaltyPoints || 0} نقطة (تساوي ${((selectedCustomer.loyaltyPoints || 0) * (settings.loyaltyPointValue || 0.1)).toLocaleString()} ج.م)`
                 },
               ].map((m) => {
                 const Icon = m.icon;
@@ -728,7 +728,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                       <div>
                         <label className="block text-[11px] text-stone-400 mb-1">المبلغ المرحل للمديونية</label>
                         <div className="w-full bg-stone-900/50 border border-stone-800 rounded-xl px-3 py-2 text-rose-400 text-left font-mono font-bold">
-                          {deferredAmount.toLocaleString()} ج.م
+                          {(deferredAmount || 0).toLocaleString()} ج.م
                         </div>
                       </div>
                     </div>
@@ -736,7 +736,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                     <div className="text-[10px] text-stone-400 bg-stone-900 p-2 rounded-xl flex justify-between">
                       <span>المديونية المتوقعة للعميل بعد المعاملة:</span>
                       <span className="font-mono text-rose-400 font-bold">
-                        {((selectedCustomer.currentDebt || 0) + deferredAmount).toLocaleString()} ج.م
+                        {((selectedCustomer?.currentDebt || 0) + (deferredAmount || 0)).toLocaleString()} ج.م
                       </span>
                     </div>
                   </div>
@@ -766,7 +766,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                     onClick={() => handleQuickCash(amt)}
                     className="px-2.5 py-1 bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 text-xs font-mono rounded-lg"
                   >
-                    {amt.toLocaleString()} ج.م
+                    {(amt || 0).toLocaleString()} ج.م
                   </button>
                 ))}
               </div>
@@ -784,7 +784,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             <div className="flex justify-between items-center text-xs pt-1">
               <span className="text-stone-400">الباقي المستحق للعميل:</span>
               <span className="font-mono text-lg font-bold text-emerald-400">
-                {changeDue.toLocaleString()} ج.م
+                {(changeDue || 0).toLocaleString()} ج.م
               </span>
             </div>
           </div>
@@ -811,10 +811,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
               <CheckCircle2 className="w-5 h-5" />
               <span>
                 {isReturn
-                  ? `تأكيد المرتجع وصرف المبلغ المسترد (${Math.abs(grandTotal).toLocaleString()} ج.م)`
+                  ? `تأكيد المرتجع وصرف المبلغ المسترد (${Math.abs(grandTotal || 0).toLocaleString()} ج.م)`
                   : deferredAmount > 0 
-                    ? `تأكيد المعاملة (مدفوع: ${paidAmount.toLocaleString()} ج.م | آجل: ${deferredAmount.toLocaleString()} ج.م)`
-                    : `إتمام وطباعة الفاتورة (${grandTotal.toLocaleString()} ج.م)`}
+                    ? `تأكيد المعاملة (مدفوع: ${(paidAmount || 0).toLocaleString()} ج.م | آجل: ${(deferredAmount || 0).toLocaleString()} ج.م)`
+                    : `إتمام وطباعة الفاتورة (${(grandTotal || 0).toLocaleString()} ج.م)`}
               </span>
             </>
           )}

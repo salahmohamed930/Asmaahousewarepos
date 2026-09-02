@@ -29,6 +29,7 @@ import {
   checkSupabaseConnection,
   performDeltaSync,
   processPendingSyncQueue,
+  runFullSyncCycle,
 } from '../lib/supabaseSync';
 import { getSupabaseKeys } from '../lib/supabase';
 
@@ -341,12 +342,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- BACKGROUND SYNC TRIGGER ---
   const triggerBackgroundSync = useCallback(async () => {
     try {
-      // 1. Process pending outbox queue
-      await processPendingSyncQueue();
-      // 2. Perform delta sync from Supabase
-      await performDeltaSync();
-      // 3. Reload from Dexie
-      await loadFromLocal();
+      const syncResult = await runFullSyncCycle();
+      if (syncResult !== null) {
+        // Sync completed, refresh local state from Dexie.js
+        await loadFromLocal();
+      }
     } catch (err: any) {
       console.warn('[POSContext] Background sync warning:', err);
     }

@@ -77,7 +77,7 @@ if (typeof window !== 'undefined') {
       }
 
       // 2. Supabase SDK Client Test
-      const { data, error, status } = await supabase.from('customers').select('*').limit(1);
+      const { data, error, status } = await supabase.from('customers').select('id, name').limit(1);
 
       console.log('Request completed: true');
       console.log('HTTP status:', status);

@@ -530,73 +530,184 @@ async function fetchSelectiveFromSupabase(
   return { data: allRows };
 }
 
+// --- CONCURRENCY LOCK ENGINE ---
+let isSyncingLock = false;
+
+export function isSyncing(): boolean {
+  return isSyncingLock;
+}
+
+/**
+ * Executes a unified, thread-safe synchronization cycle:
+ * 1. Process pending outbox mutations (Offline writes -> Supabase)
+ * 2. Perform Delta Sync (Supabase changes -> Dexie.js)
+ * Prevents double triggering / concurrent execution loops.
+ */
+export async function runFullSyncCycle(): Promise<{
+  outboxResult: { processedCount: number; remainingCount: number };
+  deltaSyncResult: { success: boolean; syncedCounts: Record<string, number>; error?: any };
+} | null> {
+  if (isSyncingLock) {
+    console.warn('[SYNC CONCURRENCY LOCK] Synchronization cycle is already in progress. Skipping duplicate execution.');
+    return null;
+  }
+
+  isSyncingLock = true;
+  try {
+    console.log('[SYNC ENGINE] Starting thread-safe synchronization cycle...');
+    const outboxResult = await processPendingSyncQueueInternal();
+    const deltaSyncResult = await performDeltaSyncInternal();
+    return { outboxResult, deltaSyncResult };
+  } finally {
+    isSyncingLock = false;
+  }
+}
+
 /**
  * Delta Sync Mechanism:
  * Compares last_sync_timestamp and only fetches changed records from Supabase, then updates Dexie.js
+ * Handles soft-deleted records (is_deleted: true) by removing them from Dexie.js
  */
 export async function performDeltaSync(): Promise<{
   success: boolean;
   syncedCounts: Record<string, number>;
   error?: any;
 }> {
-  console.log('[SUPABASE DELTA SYNC] Starting sync cycle...');
+  if (isSyncingLock) {
+    console.warn('[SYNC CONCURRENCY LOCK] Sync cycle already running. Skipping standalone delta sync.');
+    return { success: false, syncedCounts: {} };
+  }
+  isSyncingLock = true;
+  try {
+    return await performDeltaSyncInternal();
+  } finally {
+    isSyncingLock = false;
+  }
+}
+
+async function performDeltaSyncInternal(): Promise<{
+  success: boolean;
+  syncedCounts: Record<string, number>;
+  error?: any;
+}> {
+  console.log('[SUPABASE DELTA SYNC] Starting delta sync...');
   const lastSync = await getLastSyncTimestamp();
   const nextSyncTimestamp = new Date().toISOString();
   const syncedCounts: Record<string, number> = {};
 
   try {
-    // 1. Sync Products
+    // 1. Sync Products (including soft-delete check)
     const prodRes = await fetchSelectiveFromSupabase(
       'products',
-      'id, name, sku, barcode, category, price, wholesale_price, price_installment, cost, stock_quantity, description, image, barcodes',
+      'id, name, sku, barcode, category, price, wholesale_price, price_installment, cost, stock_quantity, description, image, barcodes, is_deleted',
       lastSync
     );
     if (prodRes.data && prodRes.data.length > 0) {
-      const prods = prodRes.data.map(mapDbProductToProduct);
-      await db.products.bulkPut(prods);
-      syncedCounts.products = prods.length;
+      const activeProds: Product[] = [];
+      const deletedProdIds: string[] = [];
+
+      for (const r of prodRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const p = mapDbProductToProduct(r);
+          if (p.id) deletedProdIds.push(p.id);
+        } else {
+          activeProds.push(mapDbProductToProduct(r));
+        }
+      }
+
+      if (activeProds.length > 0) await db.products.bulkPut(activeProds);
+      if (deletedProdIds.length > 0) {
+        await db.products.bulkDelete(deletedProdIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedProdIds.length} soft-deleted products from Dexie.js`);
+      }
+      syncedCounts.products = activeProds.length;
     }
 
     // 2. Sync Customers
     const custRes = await fetchSelectiveFromSupabase(
       'customers',
-      'id, name, phone, email, address, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, current_debt, notes, monthly_installment_amount',
+      'id, name, phone, email, address, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, current_debt, notes, monthly_installment_amount, is_deleted',
       lastSync
     );
     if (custRes.data && custRes.data.length > 0) {
-      const custs = custRes.data.map(mapDbCustomerToCustomer);
-      await db.customers.bulkPut(custs);
-      syncedCounts.customers = custs.length;
+      const activeCusts: Customer[] = [];
+      const deletedCustIds: string[] = [];
+
+      for (const r of custRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const c = mapDbCustomerToCustomer(r);
+          if (c.id) deletedCustIds.push(c.id);
+        } else {
+          activeCusts.push(mapDbCustomerToCustomer(r));
+        }
+      }
+
+      if (activeCusts.length > 0) await db.customers.bulkPut(activeCusts);
+      if (deletedCustIds.length > 0) {
+        await db.customers.bulkDelete(deletedCustIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedCustIds.length} soft-deleted customers from Dexie.js`);
+      }
+      syncedCounts.customers = activeCusts.length;
     }
 
     // 3. Sync Suppliers
     const suppRes = await fetchSelectiveFromSupabase(
       'suppliers',
-      'id, name, company_name, phone, email, address, category, current_balance, notes, tax_number',
+      'id, name, company_name, phone, email, address, category, current_balance, notes, tax_number, is_deleted',
       lastSync
     );
     if (suppRes.data && suppRes.data.length > 0) {
-      const supps = suppRes.data.map(mapDbSupplierToSupplier);
-      await db.suppliers.bulkPut(supps);
-      syncedCounts.suppliers = supps.length;
+      const activeSupps: Supplier[] = [];
+      const deletedSuppIds: string[] = [];
+
+      for (const r of suppRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const s = mapDbSupplierToSupplier(r);
+          if (s.id) deletedSuppIds.push(s.id);
+        } else {
+          activeSupps.push(mapDbSupplierToSupplier(r));
+        }
+      }
+
+      if (activeSupps.length > 0) await db.suppliers.bulkPut(activeSupps);
+      if (deletedSuppIds.length > 0) {
+        await db.suppliers.bulkDelete(deletedSuppIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedSuppIds.length} soft-deleted suppliers from Dexie.js`);
+      }
+      syncedCounts.suppliers = activeSupps.length;
     }
 
     // 4. Sync Supplier Transactions
     const stxRes = await fetchSelectiveFromSupabase(
       'supplier_transactions',
-      'id, supplier_id, supplier_name, type, amount, date, reference_number, payment_method, notes, associate_name',
+      'id, supplier_id, supplier_name, type, amount, date, reference_number, payment_method, notes, associate_name, is_deleted',
       lastSync
     );
     if (stxRes.data && stxRes.data.length > 0) {
-      const stxs = stxRes.data.map(mapDbSupplierTxToSupplierTx);
-      await db.supplierTransactions.bulkPut(stxs);
-      syncedCounts.supplierTransactions = stxs.length;
+      const activeStxs: SupplierTransaction[] = [];
+      const deletedStxIds: string[] = [];
+
+      for (const r of stxRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const st = mapDbSupplierTxToSupplierTx(r);
+          if (st.id) deletedStxIds.push(st.id);
+        } else {
+          activeStxs.push(mapDbSupplierTxToSupplierTx(r));
+        }
+      }
+
+      if (activeStxs.length > 0) await db.supplierTransactions.bulkPut(activeStxs);
+      if (deletedStxIds.length > 0) {
+        await db.supplierTransactions.bulkDelete(deletedStxIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedStxIds.length} soft-deleted supplier transactions from Dexie.js`);
+      }
+      syncedCounts.supplierTransactions = activeStxs.length;
     }
 
     // 5. Sync Transactions
     const txRes = await fetchSelectiveFromSupabase(
       'transactions',
-      'id, receipt_number, timestamp, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, commissions, notes, status, amount_paid, amount_deferred, split_payments, original_cart',
+      'id, receipt_number, timestamp, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, commissions, notes, status, amount_paid, amount_deferred, split_payments, original_cart, is_deleted',
       lastSync
     );
     if (txRes.data && txRes.data.length > 0) {
@@ -619,72 +730,129 @@ export async function performDeltaSync(): Promise<{
         });
       }
 
-      const txs: Transaction[] = txRes.data.map((t: any) => {
+      const activeTxs: Transaction[] = [];
+      const deletedTxIds: string[] = [];
+
+      for (const t of txRes.data) {
         const id = String(t.id);
-        return {
-          id,
-          receiptNumber: t.receipt_number || `RCP-${id}`,
-          timestamp: t.timestamp || new Date().toISOString(),
-          items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
-          subtotal: Number(t.subtotal || 0),
-          discountTotal: Number(t.discount_total || 0),
-          taxTotal: Number(t.tax_total || 0),
-          grandTotal: Number(t.grand_total || 0),
-          paymentMethod: t.payment_method || 'كاش',
-          paymentDetails: t.payment_details || '',
-          customerId: t.customer_id || undefined,
-          customerName: t.customer_name || undefined,
-          primaryAssociateId: t.primary_associate_id || 'system',
-          primaryAssociateName: t.primary_associate_name || 'النظام',
-          splitAssociates: t.split_associates,
-          commissions: t.commissions || [],
-          notes: t.notes || '',
-          status: t.status || 'مكتملة',
-          amountPaid: Number(t.amount_paid ?? t.grand_total ?? 0),
-          amountDeferred: Number(t.amount_deferred ?? 0),
-          splitPayments: t.split_payments,
-          originalCart: t.original_cart,
-          isSynced: true,
-        };
-      });
-      await db.transactions.bulkPut(txs);
-      syncedCounts.transactions = txs.length;
+        if (t.is_deleted === true || t.is_deleted === 1 || String(t.is_deleted) === 'true') {
+          deletedTxIds.push(id);
+        } else {
+          activeTxs.push({
+            id,
+            receiptNumber: t.receipt_number || `RCP-${id}`,
+            timestamp: t.timestamp || new Date().toISOString(),
+            items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
+            subtotal: Number(t.subtotal || 0),
+            discountTotal: Number(t.discount_total || 0),
+            taxTotal: Number(t.tax_total || 0),
+            grandTotal: Number(t.grand_total || 0),
+            paymentMethod: t.payment_method || 'كاش',
+            paymentDetails: t.payment_details || '',
+            customerId: t.customer_id || undefined,
+            customerName: t.customer_name || undefined,
+            primaryAssociateId: t.primary_associate_id || 'system',
+            primaryAssociateName: t.primary_associate_name || 'النظام',
+            splitAssociates: t.split_associates,
+            commissions: t.commissions || [],
+            notes: t.notes || '',
+            status: t.status || 'مكتملة',
+            amountPaid: Number(t.amount_paid ?? t.grand_total ?? 0),
+            amountDeferred: Number(t.amount_deferred ?? 0),
+            splitPayments: t.split_payments,
+            originalCart: t.original_cart,
+            isSynced: true,
+          });
+        }
+      }
+
+      if (activeTxs.length > 0) await db.transactions.bulkPut(activeTxs);
+      if (deletedTxIds.length > 0) {
+        await db.transactions.bulkDelete(deletedTxIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedTxIds.length} soft-deleted transactions from Dexie.js`);
+      }
+      syncedCounts.transactions = activeTxs.length;
     }
 
     // 6. Sync Associates
     const assocRes = await fetchSelectiveFromSupabase(
       'associates',
-      'id, name, username, password, pin, role, email, phone, commission_rate, daily_goal, hourly_rate, avatar, advances_balance, is_clocked_in, permissions',
+      'id, name, username, password, pin, role, email, phone, commission_rate, daily_goal, hourly_rate, avatar, advances_balance, is_clocked_in, permissions, is_deleted',
       lastSync
     );
     if (assocRes.data && assocRes.data.length > 0) {
-      const assocs = assocRes.data.map(mapDbAssociateToAssociate);
-      await db.associates.bulkPut(assocs);
-      syncedCounts.associates = assocs.length;
+      const activeAssocs: Associate[] = [];
+      const deletedAssocIds: string[] = [];
+
+      for (const r of assocRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const a = mapDbAssociateToAssociate(r);
+          if (a.id) deletedAssocIds.push(a.id);
+        } else {
+          activeAssocs.push(mapDbAssociateToAssociate(r));
+        }
+      }
+
+      if (activeAssocs.length > 0) await db.associates.bulkPut(activeAssocs);
+      if (deletedAssocIds.length > 0) {
+        await db.associates.bulkDelete(deletedAssocIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedAssocIds.length} soft-deleted associates from Dexie.js`);
+      }
+      syncedCounts.associates = activeAssocs.length;
     }
 
     // 7. Sync Closed Shifts
     const shiftRes = await fetchSelectiveFromSupabase(
       'closed_shifts',
-      'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance',
+      'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance, is_deleted',
       lastSync
     );
     if (shiftRes.data && shiftRes.data.length > 0) {
-      const shifts = shiftRes.data.map(mapDbShiftToClosedShift);
-      await db.closedShifts.bulkPut(shifts);
-      syncedCounts.closedShifts = shifts.length;
+      const activeShifts: ClosedShift[] = [];
+      const deletedShiftIds: string[] = [];
+
+      for (const r of shiftRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const s = mapDbShiftToClosedShift(r);
+          if (s.id) deletedShiftIds.push(s.id);
+        } else {
+          activeShifts.push(mapDbShiftToClosedShift(r));
+        }
+      }
+
+      if (activeShifts.length > 0) await db.closedShifts.bulkPut(activeShifts);
+      if (deletedShiftIds.length > 0) {
+        await db.closedShifts.bulkDelete(deletedShiftIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedShiftIds.length} soft-deleted shifts from Dexie.js`);
+      }
+      syncedCounts.closedShifts = activeShifts.length;
     }
 
     // 8. Sync Expenses
     const expRes = await fetchSelectiveFromSupabase(
       'expenses',
-      'id, amount, category, description, timestamp, associate_id, associate_name, linked_supplier_id, linked_supplier_name, linked_associate_id, linked_associate_name',
+      'id, amount, category, description, timestamp, associate_id, associate_name, linked_supplier_id, linked_supplier_name, linked_associate_id, linked_associate_name, is_deleted',
       lastSync
     );
     if (expRes.data && expRes.data.length > 0) {
-      const exps = expRes.data.map(mapDbExpenseToExpense);
-      await db.expenses.bulkPut(exps);
-      syncedCounts.expenses = exps.length;
+      const activeExps: POSExpense[] = [];
+      const deletedExpIds: string[] = [];
+
+      for (const r of expRes.data) {
+        if (r.is_deleted === true || r.is_deleted === 1 || String(r.is_deleted) === 'true') {
+          const e = mapDbExpenseToExpense(r);
+          if (e.id) deletedExpIds.push(e.id);
+        } else {
+          activeExps.push(mapDbExpenseToExpense(r));
+        }
+      }
+
+      if (activeExps.length > 0) await db.expenses.bulkPut(activeExps);
+      if (deletedExpIds.length > 0) {
+        await db.expenses.bulkDelete(deletedExpIds);
+        console.log(`[SOFT-DELETE SYNC] Deleted ${deletedExpIds.length} soft-deleted expenses from Dexie.js`);
+      }
+      syncedCounts.expenses = activeExps.length;
     }
 
     // Update last sync timestamp
@@ -697,12 +865,32 @@ export async function performDeltaSync(): Promise<{
   }
 }
 
-// --- 3. OUTBOX QUEUE WORKER (Offline Write Engine) ---
+// --- 3. OUTBOX QUEUE WORKER (Offline Write Engine with Dead-Letter Logic) ---
 
 /**
- * Background Sync Worker that pulls items from Dexie `pendingSync` and pushes to Supabase
+ * Background Sync Worker that pulls items from Dexie `pendingSync` and pushes to Supabase.
+ * Includes Dead-Letter Queue handling:
+ * - Retries up to 5 times.
+ * - If retry_count >= 5, moves item to `syncErrors` table and removes from pending queue to prevent queue deadlocks.
  */
 export async function processPendingSyncQueue(): Promise<{
+  processedCount: number;
+  remainingCount: number;
+  error?: any;
+}> {
+  if (isSyncingLock) {
+    console.warn('[SYNC CONCURRENCY LOCK] Sync cycle already running. Skipping standalone queue processing.');
+    return { processedCount: 0, remainingCount: await db.pendingSync.count() };
+  }
+  isSyncingLock = true;
+  try {
+    return await processPendingSyncQueueInternal();
+  } finally {
+    isSyncingLock = false;
+  }
+}
+
+async function processPendingSyncQueueInternal(): Promise<{
   processedCount: number;
   remainingCount: number;
   error?: any;
@@ -716,6 +904,9 @@ export async function processPendingSyncQueue(): Promise<{
   let processedCount = 0;
 
   for (const item of pendingItems) {
+    if (!item.id) continue;
+    const currentRetry = item.retryCount || 0;
+
     try {
       let result: { success: boolean; error?: any } = { success: false };
 
@@ -781,20 +972,59 @@ export async function processPendingSyncQueue(): Promise<{
           break;
       }
 
-      if (result.success && item.id) {
+      if (result.success) {
         await db.pendingSync.delete(item.id);
         processedCount++;
       } else {
-        // If operation failed due to network, increment retry and stop processing remaining
-        if (item.id) {
-          await db.pendingSync.update(item.id, { retryCount: item.retryCount + 1 });
+        const nextRetry = currentRetry + 1;
+        const errReason = result.error?.message || String(result.error || 'Failed Supabase sync mutation');
+
+        if (nextRetry >= 5) {
+          console.warn(`[DEAD-LETTER QUEUE] Pending sync item #${item.id} (${item.tableName}:${item.operation}) failed 5 times (${errReason}). Moving to syncErrors table and skipping.`);
+          await db.syncErrors.add({
+            originalPendingId: item.id,
+            tableName: item.tableName,
+            operation: item.operation,
+            payload: item.payload,
+            failedAt: new Date().toISOString(),
+            errorReason: errReason,
+            retryCount: nextRetry,
+          });
+          await db.pendingSync.delete(item.id);
+        } else {
+          await db.pendingSync.update(item.id, { retryCount: nextRetry });
+          console.warn(`[OUTBOX WORKER] Item #${item.id} (${item.tableName}) attempt ${nextRetry}/5 failed: ${errReason}`);
+
+          // Stop processing queue if network is strictly offline
+          if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            console.warn('[OUTBOX WORKER] Device is offline. Pausing outbox queue processing.');
+            break;
+          }
         }
-        console.warn(`[OUTBOX WORKER] Failed to process queue item #${item.id} for table ${item.tableName}. Network offline?`);
-        break;
       }
-    } catch (err) {
-      console.error(`[OUTBOX WORKER] Exception processing queue item #${item.id}:`, err);
-      break;
+    } catch (err: any) {
+      const nextRetry = currentRetry + 1;
+      const errReason = err?.message || String(err);
+      console.error(`[OUTBOX WORKER] Exception processing queue item #${item.id}:`, errReason);
+
+      if (nextRetry >= 5) {
+        console.warn(`[DEAD-LETTER QUEUE] Item #${item.id} threw exception 5 times. Moving to syncErrors.`);
+        await db.syncErrors.add({
+          originalPendingId: item.id,
+          tableName: item.tableName,
+          operation: item.operation,
+          payload: item.payload,
+          failedAt: new Date().toISOString(),
+          errorReason: errReason,
+          retryCount: nextRetry,
+        });
+        await db.pendingSync.delete(item.id);
+      } else {
+        await db.pendingSync.update(item.id, { retryCount: nextRetry });
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          break;
+        }
+      }
     }
   }
 
@@ -819,7 +1049,7 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
   try {
     const payload = mapProductToDbPayload(product);
     const { data, error } = await safeSupabaseMutation(
-      async (p) => await supabase.from('products').insert([p]).select().single(),
+      async (p) => await supabase.from('products').insert([p]).select('id, name, sku').single(),
       payload
     );
     if (error) return { success: false, error };
@@ -838,7 +1068,7 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
         let query = supabase.from('products').update(p);
         if (idNum !== null) query = query.eq('id', idNum);
         else query = query.eq('name', product.name);
-        return await query.select().single();
+        return await query.select('id, name, sku').single();
       },
       payload
     );
@@ -897,9 +1127,9 @@ export async function fetchCustomersFromSupabase(): Promise<{ data: Customer[]; 
 export async function insertCustomerToSupabase(customer: Customer): Promise<{ success: boolean; data?: Customer; error?: any }> {
   try {
     const payload = mapCustomerToDbPayload(customer);
-    const { data, error } = await supabase.from('customers').insert([payload]).select().single();
+    const { data, error } = await supabase.from('customers').insert([payload]).select('id, name').single();
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
+      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select('id, name').single();
       if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbCustomerToCustomer(upsertData) };
     }
@@ -913,9 +1143,9 @@ export async function updateCustomerInSupabase(customer: Customer): Promise<{ su
   try {
     const payload = mapCustomerToDbPayload(customer);
     const targetId = payload.id || toSafeDbId(customer.id) || customer.id;
-    const { data, error } = await supabase.from('customers').update(payload).eq('id', targetId).select().single();
+    const { data, error } = await supabase.from('customers').update(payload).eq('id', targetId).select('id, name').single();
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
+      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select('id, name').single();
       if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbCustomerToCustomer(upsertData) };
     }
@@ -949,9 +1179,9 @@ export async function fetchSuppliersFromSupabase(): Promise<{ data: Supplier[]; 
 export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
   try {
     const payload = mapSupplierToDbPayload(supplier);
-    const { data, error } = await supabase.from('suppliers').insert([payload]).select().single();
+    const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name').single();
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select().single();
+      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select('id, name').single();
       if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbSupplierToSupplier(upsertData) };
     }
@@ -964,9 +1194,9 @@ export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ su
 export async function updateSupplierInSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
   try {
     const payload = mapSupplierToDbPayload(supplier);
-    const { data, error } = await supabase.from('suppliers').update(payload).eq('id', supplier.id).select().single();
+    const { data, error } = await supabase.from('suppliers').update(payload).eq('id', supplier.id).select('id, name').single();
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select().single();
+      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select('id, name').single();
       if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbSupplierToSupplier(upsertData) };
     }
@@ -1143,7 +1373,7 @@ export async function insertAssociateToSupabase(associate: Associate): Promise<{
   try {
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
-      async (p) => await supabase.from('associates').upsert([p]).select().single(),
+      async (p) => await supabase.from('associates').upsert([p]).select('id, name').single(),
       payload
     );
     if (error) return { success: false, error };
@@ -1157,12 +1387,12 @@ export async function updateAssociateInSupabase(associate: Associate): Promise<{
   try {
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
-      async (p) => await supabase.from('associates').update(p).eq('id', associate.id).select().single(),
+      async (p) => await supabase.from('associates').update(p).eq('id', associate.id).select('id, name').single(),
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
-        async (p) => await supabase.from('associates').upsert([p]).select().single(),
+        async (p) => await supabase.from('associates').upsert([p]).select('id, name').single(),
         payload
       );
       if (upsertErr) return { success: false, error: upsertErr };

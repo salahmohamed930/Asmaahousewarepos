@@ -29,6 +29,17 @@ export interface PendingSyncItem {
   retryCount: number;
 }
 
+export interface SyncErrorItem {
+  id?: number;
+  originalPendingId?: number;
+  tableName: PendingSyncItem['tableName'];
+  operation: PendingSyncItem['operation'];
+  payload: any;
+  failedAt: string;
+  errorReason: string;
+  retryCount: number;
+}
+
 export interface SyncMeta {
   key: string;
   value: string;
@@ -46,6 +57,7 @@ export class POSDatabase extends Dexie {
   discounts!: Table<ProductDiscount, string>;
   syncMeta!: Table<SyncMeta, string>;
   pendingSync!: Table<PendingSyncItem, number>;
+  syncErrors!: Table<SyncErrorItem, number>;
 
   constructor() {
     super('AsmaaPOS_LocalDB');
@@ -61,6 +73,7 @@ export class POSDatabase extends Dexie {
       discounts: 'productId, isActive, updated_at',
       syncMeta: 'key',
       pendingSync: '++id, tableName, operation, createdAt',
+      syncErrors: '++id, tableName, failedAt, retryCount',
     });
   }
 }

@@ -21,46 +21,14 @@ import {
 } from '../types';
 import { DEFAULT_ADMIN_ASSOCIATE, DEFAULT_SHORTCUT_KEYS } from '../data/initialData';
 import {
+  db,
+  addToPendingQueue,
+  getPendingSyncCount,
+} from '../lib/db';
+import {
   checkSupabaseConnection,
-  fetchProductsFromSupabase,
-  insertProductToSupabase,
-  updateProductInSupabase,
-  deleteProductFromSupabase,
-  bulkDeleteProductsFromSupabase,
-  clearAllProductsFromSupabase,
-  fetchCustomersFromSupabase,
-  insertCustomerToSupabase,
-  updateCustomerInSupabase,
-  deleteCustomerFromSupabase,
-  fetchSuppliersFromSupabase,
-  insertSupplierToSupabase,
-  updateSupplierInSupabase,
-  deleteSupplierFromSupabase,
-  fetchSupplierTransactionsFromSupabase,
-  insertSupplierTransactionToSupabase,
-  fetchTransactionsFromSupabase,
-  insertTransactionToSupabase,
-  deleteTransactionFromSupabase,
-  fetchAssociatesFromSupabase,
-  insertAssociateToSupabase,
-  updateAssociateInSupabase,
-  deleteAssociateFromSupabase,
-  fetchClosedShiftsFromSupabase,
-  insertClosedShiftToSupabase,
-  fetchExpensesFromSupabase,
-  insertExpenseToSupabase,
-  deleteExpenseFromSupabase,
-  fetchDiscountsFromSupabase,
-  insertDiscountToSupabase,
-  deleteDiscountFromSupabase,
-  syncProductToSupabase,
-  syncCustomerToSupabase,
-  syncSupplierToSupabase,
-  syncAssociateToSupabase,
-  syncSupplierTransactionToSupabase,
-  syncExpenseToSupabase,
-  syncClosedShiftToSupabase,
-  syncTransactionToSupabase,
+  performDeltaSync,
+  processPendingSyncQueue,
 } from '../lib/supabaseSync';
 import { getSupabaseKeys } from '../lib/supabase';
 
@@ -81,6 +49,7 @@ interface POSContextType {
   taxRate: number;
   settings: AppSettings;
   discounts: ProductDiscount[];
+  pendingSyncCount: number;
   hasPermission: (perm: Permission) => boolean;
 
   setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts') => void;
@@ -183,7 +152,7 @@ const POSContext = createContext<POSContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'asmaa_pos_state_ar_v3';
 
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Pure Supabase State - Initialized empty without localStorage caches
+  // Local-First Dexie State
   const [associates, setAssociates] = useState<Associate[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -193,6 +162,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [supplierTransactions, setSupplierTransactions] = useState<SupplierTransaction[]>([]);
   const [expenses, setExpenses] = useState<POSExpense[]>([]);
   const [discounts, setDiscounts] = useState<ProductDiscount[]>([]);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
 
   // Local UI State
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
@@ -213,12 +183,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     errorMessage?: string;
     isCustom: boolean;
   }>({
-    isConnected: false,
-    isChecking: true,
+    isConnected: true,
+    isChecking: false,
     isCustom: false,
   });
 
-  // Local Settings (Theme, Printer, Margins)
+  // Local Settings
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
     const defaultCats = [
@@ -260,7 +230,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           loyaltyPointValue: parsed.loyaltyPointValue !== undefined ? parsed.loyaltyPointValue : 0.1,
           shortcutKeys: parsed.shortcutKeys ? { ...DEFAULT_SHORTCUT_KEYS, ...parsed.shortcutKeys } : DEFAULT_SHORTCUT_KEYS,
         };
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -275,10 +245,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
-  // Global Function Key Shortcuts Listener (F1 - F12)
+  // Global Function Key Shortcuts Listener
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Intercept Function Keys F1 through F12
       if (!e.key || !/^F(1[0-2]|[1-9])$/.test(e.key)) return;
 
       const activeShortcuts = { ...DEFAULT_SHORTCUT_KEYS, ...(settings.shortcutKeys || {}) };
@@ -286,85 +255,129 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (!actionId || actionId === 'none') return;
 
-      // Stop browser default action (F1 help, F3 find, F5 reload, F11 fullscreen, F12 devtools)
       e.preventDefault();
       e.stopPropagation();
 
-      console.log(`[POS Shortcuts] Key ${e.key} triggered action: ${actionId}`);
-
-      // Handle Direct Navigation and State actions
       if (actionId === 'open_new_invoice') {
         startNewInvoice('فتح فاتورة جديدة عبر اختصار لوحة المفاتيح').then(() => {
           window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
-        }).catch((err) => {
-          console.error('Error starting new invoice shortcut:', err);
         });
-      } else if (actionId === 'open_register') {
-        setActiveTab('register');
-      } else if (actionId === 'open_catalog') {
-        setActiveTab('catalog');
-      } else if (actionId === 'open_customers') {
-        setActiveTab('customers');
-      } else if (actionId === 'open_suppliers') {
-        setActiveTab('suppliers');
-      } else if (actionId === 'open_analytics') {
-        setActiveTab('analytics');
-      } else if (actionId === 'open_discounts') {
-        setActiveTab('discounts');
-      } else if (actionId === 'open_associates') {
-        setActiveTab('associates');
-      } else if (actionId === 'open_settings') {
-        setActiveTab('settings');
-      } else if (actionId === 'clear_cart') {
-        if (cart.length > 0) {
-          if (window.confirm('هل أنت متأكد من تفريغ سلة المبيعات بالكامل؟')) {
-            setCart([]);
-          }
+      } else if (actionId === 'open_register') setActiveTab('register');
+      else if (actionId === 'open_catalog') setActiveTab('catalog');
+      else if (actionId === 'open_customers') setActiveTab('customers');
+      else if (actionId === 'open_suppliers') setActiveTab('suppliers');
+      else if (actionId === 'open_analytics') setActiveTab('analytics');
+      else if (actionId === 'open_discounts') setActiveTab('discounts');
+      else if (actionId === 'open_associates') setActiveTab('associates');
+      else if (actionId === 'open_settings') setActiveTab('settings');
+      else if (actionId === 'clear_cart') {
+        if (cart.length > 0 && window.confirm('هل أنت متأكد من تفريغ سلة المبيعات بالكامل؟')) {
+          setCart([]);
         }
-      } else if (actionId === 'checkout_payment') {
-        setActiveTab('register');
-        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
-      } else if (actionId === 'add_expense') {
-        setActiveTab('register');
-        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
-      } else if (actionId === 'pay_installment') {
-        setActiveTab('customers');
-        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
-      } else if (actionId === 'focus_search') {
-        setActiveTab('register');
-        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
       } else {
         window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown, true);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown, true);
-    };
-  }, [settings.shortcutKeys, cart.length, setActiveTab, setCart]);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [settings.shortcutKeys, cart.length]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_settings`, JSON.stringify(settings));
-    if (settings.theme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-    }
+    if (settings.theme === 'light') document.documentElement.classList.add('light');
+    else document.documentElement.classList.remove('light');
   }, [settings]);
 
-  // Clear legacy business data from localStorage to prevent any stale cache pollution
-  useEffect(() => {
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_products`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_customers`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_transactions`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_suppliers`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_supplier_txs`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_closed_shifts`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_expenses`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_associates`);
-    localStorage.removeItem(`${LOCAL_STORAGE_KEY}_discounts`);
+  // --- LOCAL READ ENGINE (Reads directly from Dexie.js) ---
+  const loadFromLocal = useCallback(async () => {
+    try {
+      const [
+        localProds,
+        localCusts,
+        localSupps,
+        localStxs,
+        localTxs,
+        localAssocs,
+        localShifts,
+        localExps,
+        localDiscs,
+        queueCount,
+      ] = await Promise.all([
+        db.products.toArray(),
+        db.customers.toArray(),
+        db.suppliers.toArray(),
+        db.supplierTransactions.toArray(),
+        db.transactions.toArray(),
+        db.associates.toArray(),
+        db.closedShifts.toArray(),
+        db.expenses.toArray(),
+        db.discounts.toArray(),
+        getPendingSyncCount(),
+      ]);
+
+      setProducts(localProds);
+      setCustomers(localCusts);
+      setSuppliers(localSupps);
+      setSupplierTransactions(localStxs);
+      setTransactions(localTxs);
+      setClosedShifts(localShifts);
+      setExpenses(localExps);
+      setDiscounts(localDiscs);
+      setPendingSyncCount(queueCount);
+
+      if (localAssocs.length === 0) {
+        await db.associates.put(DEFAULT_ADMIN_ASSOCIATE);
+        await addToPendingQueue('associates', 'INSERT', DEFAULT_ADMIN_ASSOCIATE);
+        setAssociates([DEFAULT_ADMIN_ASSOCIATE]);
+      } else {
+        setAssociates(localAssocs);
+      }
+    } catch (err) {
+      console.error('[POSContext] Error reading from Dexie.js:', err);
+    }
   }, []);
+
+  // --- BACKGROUND SYNC TRIGGER ---
+  const triggerBackgroundSync = useCallback(async () => {
+    try {
+      // 1. Process pending outbox queue
+      await processPendingSyncQueue();
+      // 2. Perform delta sync from Supabase
+      await performDeltaSync();
+      // 3. Reload from Dexie
+      await loadFromLocal();
+    } catch (err: any) {
+      console.warn('[POSContext] Background sync warning:', err);
+    }
+  }, [loadFromLocal]);
+
+  // Initial load from Dexie + trigger background sync
+  useEffect(() => {
+    loadFromLocal().then(() => {
+      triggerBackgroundSync();
+    });
+  }, [loadFromLocal, triggerBackgroundSync]);
+
+  // Listen for 'online' status & periodic background sync (no tab focus triggers!)
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[POSContext] Online status detected. Triggering outbox worker & delta sync...');
+      triggerBackgroundSync();
+    };
+
+    window.addEventListener('online', handleOnline);
+    const syncInterval = setInterval(() => {
+      if (navigator.onLine) {
+        triggerBackgroundSync();
+      }
+    }, 60000); // 60s background cycle
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      clearInterval(syncInterval);
+    };
+  }, [triggerBackgroundSync]);
 
   const testDbConnection = async () => {
     setDbStatus((p) => ({ ...p, isChecking: true }));
@@ -379,146 +392,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateSettings = (newSettings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => {
-    setSettings((prev) => {
-      const resolved = typeof newSettings === 'function' ? newSettings(prev) : { ...prev, ...newSettings };
-      return resolved;
-    });
+    setSettings((prev) => (typeof newSettings === 'function' ? newSettings(prev) : { ...prev, ...newSettings }));
   };
 
-  // --- REFRESH DATA FROM SUPABASE (SSOT) ---
-  const loadFromSupabase = useCallback(async () => {
-    setDbStatus((p) => ({ ...p, isChecking: true }));
-    console.log('[POSContext] Loading fresh data from Supabase...');
-
-    const errorList: string[] = [];
-
-    // 1. Products (Lazy server-side queries on demand via products.service.ts)
-    // No bulk fetching of all products into memory on app startup
-
-    // 2. Customers
-    const custRes = await fetchCustomersFromSupabase();
-    if (!custRes.error) {
-      setCustomers(custRes.data);
-    } else {
-      errorList.push(`العملاء: ${custRes.error.message || String(custRes.error)}`);
-    }
-
-    // 3. Suppliers
-    const suppRes = await fetchSuppliersFromSupabase();
-    if (!suppRes.error) {
-      setSuppliers(suppRes.data);
-    } else {
-      errorList.push(`الموردين: ${suppRes.error.message || String(suppRes.error)}`);
-    }
-
-    // 4. Supplier Transactions
-    const stxRes = await fetchSupplierTransactionsFromSupabase();
-    if (!stxRes.error) {
-      setSupplierTransactions(stxRes.data);
-    } else {
-      errorList.push(`حركات الموردين: ${stxRes.error.message || String(stxRes.error)}`);
-    }
-
-    // 5. Transactions
-    const txRes = await fetchTransactionsFromSupabase();
-    if (!txRes.error) {
-      setTransactions(txRes.data);
-    } else {
-      errorList.push(`المبيعات: ${txRes.error.message || String(txRes.error)}`);
-    }
-
-    // 6. Closed Shifts
-    const shiftRes = await fetchClosedShiftsFromSupabase();
-    if (!shiftRes.error) {
-      setClosedShifts(shiftRes.data);
-    } else {
-      errorList.push(`الورديات المغلقة: ${shiftRes.error.message || String(shiftRes.error)}`);
-    }
-
-    // 7. Expenses
-    const expRes = await fetchExpensesFromSupabase();
-    if (!expRes.error) {
-      setExpenses(expRes.data);
-    } else {
-      errorList.push(`المصروفات: ${expRes.error.message || String(expRes.error)}`);
-    }
-
-    // 8. Discounts
-    const discRes = await fetchDiscountsFromSupabase();
-    if (!discRes.error) {
-      setDiscounts(discRes.data);
-    } else {
-      errorList.push(`الخصومات: ${discRes.error.message || String(discRes.error)}`);
-    }
-
-    // 9. Associates
-    const assocRes = await fetchAssociatesFromSupabase();
-    if (!assocRes.error) {
-      let fetchedAssociates = assocRes.data;
-
-      // Seed default admin in Supabase ONLY IF query succeeded AND table has 0 rows
-      if (fetchedAssociates.length === 0) {
-        console.log('[POSContext] Associates table is empty in Supabase. Seeding default admin...');
-        const insertRes = await insertAssociateToSupabase(DEFAULT_ADMIN_ASSOCIATE);
-        if (insertRes.success) {
-          const reFetchAssoc = await fetchAssociatesFromSupabase();
-          if (!reFetchAssoc.error) {
-            fetchedAssociates = reFetchAssoc.data;
-          }
-        }
-      }
-
-      setAssociates(fetchedAssociates);
-
-      // Maintain current logged-in associate reference if still exists
-      if (currentAssociate) {
-        const updatedMatch = fetchedAssociates.find((a) => a.id === currentAssociate.id);
-        if (updatedMatch) {
-          setCurrentAssociateState(updatedMatch);
-        }
-      }
-    } else {
-      errorList.push(`الموظفين: ${assocRes.error.message || String(assocRes.error)}`);
-    }
-
-    const hasErrors = errorList.length > 0;
-
-    setDbStatus({
-      isConnected: !hasErrors,
-      isChecking: false,
-      errorMessage: hasErrors ? errorList.join(' | ') : undefined,
-      isCustom: getSupabaseKeys().isCustom,
-    });
-  }, [currentAssociate]);
-
-  // Re-fetch data automatically whenever the active tab / page changes
-  useEffect(() => {
-    loadFromSupabase();
-  }, [activeTab, loadFromSupabase]);
-
-  // Auto-refresh when window or browser tab gains focus / visibility
-  useEffect(() => {
-    let lastFetched = Date.now();
-
-    const handleFocusOrVisible = () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastFetched > 3000) {
-        lastFetched = Date.now();
-        console.log('[POSContext] Auto refreshing data on window focus / tab visibility...');
-        loadFromSupabase();
-      }
-    };
-
-    window.addEventListener('focus', handleFocusOrVisible);
-    document.addEventListener('visibilitychange', handleFocusOrVisible);
-
-    return () => {
-      window.removeEventListener('focus', handleFocusOrVisible);
-      document.removeEventListener('visibilitychange', handleFocusOrVisible);
-    };
-  }, [loadFromSupabase]);
-
   const syncUnsyncedItems = async () => {
-    await loadFromSupabase();
+    await triggerBackgroundSync();
   };
 
   const setCurrentAssociate = (assoc: Associate | null) => {
@@ -545,16 +423,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- CART OPERATIONS ---
   const addToCart = (product: Product, quantity = 1, priceTier?: PriceTier) => {
     const tier = priceTier || globalPriceTier;
-
     setCart((prevCart) => {
       const existingIndex = prevCart.findIndex((item) => item.product.id === product.id);
       if (existingIndex > -1) {
         const updated = [...prevCart];
         const newQty = updated[existingIndex].quantity + quantity;
         if (newQty > product.stock) {
-          alert(
-            `خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`
-          );
+          alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
           return prevCart;
         }
         updated[existingIndex].quantity = newQty;
@@ -562,19 +437,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return updated;
       }
       if (quantity > product.stock) {
-        alert(
-          `خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`
-        );
+        alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
         return prevCart;
       }
       return [
         ...prevCart,
-        {
-          product,
-          quantity,
-          selectedPriceTier: tier,
-          discountPercent: 0,
-        },
+        { product, quantity, selectedPriceTier: tier, discountPercent: 0 },
       ];
     });
   };
@@ -586,34 +454,22 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const product = products.find((p) => p.id === productId);
     if (product && quantity > product.stock) {
-      alert(
-        `خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`
-      );
+      alert(`خطأ: لا يمكن بيع أكثر من الكمية المتاحة في المخزن للمنتج (${product.name}). المتاح حالياً: ${product.stock} قطعة.`);
       return;
     }
     setCart((prev) => prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item)));
   };
 
   const updateCartItemPriceTier = (productId: string, priceTier: PriceTier) => {
-    setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, selectedPriceTier: priceTier } : item))
-    );
+    setCart((prev) => prev.map((item) => (item.product.id === productId ? { ...item, selectedPriceTier: priceTier } : item)));
   };
 
   const updateCartItemDiscount = (productId: string, discountPercent: number) => {
-    setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId
-          ? { ...item, discountPercent: Math.min(100, Math.max(0, discountPercent)) }
-          : item
-      )
-    );
+    setCart((prev) => prev.map((item) => (item.product.id === productId ? { ...item, discountPercent: Math.min(100, Math.max(0, discountPercent)) } : item)));
   };
 
   const updateCartItemAssociate = (productId: string, associateId?: string) => {
-    setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, assignedAssociateId: associateId } : item))
-    );
+    setCart((prev) => prev.map((item) => (item.product.id === productId ? { ...item, assignedAssociateId: associateId } : item)));
   };
 
   const getItemUnitPrice = (item: CartItem): number => {
@@ -632,8 +488,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (adminDiscount) {
       const tier = item.selectedPriceTier || globalPriceTier;
       const appliesToCash = !adminDiscount.applyTo || adminDiscount.applyTo === 'cash' || adminDiscount.applyTo === 'both';
-      const appliesToInstallment =
-        !adminDiscount.applyTo || adminDiscount.applyTo === 'installment' || adminDiscount.applyTo === 'both';
+      const appliesToInstallment = !adminDiscount.applyTo || adminDiscount.applyTo === 'installment' || adminDiscount.applyTo === 'both';
 
       let isApplicable = false;
       if (tier === 'cash' && appliesToCash) isApplicable = true;
@@ -664,19 +519,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addDiscount = async (discount: ProductDiscount) => {
-    const res = await insertDiscountToSupabase(discount);
-    if (!res.success) {
-      alert(`خطأ في حفظ الخصم: ${res.error?.message || ''}`);
-    }
-    await loadFromSupabase();
+    await db.discounts.put(discount);
+    await addToPendingQueue('discounts', 'INSERT', discount);
+    setDiscounts((prev) => [...prev.filter((d) => d.productId !== discount.productId), discount]);
+    processPendingSyncQueue();
   };
 
   const removeDiscount = async (productId: string) => {
-    const res = await deleteDiscountFromSupabase(productId);
-    if (!res.success) {
-      alert(`خطأ في حذف الخصم: ${res.error?.message || ''}`);
-    }
-    await loadFromSupabase();
+    await db.discounts.delete(productId);
+    await addToPendingQueue('discounts', 'DELETE', { productId });
+    setDiscounts((prev) => prev.filter((d) => d.productId !== productId));
+    processPendingSyncQueue();
   };
 
   const removeFromCart = (productId: string) => {
@@ -691,70 +544,63 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEditingTransaction(null);
   };
 
-  // --- CRUD OPERATIONS WITH SUPABASE (SSOT) ---
+  // --- LOCAL-FIRST WRITE OPERATIONS (Save to Dexie -> Queue in Outbox -> Update State -> Sync) ---
 
   const addProduct = async (prodData: Omit<Product, 'id'>) => {
     const newProduct: Product = {
       ...prodData,
       id: prodData.sku || prodData.barcode || `prod_${Date.now()}`,
     };
-    const res = await insertProductToSupabase(newProduct);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشلت إضافة الصنف في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.products.put(newProduct);
+    await addToPendingQueue('products', 'INSERT', newProduct);
+    setProducts((prev) => [newProduct, ...prev]);
+    processPendingSyncQueue();
   };
 
   const updateProduct = async (prod: Product) => {
-    const res = await updateProductInSupabase(prod);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تحديث بيانات الصنف في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.products.put(prod);
+    await addToPendingQueue('products', 'UPDATE', prod);
+    setProducts((prev) => prev.map((p) => (p.id === prod.id ? prod : p)));
+    processPendingSyncQueue();
   };
 
   const deleteProduct = async (productId: string) => {
-    const res = await deleteProductFromSupabase(productId);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف الصنف من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.products.delete(productId);
+    await addToPendingQueue('products', 'DELETE', { id: productId });
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    processPendingSyncQueue();
   };
 
   const bulkDeleteProducts = async (productIds: string[]) => {
-    const res = await bulkDeleteProductsFromSupabase(productIds);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف الاصناف المحددة من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
+    for (const id of productIds) {
+      await db.products.delete(id);
+      await addToPendingQueue('products', 'DELETE', { id });
     }
-    await loadFromSupabase();
+    setProducts((prev) => prev.filter((p) => !productIds.includes(p.id)));
+    processPendingSyncQueue();
   };
 
   const clearAllProducts = async () => {
-    const res = await clearAllProductsFromSupabase();
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تفريغ الاصناف من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
+    const all = await db.products.toArray();
+    for (const p of all) {
+      await db.products.delete(p.id);
+      await addToPendingQueue('products', 'DELETE', { id: p.id });
     }
-    await loadFromSupabase();
+    setProducts([]);
+    processPendingSyncQueue();
   };
 
   const bulkUpdateProducts = async (productIds: string[], updates: Partial<Product>) => {
     for (const id of productIds) {
       const p = products.find((prod) => prod.id === id);
       if (p) {
-        await updateProductInSupabase({ ...p, ...updates });
+        const updated = { ...p, ...updates };
+        await db.products.put(updated);
+        await addToPendingQueue('products', 'UPDATE', updated);
       }
     }
-    await loadFromSupabase();
+    await loadFromLocal();
+    processPendingSyncQueue();
   };
 
   const addCustomer = async (custData: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>): Promise<Customer> => {
@@ -765,42 +611,28 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalSpent: 0,
       loyaltyPoints: 50,
     };
-    const res = await insertCustomerToSupabase(newCustomer);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشلت إضافة العميل في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    const savedCustomer = res.data || newCustomer;
-    setSelectedCustomer(savedCustomer);
-    await loadFromSupabase();
-    return savedCustomer;
+    await db.customers.put(newCustomer);
+    await addToPendingQueue('customers', 'INSERT', newCustomer);
+    setCustomers((prev) => [newCustomer, ...prev]);
+    setSelectedCustomer(newCustomer);
+    processPendingSyncQueue();
+    return newCustomer;
   };
 
   const updateCustomer = async (cust: Customer) => {
-    const res = await updateCustomerInSupabase(cust);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تحديث بيانات العميل في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    if (selectedCustomer?.id === cust.id) {
-      setSelectedCustomer(cust);
-    }
-    await loadFromSupabase();
+    await db.customers.put(cust);
+    await addToPendingQueue('customers', 'UPDATE', cust);
+    setCustomers((prev) => prev.map((c) => (c.id === cust.id ? cust : c)));
+    if (selectedCustomer?.id === cust.id) setSelectedCustomer(cust);
+    processPendingSyncQueue();
   };
 
   const deleteCustomer = async (customerId: string) => {
-    const res = await deleteCustomerFromSupabase(customerId);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف العميل من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    if (selectedCustomer?.id === customerId) {
-      setSelectedCustomer(null);
-    }
-    await loadFromSupabase();
+    await db.customers.delete(customerId);
+    await addToPendingQueue('customers', 'DELETE', { id: customerId });
+    setCustomers((prev) => prev.filter((c) => c.id !== customerId));
+    if (selectedCustomer?.id === customerId) setSelectedCustomer(null);
+    processPendingSyncQueue();
   };
 
   const addSupplier = async (supplierData: Omit<Supplier, 'id'>): Promise<Supplier> => {
@@ -809,34 +641,25 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `supp_${Date.now()}`,
       currentBalance: supplierData.currentBalance || 0,
     };
-    const res = await insertSupplierToSupabase(newSupplier);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشلت إضافة المورد في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.suppliers.put(newSupplier);
+    await addToPendingQueue('suppliers', 'INSERT', newSupplier);
+    setSuppliers((prev) => [newSupplier, ...prev]);
+    processPendingSyncQueue();
     return newSupplier;
   };
 
   const updateSupplier = async (supplier: Supplier) => {
-    const res = await updateSupplierInSupabase(supplier);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تحديث بيانات المورد في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.suppliers.put(supplier);
+    await addToPendingQueue('suppliers', 'UPDATE', supplier);
+    setSuppliers((prev) => prev.map((s) => (s.id === supplier.id ? supplier : s)));
+    processPendingSyncQueue();
   };
 
   const deleteSupplier = async (supplierId: string) => {
-    const res = await deleteSupplierFromSupabase(supplierId);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف المورد من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.suppliers.delete(supplierId);
+    await addToPendingQueue('suppliers', 'DELETE', { id: supplierId });
+    setSuppliers((prev) => prev.filter((s) => s.id !== supplierId));
+    processPendingSyncQueue();
   };
 
   const recordSupplierTransaction = async (txData: Omit<SupplierTransaction, 'id' | 'date'>) => {
@@ -845,12 +668,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `stx_${Date.now()}`,
       date: new Date().toISOString(),
     };
-    const res = await insertSupplierTransactionToSupabase(newTx);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تسجيل معاملة المورد في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
+    await db.supplierTransactions.put(newTx);
+    await addToPendingQueue('supplier_transactions', 'INSERT', newTx);
+    setSupplierTransactions((prev) => [newTx, ...prev]);
 
     const targetSupplier = suppliers.find((s) => s.id === txData.supplierId);
     if (targetSupplier) {
@@ -862,10 +682,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...targetSupplier,
         currentBalance: Math.max(0, (targetSupplier.currentBalance || 0) + delta),
       };
-      await updateSupplierInSupabase(updatedSupplier);
+      await updateSupplier(updatedSupplier);
     }
-
-    await loadFromSupabase();
+    processPendingSyncQueue();
   };
 
   const addExpense = async (expenseData: Omit<POSExpense, 'id' | 'timestamp'>) => {
@@ -876,12 +695,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       associateId: currentAssociate?.id || undefined,
       associateName: currentAssociate?.name || undefined,
     };
-    const res = await insertExpenseToSupabase(newExpense);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تسجيل المصروف في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
+    await db.expenses.put(newExpense);
+    await addToPendingQueue('expenses', 'INSERT', newExpense);
+    setExpenses((prev) => [newExpense, ...prev]);
 
     if (expenseData.category === 'دفعة لمورد' && expenseData.linkedSupplierId) {
       await recordSupplierTransaction({
@@ -898,32 +714,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (expenseData.category === 'سلفة لموظف' && expenseData.linkedAssociateId) {
       const targetAssoc = associates.find((a) => a.id === expenseData.linkedAssociateId);
       if (targetAssoc) {
-        await updateAssociateInSupabase({
+        await updateAssociate({
           ...targetAssoc,
           advancesBalance: (targetAssoc.advancesBalance || 0) + expenseData.amount,
         });
       }
     }
-
-    await loadFromSupabase();
+    processPendingSyncQueue();
   };
 
   const deleteExpense = async (id: string) => {
-    const res = await deleteExpenseFromSupabase(id);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف المصروف من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.expenses.delete(id);
+    await addToPendingQueue('expenses', 'DELETE', { id });
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    processPendingSyncQueue();
   };
 
   const clockInAssociate = async (associateId: string) => {
     const target = associates.find((a) => a.id === associateId);
     if (target) {
       const updated = { ...target, isClockedIn: true, clockInTime: new Date().toISOString() };
-      await updateAssociateInSupabase(updated);
-      await loadFromSupabase();
+      await updateAssociate(updated);
     }
   };
 
@@ -931,8 +742,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = associates.find((a) => a.id === associateId);
     if (target) {
       const updated = { ...target, isClockedIn: false, clockInTime: undefined };
-      await updateAssociateInSupabase(updated);
-      await loadFromSupabase();
+      await updateAssociate(updated);
     }
   };
 
@@ -943,42 +753,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isClockedIn: true,
       clockInTime: new Date().toISOString(),
     };
-    const res = await insertAssociateToSupabase(newAssoc);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشلت إضافة الموظف في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    if (!currentAssociate) {
-      setCurrentAssociateState(newAssoc);
-    }
-    await loadFromSupabase();
+    await db.associates.put(newAssoc);
+    await addToPendingQueue('associates', 'INSERT', newAssoc);
+    setAssociates((prev) => [...prev, newAssoc]);
+    if (!currentAssociate) setCurrentAssociateState(newAssoc);
+    processPendingSyncQueue();
   };
 
   const updateAssociate = async (assoc: Associate) => {
-    const res = await updateAssociateInSupabase(assoc);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تحديث بيانات الموظف في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    if (currentAssociate?.id === assoc.id) {
-      setCurrentAssociateState(assoc);
-    }
-    await loadFromSupabase();
+    await db.associates.put(assoc);
+    await addToPendingQueue('associates', 'UPDATE', assoc);
+    setAssociates((prev) => prev.map((a) => (a.id === assoc.id ? assoc : a)));
+    if (currentAssociate?.id === assoc.id) setCurrentAssociateState(assoc);
+    processPendingSyncQueue();
   };
 
   const deleteAssociate = async (associateId: string) => {
-    const res = await deleteAssociateFromSupabase(associateId);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف الموظف من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    if (currentAssociate?.id === associateId) {
-      setCurrentAssociateState(null);
-    }
-    await loadFromSupabase();
+    await db.associates.delete(associateId);
+    await addToPendingQueue('associates', 'DELETE', { id: associateId });
+    setAssociates((prev) => prev.filter((a) => a.id !== associateId));
+    if (currentAssociate?.id === associateId) setCurrentAssociateState(null);
+    processPendingSyncQueue();
   };
 
   const closeShift = async (shiftData: Omit<ClosedShift, 'id'>) => {
@@ -986,13 +781,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...shiftData,
       id: `shift_${Date.now()}`,
     };
-    const res = await insertClosedShiftToSupabase(newShift);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تسجيل إغلاق الوردية في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    await loadFromSupabase();
+    await db.closedShifts.put(newShift);
+    await addToPendingQueue('closed_shifts', 'INSERT', newShift);
+    setClosedShifts((prev) => [newShift, ...prev]);
+    processPendingSyncQueue();
   };
 
   const cancelEditingTransaction = () => {
@@ -1066,12 +858,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSelectedCustomer(null);
     }
 
-    if (tx.splitAssociates) {
-      setSplitAssociates(tx.splitAssociates);
-    } else {
-      setSplitAssociates([]);
-    }
-
+    setSplitAssociates(tx.splitAssociates || []);
     setActiveTab('register');
     return true;
   };
@@ -1117,9 +904,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    if (discountTotalOverride > 0) {
-      discountTotal = discountTotalOverride;
-    }
+    if (discountTotalOverride > 0) discountTotal = discountTotalOverride;
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
     const primaryAssocId = currentAssociate?.id || editingTransaction.primaryAssociateId || 'system';
@@ -1161,35 +946,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amountDeferred?: number,
     splitPayments?: SplitPaymentItem[]
   ): Promise<Transaction> => {
-    if (editingTransaction) {
-      return await saveEditedTransaction(
-        paymentMethod,
-        discountTotalOverride,
-        paymentDetails,
-        notes,
-        amountPaid,
-        amountDeferred,
-        splitPayments
-      );
-    }
-
-    if (!currentAssociate) {
-      throw new Error('رجاءً اختر البائع المسؤول قبل إتمام البيع.');
-    }
-
     if (cart.length === 0) {
-      throw new Error('سلة الشراء فارغة.');
+      throw new Error('السلة فارغة. يرجى إضافة عناصر أولاً.');
     }
 
     let subtotal = 0;
     let discountTotal = 0;
-    const isReturn = cart.some((item) => item.quantity < 0);
 
-    const transactionItems = cart.map((item) => {
+    const transactionItems: TransactionItem[] = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
       const lineOriginalTotal = unitPrice * item.quantity;
       const lineDiscount = getCartItemDiscountAmount(item);
-      const lineNetTotal = item.quantity < 0 ? lineOriginalTotal : Math.max(0, lineOriginalTotal - lineDiscount);
+      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
 
       subtotal += lineOriginalTotal;
       discountTotal += lineDiscount;
@@ -1197,93 +965,55 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return {
         productId: item.product.id,
         productName: item.product.name,
+        productBarcode: item.product.barcode,
         sku: item.product.sku,
-        quantity: item.quantity,
-        priceTier: item.selectedPriceTier || globalPriceTier,
         unitPrice,
+        quantity: item.quantity,
         totalPrice: lineNetTotal,
         discountAmount: lineDiscount,
         discountPercent: item.discountPercent || 0,
+        priceTier: item.selectedPriceTier || globalPriceTier,
         assignedAssociateId: item.assignedAssociateId,
+        assignedAssociateName: associates.find((a) => a.id === item.assignedAssociateId)?.name,
       };
     });
 
-    if (discountTotalOverride > 0) {
-      discountTotal += discountTotalOverride;
-    }
+    if (discountTotalOverride > 0) discountTotal = discountTotalOverride;
 
-    const grandTotal = isReturn ? subtotal - discountTotal : Math.max(0, subtotal - discountTotal);
-
-    let generalNetSubtotal = 0;
-    const associateSalesMap: Record<string, number> = {};
-
-    cart.forEach((item) => {
-      const unitPrice = getItemUnitPrice(item);
-      const lineOriginalTotal = unitPrice * item.quantity;
-      const lineDiscount = getCartItemDiscountAmount(item);
-      const lineNetTotal = item.quantity < 0 ? lineOriginalTotal : Math.max(0, lineOriginalTotal - lineDiscount);
-
-      if (item.assignedAssociateId) {
-        associateSalesMap[item.assignedAssociateId] =
-          (associateSalesMap[item.assignedAssociateId] || 0) + lineNetTotal;
-      } else {
-        generalNetSubtotal += lineNetTotal;
-      }
-    });
-
+    const grandTotal = Math.max(0, subtotal - discountTotal);
     const primaryAssocId = currentAssociate?.id || 'system';
     const primaryAssocName = currentAssociate?.name || 'النظام';
 
-    if (generalNetSubtotal !== 0) {
-      if (splitAssociates.length > 0) {
-        const totalSplitPercent = splitAssociates.reduce((acc, s) => acc + s.sharePercentage, 0);
-        const primarySharePercent = Math.max(0, 100 - totalSplitPercent);
-
-        if (primarySharePercent > 0) {
-          associateSalesMap[primaryAssocId] =
-            (associateSalesMap[primaryAssocId] || 0) + (generalNetSubtotal * primarySharePercent) / 100;
+    const commissions: TransactionCommission[] = [];
+    if (splitAssociates.length > 0) {
+      splitAssociates.forEach((sa) => {
+        const assoc = associates.find((a) => a.id === sa.associateId);
+        if (assoc) {
+          const shareAmount = (grandTotal * sa.sharePercentage) / 100;
+          const comm = shareAmount * (assoc.commissionRate || 0.05);
+          commissions.push({
+            associateId: assoc.id,
+            associateName: assoc.name,
+            saleAmount: shareAmount,
+            commissionAmount: comm,
+            sharePercentage: sa.sharePercentage,
+          });
         }
-
-        splitAssociates.forEach((split) => {
-          associateSalesMap[split.associateId] =
-            (associateSalesMap[split.associateId] || 0) + (generalNetSubtotal * split.sharePercentage) / 100;
-        });
-      } else {
-        associateSalesMap[primaryAssocId] = (associateSalesMap[primaryAssocId] || 0) + generalNetSubtotal;
-      }
+      });
+    } else if (currentAssociate) {
+      const comm = grandTotal * (currentAssociate.commissionRate || 0.05);
+      commissions.push({
+        associateId: currentAssociate.id,
+        associateName: currentAssociate.name,
+        saleAmount: grandTotal,
+        commissionAmount: comm,
+        sharePercentage: 100,
+      });
     }
 
-    const commissions: TransactionCommission[] = Object.entries(associateSalesMap).map(([assocId, saleAmt]) => {
-      const assoc = associates.find((a) => a.id === assocId);
-      const rate = assoc ? assoc.commissionRate : 0.05;
-      const commissionAmount = Math.round(saleAmt * rate * 100) / 100;
-      const sharePercent = Math.abs(grandTotal) > 0 ? Math.round((saleAmt / grandTotal) * 100) : 0;
-
-      return {
-        associateId: assocId,
-        associateName: assoc ? assoc.name : 'بائع',
-        saleAmount: Math.round(saleAmt * 100) / 100,
-        commissionAmount,
-        sharePercentage: sharePercent,
-      };
-    });
-
-    const targetTxId = activeHeldTransactionId || `tx_${Date.now()}`;
-    let receiptNumber = `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
-
-    if (activeHeldTransactionId) {
-      const existingHeld = transactions.find((t) => t.id === activeHeldTransactionId);
-      if (existingHeld?.receiptNumber) {
-        if (existingHeld.receiptNumber.startsWith('HLD-')) {
-          receiptNumber = existingHeld.receiptNumber.replace('HLD-', 'RCP-ASM-');
-        } else {
-          receiptNumber = existingHeld.receiptNumber;
-        }
-      }
-    }
-
+    const receiptNumber = `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
     const newTransaction: Transaction = {
-      id: targetTxId,
+      id: activeHeldTransactionId || `tx_${Date.now()}`,
       receiptNumber,
       timestamp: new Date().toISOString(),
       items: transactionItems,
@@ -1300,104 +1030,74 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       commissions,
       notes,
-      status: isReturn ? 'مسترجعة' : 'مكتملة',
+      status: 'مكتملة',
       amountPaid: amountPaid !== undefined ? amountPaid : grandTotal,
       amountDeferred: amountDeferred !== undefined ? amountDeferred : 0,
       splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : undefined,
+      isSynced: false,
     };
 
-    // 1. Insert transaction into Supabase
-    const txRes = await insertTransactionToSupabase(newTransaction);
-    if (!txRes.success) {
-      const msg = txRes.error?.message || 'فشل حفظ الفاتورة في قاعدة البيانات Supabase';
-      alert(`خطأ في حفظ البيع: ${msg}`);
-      throw new Error(msg);
-    }
-
-    // 2. Update product stock in Supabase
-    for (const ci of cart) {
-      const p = products.find((prod) => prod.id === ci.product.id);
+    // 1. Update product inventory locally & queue
+    for (const item of cart) {
+      const p = products.find((prod) => prod.id === item.product.id);
       if (p) {
-        const updatedStock = Math.max(0, p.stock - ci.quantity);
-        await updateProductInSupabase({ ...p, stock: updatedStock });
+        const updatedProd = { ...p, stock: Math.max(0, p.stock - item.quantity) };
+        await db.products.put(updatedProd);
+        await addToPendingQueue('products', 'UPDATE', updatedProd);
       }
     }
 
-    // 3. Update customer stats in Supabase
+    // 2. Update customer metrics locally & queue
     if (selectedCustomer) {
       const ratio = settings.loyaltyPointsRatio || 10;
       const addedPoints = Math.floor(grandTotal / ratio);
-      let pointsUsed = 0;
-      const pointVal = settings.loyaltyPointValue || 0.1;
-      if (paymentMethod === 'نقاط ولاء') {
-        pointsUsed = Math.ceil(grandTotal / pointVal);
-      } else if (paymentMethod === 'دفع متعدد' && splitPayments) {
-        const ptsPay = splitPayments.find((sp) => sp.method === 'نقاط ولاء');
-        if (ptsPay) {
-          pointsUsed = Math.ceil(ptsPay.amount / pointVal);
-        }
-      }
-      const currentDebtVal = selectedCustomer.currentDebt || 0;
-      const newDebt = currentDebtVal + (amountDeferred || 0);
-      const updatedCust = {
+      const updatedCust: Customer = {
         ...selectedCustomer,
-        totalSpent: selectedCustomer.totalSpent + grandTotal,
-        loyaltyPoints: Math.max(0, selectedCustomer.loyaltyPoints + addedPoints - pointsUsed),
-        currentDebt: newDebt,
+        totalSpent: (selectedCustomer.totalSpent || 0) + grandTotal,
+        loyaltyPoints: (selectedCustomer.loyaltyPoints || 0) + addedPoints,
+        currentDebt: (selectedCustomer.currentDebt || 0) + (amountDeferred || 0),
       };
-      await updateCustomerInSupabase(updatedCust);
+      await db.customers.put(updatedCust);
+      await addToPendingQueue('customers', 'UPDATE', updatedCust);
+      setCustomers((prev) => prev.map((c) => (c.id === updatedCust.id ? updatedCust : c)));
     }
 
+    // 3. Save transaction locally & queue
+    await db.transactions.put(newTransaction);
+    await addToPendingQueue('transactions', 'INSERT', newTransaction);
+
+    setTransactions((prev) => [newTransaction, ...prev.filter((t) => t.id !== newTransaction.id)]);
     clearCart();
-    await loadFromSupabase();
+    processPendingSyncQueue();
+
     return newTransaction;
   };
 
-  const holdCart = async (notes = '') => {
-    if (cart.length === 0) {
-      throw new Error('سلة الشراء فارغة لا يمكن تعليقها.');
-    }
+  const holdCart = async (notes = 'فاتورة معلقة'): Promise<Transaction> => {
+    if (cart.length === 0) throw new Error('السلة فارغة. يرجى إضافة عناصر قبل التعليق.');
 
-    let subtotal = 0;
-    let discountTotal = 0;
-
-    const transactionItems = cart.map((item) => {
-      const unitPrice = getItemUnitPrice(item);
-      const lineOriginalTotal = unitPrice * item.quantity;
-      const lineDiscount = getCartItemDiscountAmount(item);
-      const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
-
-      subtotal += lineOriginalTotal;
-      discountTotal += lineDiscount;
-
-      return {
-        productId: item.product.id,
-        productName: item.product.name,
-        sku: item.product.sku,
-        quantity: item.quantity,
-        priceTier: item.selectedPriceTier || globalPriceTier,
-        unitPrice,
-        totalPrice: lineNetTotal,
-        discountAmount: lineDiscount,
-        discountPercent: item.discountPercent || 0,
-        assignedAssociateId: item.assignedAssociateId,
-      };
-    });
-
+    const subtotal = cart.reduce((sum, item) => sum + getItemUnitPrice(item) * item.quantity, 0);
+    const discountTotal = cart.reduce((sum, item) => sum + getCartItemDiscountAmount(item), 0);
     const grandTotal = Math.max(0, subtotal - discountTotal);
-    const primaryAssocId = currentAssociate?.id || associates[0]?.id || 'system';
-    const primaryAssocName = currentAssociate?.name || associates[0]?.name || 'النظام';
 
-    const targetTxId = activeHeldTransactionId || `tx_held_${Date.now()}`;
-    const receiptNumber = activeHeldTransactionId
-      ? transactions.find((t) => t.id === activeHeldTransactionId)?.receiptNumber || `HLD-${Math.floor(1000 + Math.random() * 9000)}`
-      : `HLD-${Math.floor(1000 + Math.random() * 9000)}`;
+    const transactionItems: TransactionItem[] = cart.map((item) => ({
+      productId: item.product.id,
+      productName: item.product.name,
+      productBarcode: item.product.barcode,
+      sku: item.product.sku,
+      unitPrice: getItemUnitPrice(item),
+      quantity: item.quantity,
+      totalPrice: Math.max(0, getItemUnitPrice(item) * item.quantity - getCartItemDiscountAmount(item)),
+      discountAmount: getCartItemDiscountAmount(item),
+      discountPercent: item.discountPercent || 0,
+      priceTier: item.selectedPriceTier || globalPriceTier,
+      assignedAssociateId: item.assignedAssociateId,
+    }));
 
-    const custName = selectedCustomer?.name || 'عميل نقدي';
-
+    const txId = activeHeldTransactionId || `held_${Date.now()}`;
     const heldTx: Transaction = {
-      id: targetTxId,
-      receiptNumber,
+      id: txId,
+      receiptNumber: `HLD-${Math.floor(1000 + Math.random() * 9000)}`,
       timestamp: new Date().toISOString(),
       items: transactionItems,
       subtotal,
@@ -1406,43 +1106,36 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       grandTotal,
       paymentMethod: 'كاش',
       customerId: selectedCustomer?.id,
-      customerName: custName,
-      primaryAssociateId: primaryAssocId,
-      primaryAssociateName: primaryAssocName,
+      customerName: selectedCustomer?.name,
+      primaryAssociateId: currentAssociate?.id || 'system',
+      primaryAssociateName: currentAssociate?.name || 'النظام',
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       commissions: [],
-      notes: notes || `فاتورة معلقة لـ ${custName}`,
+      notes,
       status: 'معلقة',
-      originalCart: JSON.parse(JSON.stringify(cart)),
+      originalCart: cart,
     };
 
-    const res = await insertTransactionToSupabase(heldTx);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل تعليق الفاتورة في قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-
+    await db.transactions.put(heldTx);
+    await addToPendingQueue('transactions', 'INSERT', heldTx);
+    setTransactions((prev) => [heldTx, ...prev.filter((t) => t.id !== heldTx.id)]);
     clearCart();
-    await loadFromSupabase();
+    processPendingSyncQueue();
+
     return heldTx;
   };
 
-  const startNewInvoice = async (notes = '') => {
+  const startNewInvoice = async (notes?: string): Promise<void> => {
     if (cart.length > 0) {
-      const custName = selectedCustomer?.name || 'عميل نقدي';
-      await holdCart(notes || `فاتورة معلقة تلقائياً (فتح فاتورة جديدة لـ ${custName})`);
+      await holdCart(notes || 'تعليق تلقائي عند فتح فاتورة جديدة');
     } else {
       clearCart();
     }
-    setActiveTab('register');
   };
 
   const restoreHeldTransaction = (transactionId: string) => {
-    const foundTx = transactions.find((t) => t.id === transactionId && t.status === 'معلقة');
-    if (!foundTx) {
-      throw new Error('لم يتم العثور على الفاتورة المعلقة المطلوبة.');
-    }
+    const foundTx = transactions.find((t) => t.id === transactionId);
+    if (!foundTx) return;
 
     if (foundTx.originalCart && foundTx.originalCart.length > 0) {
       setCart(foundTx.originalCart);
@@ -1451,22 +1144,23 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const prod = products.find((p) => p.id === item.productId) || {
           id: item.productId,
           name: item.productName,
-          sku: item.sku,
-          barcode: '',
+          sku: item.sku || '',
+          barcode: item.productBarcode || '',
           category: 'عام',
           priceCash: item.unitPrice,
           priceInstallment: item.unitPrice,
           priceWholesale: item.unitPrice,
           cost: item.unitPrice,
-          stock: 99,
+          stock: 999,
           image: '',
         };
         return {
           product: prod,
           quantity: item.quantity,
-          selectedPriceTier: item.priceTier,
-          discountPercent: 0,
+          selectedPriceTier: item.priceTier || 'cash',
+          discountPercent: item.discountPercent || 0,
           assignedAssociateId: item.assignedAssociateId,
+          overridePrice: item.unitPrice,
         };
       });
       setCart(reconstructed);
@@ -1474,102 +1168,27 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (foundTx.customerId) {
       const cust = customers.find((c) => c.id === foundTx.customerId);
-      if (cust) {
-        setSelectedCustomer(cust);
-      } else {
-        setSelectedCustomer({
-          id: foundTx.customerId,
-          name: foundTx.customerName || 'عميل معلق',
-          phone: '',
-          email: '',
-          loyaltyPoints: 0,
-          totalSpent: 0,
-        });
-      }
-    } else if (foundTx.customerName) {
-      setSelectedCustomer({
-        id: `temp_${Date.now()}`,
-        name: foundTx.customerName,
-        phone: '',
-        email: '',
-        loyaltyPoints: 0,
-        totalSpent: 0,
-      });
+      setSelectedCustomer(cust || null);
     }
 
-    if (foundTx.splitAssociates) {
-      setSplitAssociates(foundTx.splitAssociates);
-    } else {
-      setSplitAssociates([]);
-    }
-
+    setSplitAssociates(foundTx.splitAssociates || []);
     setActiveHeldTransactionId(transactionId);
     setActiveTab('register');
   };
 
   const deleteTransaction = async (transactionId: string) => {
-    const res = await deleteTransactionFromSupabase(transactionId);
-    if (!res.success) {
-      const msg = res.error?.message || 'فشل حذف الفاتورة من قاعدة البيانات Supabase';
-      alert(`خطأ: ${msg}`);
-      throw new Error(msg);
-    }
-    if (activeHeldTransactionId === transactionId) {
-      setActiveHeldTransactionId(null);
-    }
-    await loadFromSupabase();
+    await db.transactions.delete(transactionId);
+    await addToPendingQueue('transactions', 'DELETE', { id: transactionId });
+    setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    if (activeHeldTransactionId === transactionId) setActiveHeldTransactionId(null);
+    processPendingSyncQueue();
   };
 
   const updateTransaction = async (updatedTx: Transaction) => {
-    // Immediately update local state in React memory
+    await db.transactions.put(updatedTx);
+    await addToPendingQueue('transactions', 'UPDATE', updatedTx);
     setTransactions((prev) => prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)));
-
-    // Adjust product stock and customer balance if applicable
-    const existingTx = transactions.find((t) => t.id === updatedTx.id);
-    if (existingTx && existingTx.status === 'مكتملة' && updatedTx.status === 'مكتملة') {
-      // Revert stock from old items
-      for (const item of existingTx.items) {
-        const p = products.find((prod) => prod.id === item.productId);
-        if (p) {
-          await updateProductInSupabase({ ...p, stock: p.stock + item.quantity });
-        }
-      }
-      // Apply stock from new items
-      for (const item of updatedTx.items) {
-        const p = products.find((prod) => prod.id === item.productId);
-        if (p) {
-          const baseStock = p.stock + (existingTx.items.find((i) => i.productId === item.productId)?.quantity || 0);
-          await updateProductInSupabase({ ...p, stock: Math.max(0, baseStock - item.quantity) });
-        }
-      }
-
-      // Customer debt adjustment
-      if (existingTx.customerId || updatedTx.customerId) {
-        if (existingTx.customerId) {
-          const oldCust = customers.find((c) => c.id === existingTx.customerId);
-          if (oldCust) {
-            const revertedDebt = Math.max(0, (oldCust.currentDebt || 0) - (existingTx.amountDeferred || 0));
-            const revertedSpent = Math.max(0, (oldCust.totalSpent || 0) - existingTx.grandTotal);
-            await updateCustomerInSupabase({ ...oldCust, currentDebt: revertedDebt, totalSpent: revertedSpent });
-          }
-        }
-        if (updatedTx.customerId) {
-          const newCust = customers.find((c) => c.id === updatedTx.customerId);
-          if (newCust) {
-            const addedDebt = (newCust.currentDebt || 0) + (updatedTx.amountDeferred || 0);
-            const addedSpent = (newCust.totalSpent || 0) + updatedTx.grandTotal;
-            await updateCustomerInSupabase({ ...newCust, currentDebt: addedDebt, totalSpent: addedSpent });
-          }
-        }
-      }
-    }
-
-    const res = await insertTransactionToSupabase(updatedTx);
-    if (!res.success) {
-      console.error('[POSContext] insertTransactionToSupabase error:', res.error);
-      throw new Error(res.error?.message || 'فشل حفظ التعديلات في قاعدة البيانات');
-    }
-    await loadFromSupabase();
+    processPendingSyncQueue();
   };
 
   const voidTransaction = async (transactionId: string) => {
@@ -1579,22 +1198,29 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         for (const item of targetTx.items) {
           const p = products.find((prod) => prod.id === item.productId);
           if (p) {
-            await updateProductInSupabase({ ...p, stock: p.stock + item.quantity });
+            const restoredProd = { ...p, stock: p.stock + item.quantity };
+            await db.products.put(restoredProd);
+            await addToPendingQueue('products', 'UPDATE', restoredProd);
           }
         }
         if (targetTx.customerId) {
           const cust = customers.find((c) => c.id === targetTx.customerId);
           if (cust) {
-            const newDebt = Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0));
-            const newSpent = Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal);
-            await updateCustomerInSupabase({ ...cust, currentDebt: newDebt, totalSpent: newSpent });
+            const restoredCust = {
+              ...cust,
+              currentDebt: Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0)),
+              totalSpent: Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal),
+            };
+            await db.customers.put(restoredCust);
+            await addToPendingQueue('customers', 'UPDATE', restoredCust);
           }
         }
       }
       const voided = { ...targetTx, status: 'ملغاة' as const };
+      await db.transactions.put(voided);
+      await addToPendingQueue('transactions', 'UPDATE', voided);
       setTransactions((prev) => prev.map((t) => (t.id === transactionId ? voided : t)));
-      await insertTransactionToSupabase(voided);
-      await loadFromSupabase();
+      processPendingSyncQueue();
     }
   };
 
@@ -1602,36 +1228,36 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetTx = transactions.find((t) => t.id === transactionId && t.status === 'مكتملة');
     if (!targetTx) return;
 
-    // 1. Revert product stock in Supabase
     for (const item of targetTx.items) {
       const p = products.find((prod) => prod.id === item.productId);
       if (p) {
-        await updateProductInSupabase({ ...p, stock: p.stock + item.quantity });
+        const restored = { ...p, stock: p.stock + item.quantity };
+        await db.products.put(restored);
+        await addToPendingQueue('products', 'UPDATE', restored);
       }
     }
 
-    // 2. Revert customer balance in Supabase
     if (targetTx.customerId) {
       const cust = customers.find((c) => c.id === targetTx.customerId);
       if (cust) {
         const ratio = settings.loyaltyPointsRatio || 10;
         const addedPoints = Math.floor(targetTx.grandTotal / ratio);
-        const newDebt = Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0));
-        const newSpent = Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal);
-        const newPoints = Math.max(0, (cust.loyaltyPoints || 0) - addedPoints);
-        await updateCustomerInSupabase({
+        const restoredCust = {
           ...cust,
-          totalSpent: newSpent,
-          loyaltyPoints: newPoints,
-          currentDebt: newDebt,
-        });
+          totalSpent: Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal),
+          loyaltyPoints: Math.max(0, (cust.loyaltyPoints || 0) - addedPoints),
+          currentDebt: Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0)),
+        };
+        await db.customers.put(restoredCust);
+        await addToPendingQueue('customers', 'UPDATE', restoredCust);
       }
     }
 
-    // 3. Update transaction status
     const updatedTx: Transaction = { ...targetTx, status: 'مسترجعة' };
-    await insertTransactionToSupabase(updatedTx);
-    await loadFromSupabase();
+    await db.transactions.put(updatedTx);
+    await addToPendingQueue('transactions', 'UPDATE', updatedTx);
+    setTransactions((prev) => prev.map((t) => (t.id === transactionId ? updatedTx : t)));
+    processPendingSyncQueue();
   };
 
   const payCustomerDebt = async (
@@ -1647,11 +1273,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...cust,
         currentDebt: Math.max(0, (cust.currentDebt || 0) - amount),
       };
+      await db.customers.put(updatedCust);
+      await addToPendingQueue('customers', 'UPDATE', updatedCust);
       setCustomers((prev) => prev.map((c) => (c.id === customerId ? updatedCust : c)));
-      if (selectedCustomer?.id === customerId) {
-        setSelectedCustomer(updatedCust);
-      }
-      await updateCustomerInSupabase(updatedCust);
+      if (selectedCustomer?.id === customerId) setSelectedCustomer(updatedCust);
     }
 
     const selAssoc = associateId ? associates.find((a) => a.id === associateId) : currentAssociate;
@@ -1692,8 +1317,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amountDeferred: 0,
     };
 
-    await insertTransactionToSupabase(newTransaction);
-    await loadFromSupabase();
+    await db.transactions.put(newTransaction);
+    await addToPendingQueue('transactions', 'INSERT', newTransaction);
+    setTransactions((prev) => [newTransaction, ...prev]);
+    processPendingSyncQueue();
+
     return newTransaction;
   };
 
@@ -1705,7 +1333,6 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return currentAssociate.permissions.includes(perm);
     }
 
-    // Role-based defaults if permissions array is uninitialized
     const roleDefaults: Record<string, Permission[]> = {
       'مشرف قسم': [
         'view_cash_price', 'view_installment_price', 'view_wholesale_price', 'view_cost_price',
@@ -1728,7 +1355,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetDemoData = async () => {
     clearCart();
-    await loadFromSupabase();
+    await triggerBackgroundSync();
   };
 
   return (
@@ -1754,6 +1381,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         taxRate,
         settings,
         discounts,
+        pendingSyncCount,
         hasPermission,
         updateSettings,
         setActiveTab,
@@ -1805,8 +1433,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExpense,
         deleteExpense,
         returnTransaction,
-        refreshDataFromSupabase: loadFromSupabase,
-        syncUnsyncedItems,
+        refreshDataFromSupabase: triggerBackgroundSync,
+        syncUnsyncedItems: triggerBackgroundSync,
         resetDemoData,
         dbStatus,
         testDbConnection,

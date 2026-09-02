@@ -1,4 +1,5 @@
 import { supabase, getSupabaseKeys } from './supabase';
+import { db, getLastSyncTimestamp, setLastSyncTimestamp, addToPendingQueue, PendingSyncItem } from './db';
 import {
   Product,
   Customer,
@@ -12,8 +13,10 @@ import {
 } from '../types';
 
 /**
- * Single Source of Truth - Supabase API Layer
- * Performs database queries & mutations directly with complete error handling & console logging.
+ * Single Source of Truth & Local-First Synchronization Engine
+ * - Handles Delta Sync with 'updated_at' filtering
+ * - Selective column fetching to minimize Egress
+ * - Outbox pattern for background writes to Supabase
  */
 
 // --- 1. Connection Check ---
@@ -62,8 +65,6 @@ export async function checkSupabaseConnection(): Promise<{
         categorizedError = `[صلاحيات] مفتاح Supabase غير صالح أو منتهي (Invalid API Key): ${error.message}`;
       } else if (status === 403 || error.message?.includes('RLS')) {
         categorizedError = `[سياسات] تم رفض الطلب بواسطة RLS / Permissions: ${error.message}`;
-      } else if (error.code === 'PGRST204' || error.message?.includes('schema cache') || error.message?.includes('not found')) {
-        categorizedError = `[جدول] الجدول غير موجود في قاعدة البيانات: ${error.message}`;
       }
 
       console.warn('[SUPABASE HEALTH CHECK] Failed:', categorizedError);
@@ -77,7 +78,6 @@ export async function checkSupabaseConnection(): Promise<{
       };
     }
 
-    console.log(`[SUPABASE HEALTH CHECK] OK - Connected to ${url}. Status: 200 OK (${data?.length ?? 0} rows)`);
     return {
       success: true,
       url,
@@ -99,11 +99,6 @@ export async function checkSupabaseConnection(): Promise<{
 }
 
 // --- AUTO-RECOVERY MUTATION HELPER ---
-/**
- * Safely executes a Supabase DB write operation (insert/update/upsert).
- * If PostgREST returns PGRST204 ("Could not find the 'xyz' column of 'table' in the schema cache"),
- * it automatically strips the missing column from the payload and retries up to 5 times.
- */
 export async function safeSupabaseMutation(
   operationFn: (cleanPayload: any) => Promise<{ data?: any; error?: any }>,
   initialPayload: any
@@ -125,25 +120,9 @@ export async function safeSupabaseMutation(
       const match = error.message.match(/Could not find the '([^']+)' column/i);
       if (match && match[1]) {
         const missingColumn = match[1];
-        console.warn(`[SUPABASE AUTO-RECOVERY] Stripping missing column '${missingColumn}' from payload and retrying...`);
+        console.warn(`[SUPABASE AUTO-RECOVERY] Stripping missing column '${missingColumn}' from payload...`);
         delete currentPayload[missingColumn];
         continue;
-      }
-    }
-
-    // Handle 22P02 invalid input syntax (e.g. smallint vs decimal "0.005" or "0.05")
-    if (error && (error.code === '22P02' || (typeof error.message === 'string' && error.message.toLowerCase().includes('invalid input syntax')))) {
-      console.warn(`[SUPABASE AUTO-RECOVERY] Type mismatch error detected: ${error.message}`);
-      if (currentPayload.commission_rate !== undefined) {
-        if (typeof currentPayload.commission_rate === 'number' && !Number.isInteger(currentPayload.commission_rate)) {
-          console.warn(`[SUPABASE AUTO-RECOVERY] Converting decimal commission_rate ${currentPayload.commission_rate} to integer percentage or stripping...`);
-          currentPayload.commission_rate = Math.round(currentPayload.commission_rate * 100);
-          continue;
-        } else {
-          console.warn(`[SUPABASE AUTO-RECOVERY] Stripping commission_rate from payload to recover...`);
-          delete currentPayload.commission_rate;
-          continue;
-        }
       }
     }
 
@@ -158,9 +137,7 @@ export async function safeSupabaseMutation(
 export function mapDbProductToProduct(p: any): Product {
   const safeId = (p.id !== null && p.id !== undefined && String(p.id) !== 'null' && String(p.id) !== 'undefined')
     ? String(p.id)
-    : (p.id2 !== null && p.id2 !== undefined && String(p.id2) !== 'null' && String(p.id2) !== 'undefined')
-      ? String(p.id2)
-      : (p.sku ? String(p.sku) : (p.barcode ? String(p.barcode) : `prod_${Math.random().toString(36).substring(2, 9)}`));
+    : (p.sku ? String(p.sku) : (p.barcode ? String(p.barcode) : `prod_${Math.random().toString(36).substring(2, 9)}`));
 
   return {
     id: safeId,
@@ -171,28 +148,15 @@ export function mapDbProductToProduct(p: any): Product {
     priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
     priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
     priceWholesale: Number(p.priceWholesale ?? p.wholesale_price ?? p.price_wholesale ?? p.wholesalePrice ?? 0),
-    cost: Number(p.cost ?? p.cost_price ?? p.cost_cash ?? p.purchase_price ?? p.buy_price ?? 0),
-    stock: Number(
-      p.stock_quantity ??
-      p.quantity ??
-      p.qty ??
-      p.stock ??
-      p.stock_qty ??
-      p.quantity_in_stock ??
-      p.inventory ??
-      0
-    ),
+    cost: Number(p.cost ?? p.cost_price ?? p.purchase_price ?? 0),
+    stock: Number(p.stock_quantity ?? p.quantity ?? p.stock ?? 0),
     image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
     description: p.description || '',
     barcodes: Array.isArray(p.barcodes)
       ? p.barcodes.map(String)
       : typeof p.barcodes === 'string'
         ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : typeof p.alternative_barcodes === 'string'
-          ? p.alternative_barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-          : Array.isArray(p.alternative_barcodes)
-            ? p.alternative_barcodes.map(String)
-            : [],
+        : [],
   };
 }
 
@@ -208,6 +172,7 @@ export function mapProductToDbPayload(product: Product): any {
     description: product.description || '',
     image: product.image || '',
     barcodes: product.barcodes || (product.barcode ? [product.barcode] : []),
+    updated_at: new Date().toISOString(),
   };
 
   if (product.id && !isNaN(Number(product.id))) {
@@ -224,7 +189,6 @@ export function toSafeDbId(id: any): number | string | null {
   const str = String(id).trim();
   if (!str) return null;
 
-  // Pure digits check
   if (/^\d+$/.test(str)) {
     const num = Number(str);
     if (!isNaN(num)) {
@@ -235,7 +199,6 @@ export function toSafeDbId(id: any): number | string | null {
     }
   }
 
-  // String with non-digits like "cust_1788218330932" or "supp_99"
   const digits = str.replace(/\D/g, '');
   if (digits.length > 0) {
     const num = Number(digits.slice(-9));
@@ -250,9 +213,7 @@ export function toSafeDbId(id: any): number | string | null {
 export function mapDbCustomerToCustomer(c: any): Customer {
   const safeId = (c.id !== null && c.id !== undefined && String(c.id) !== 'null' && String(c.id) !== 'undefined')
     ? String(c.id)
-    : (c.id2 !== null && c.id2 !== undefined && String(c.id2) !== 'null' && String(c.id2) !== 'undefined')
-      ? String(c.id2)
-      : (c.phone ? `cust_${c.phone}` : `cust_${Math.random().toString(36).substring(2, 9)}`);
+    : (c.phone ? `cust_${c.phone}` : `cust_${Math.random().toString(36).substring(2, 9)}`);
 
   return {
     id: safeId,
@@ -299,9 +260,7 @@ export function mapCustomerToDbPayload(customer: Customer): any {
 export function mapDbSupplierToSupplier(s: any): Supplier {
   const safeId = (s.id !== null && s.id !== undefined && String(s.id) !== 'null' && String(s.id) !== 'undefined')
     ? String(s.id)
-    : (s.id2 !== null && s.id2 !== undefined && String(s.id2) !== 'null' && String(s.id2) !== 'undefined')
-      ? String(s.id2)
-      : `supp_${Math.random().toString(36).substring(2, 9)}`;
+    : `supp_${Math.random().toString(36).substring(2, 9)}`;
 
   return {
     id: safeId,
@@ -371,6 +330,7 @@ export function mapSupplierTxToDbPayload(tx: SupplierTransaction): any {
     payment_method: tx.paymentMethod || '',
     notes: tx.notes || '',
     associate_name: tx.associateName || '',
+    updated_at: new Date().toISOString(),
   };
 
   if (safeId !== null && safeId !== undefined) {
@@ -413,6 +373,7 @@ export function mapExpenseToDbPayload(expense: POSExpense): any {
     linked_supplier_name: expense.linkedSupplierName || null,
     linked_associate_id: toSafeDbId(expense.linkedAssociateId),
     linked_associate_name: expense.linkedAssociateName || null,
+    updated_at: new Date().toISOString(),
   };
 
   if (safeId !== null && safeId !== undefined) {
@@ -425,14 +386,12 @@ export function mapExpenseToDbPayload(expense: POSExpense): any {
 export function mapDbAssociateToAssociate(a: any): Associate {
   const safeId = (a.id !== null && a.id !== undefined && String(a.id) !== 'null' && String(a.id) !== 'undefined')
     ? String(a.id)
-    : (a.id2 !== null && a.id2 !== undefined && String(a.id2) !== 'null' && String(a.id2) !== 'undefined')
-      ? String(a.id2)
-      : `assoc_${Math.random().toString(36).substring(2, 9)}`;
+    : `assoc_${Math.random().toString(36).substring(2, 9)}`;
 
   return {
     id: safeId,
     name: String(a.name || 'موظف'),
-    username: String(a.username || a.user_name || (a.name ? String(a.name).toLowerCase() : '') || `user_${safeId}`),
+    username: String(a.username || a.user_name || `user_${safeId}`),
     password: String(a.password || a.pin || '1001'),
     pin: String(a.pin || a.password || '1001'),
     role: (a.role as any) || 'مسؤول مبيعات',
@@ -444,13 +403,7 @@ export function mapDbAssociateToAssociate(a: any): Associate {
     hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
     advancesBalance: Number(a.advances_balance ?? a.advancesBalance ?? 0),
     isClockedIn: Boolean(a.is_clocked_in ?? a.isClockedIn ?? false),
-    permissions: Array.isArray(a.permissions)
-      ? a.permissions
-      : typeof a.permissions === 'string'
-      ? (() => {
-          try { return JSON.parse(a.permissions); } catch { return undefined; }
-        })()
-      : undefined,
+    permissions: Array.isArray(a.permissions) ? a.permissions : undefined,
   };
 }
 
@@ -520,14 +473,20 @@ export function mapClosedShiftToDbPayload(shift: ClosedShift): any {
     opening_balance: shift.openingBalance || 0,
     leftover_balance: shift.leftoverBalance || 0,
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 }
 
-// --- PAGINATED FETCH HELPER (Bypasses Supabase 100/1000 row limits) ---
-export async function fetchAllRowsFromSupabase(
+// --- 2. SELECTIVE & DELTA FETCH ENGINE ---
+
+/**
+ * Optimized Selective Query Helper with Pagination & Delta Filter
+ */
+async function fetchSelectiveFromSupabase(
   tableName: string,
-  orderColumn?: string,
-  ascending: boolean = false
+  columns: string,
+  lastSyncTimestamp?: string | null,
+  orderColumn: string = 'updated_at'
 ): Promise<{ data: any[]; error?: any }> {
   let allRows: any[] = [];
   let page = 0;
@@ -537,25 +496,32 @@ export async function fetchAllRowsFromSupabase(
   while (hasMore) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
-    let query = supabase.from(tableName).select('*').range(from, to);
-    if (orderColumn) {
-      query = query.order(orderColumn, { ascending });
+    let query = supabase.from(tableName).select(columns).range(from, to);
+
+    if (lastSyncTimestamp) {
+      // Delta sync filter
+      query = query.or(`updated_at.gt.${lastSyncTimestamp},created_at.gt.${lastSyncTimestamp}`);
     }
+
+    if (orderColumn) {
+      query = query.order(orderColumn, { ascending: true, nullsFirst: false });
+    }
+
     const { data, error } = await query;
     if (error) {
-      if (allRows.length > 0) {
-        console.warn(`[SUPABASE] Partial fetch for ${tableName} up to page ${page}:`, error.message || error);
-        break;
+      // If order by updated_at fails (column missing), retry without filter or fallback to id
+      if (error.message?.includes('updated_at') || error.code === '42703') {
+        const fallbackRes = await supabase.from(tableName).select(columns).range(from, to);
+        return { data: fallbackRes.data || [] };
       }
+      if (allRows.length > 0) break;
       return { data: [], error };
     }
+
     if (data && data.length > 0) {
       allRows = allRows.concat(data);
-      if (data.length < pageSize) {
-        hasMore = false;
-      } else {
-        page++;
-      }
+      if (data.length < pageSize) hasMore = false;
+      else page++;
     } else {
       hasMore = false;
     }
@@ -564,398 +530,543 @@ export async function fetchAllRowsFromSupabase(
   return { data: allRows };
 }
 
-// --- 2. PRODUCTS API ---
+/**
+ * Delta Sync Mechanism:
+ * Compares last_sync_timestamp and only fetches changed records from Supabase, then updates Dexie.js
+ */
+export async function performDeltaSync(): Promise<{
+  success: boolean;
+  syncedCounts: Record<string, number>;
+  error?: any;
+}> {
+  console.log('[SUPABASE DELTA SYNC] Starting sync cycle...');
+  const lastSync = await getLastSyncTimestamp();
+  const nextSyncTimestamp = new Date().toISOString();
+  const syncedCounts: Record<string, number> = {};
+
+  try {
+    // 1. Sync Products
+    const prodRes = await fetchSelectiveFromSupabase(
+      'products',
+      'id, name, sku, barcode, category, price, wholesale_price, price_installment, cost, stock_quantity, description, image, barcodes',
+      lastSync
+    );
+    if (prodRes.data && prodRes.data.length > 0) {
+      const prods = prodRes.data.map(mapDbProductToProduct);
+      await db.products.bulkPut(prods);
+      syncedCounts.products = prods.length;
+    }
+
+    // 2. Sync Customers
+    const custRes = await fetchSelectiveFromSupabase(
+      'customers',
+      'id, name, phone, email, address, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, current_debt, notes, monthly_installment_amount',
+      lastSync
+    );
+    if (custRes.data && custRes.data.length > 0) {
+      const custs = custRes.data.map(mapDbCustomerToCustomer);
+      await db.customers.bulkPut(custs);
+      syncedCounts.customers = custs.length;
+    }
+
+    // 3. Sync Suppliers
+    const suppRes = await fetchSelectiveFromSupabase(
+      'suppliers',
+      'id, name, company_name, phone, email, address, category, current_balance, notes, tax_number',
+      lastSync
+    );
+    if (suppRes.data && suppRes.data.length > 0) {
+      const supps = suppRes.data.map(mapDbSupplierToSupplier);
+      await db.suppliers.bulkPut(supps);
+      syncedCounts.suppliers = supps.length;
+    }
+
+    // 4. Sync Supplier Transactions
+    const stxRes = await fetchSelectiveFromSupabase(
+      'supplier_transactions',
+      'id, supplier_id, supplier_name, type, amount, date, reference_number, payment_method, notes, associate_name',
+      lastSync
+    );
+    if (stxRes.data && stxRes.data.length > 0) {
+      const stxs = stxRes.data.map(mapDbSupplierTxToSupplierTx);
+      await db.supplierTransactions.bulkPut(stxs);
+      syncedCounts.supplierTransactions = stxs.length;
+    }
+
+    // 5. Sync Transactions
+    const txRes = await fetchSelectiveFromSupabase(
+      'transactions',
+      'id, receipt_number, timestamp, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, commissions, notes, status, amount_paid, amount_deferred, split_payments, original_cart',
+      lastSync
+    );
+    if (txRes.data && txRes.data.length > 0) {
+      const itemsRes = await fetchSelectiveFromSupabase('transaction_items', 'transaction_id, product_id, product_name, sku, quantity, price_tier, unit_price, total_price, assigned_associate_id');
+      const itemsByTx: Record<string, any[]> = {};
+      if (itemsRes.data) {
+        itemsRes.data.forEach((item: any) => {
+          const tid = String(item.transaction_id);
+          if (!itemsByTx[tid]) itemsByTx[tid] = [];
+          itemsByTx[tid].push({
+            productId: String(item.product_id || ''),
+            productName: item.product_name || 'منتج',
+            sku: item.sku || '',
+            quantity: Number(item.quantity || 1),
+            priceTier: item.price_tier || 'cash',
+            unitPrice: Number(item.unit_price || 0),
+            totalPrice: Number(item.total_price || 0),
+            assignedAssociateId: item.assigned_associate_id,
+          });
+        });
+      }
+
+      const txs: Transaction[] = txRes.data.map((t: any) => {
+        const id = String(t.id);
+        return {
+          id,
+          receiptNumber: t.receipt_number || `RCP-${id}`,
+          timestamp: t.timestamp || new Date().toISOString(),
+          items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
+          subtotal: Number(t.subtotal || 0),
+          discountTotal: Number(t.discount_total || 0),
+          taxTotal: Number(t.tax_total || 0),
+          grandTotal: Number(t.grand_total || 0),
+          paymentMethod: t.payment_method || 'كاش',
+          paymentDetails: t.payment_details || '',
+          customerId: t.customer_id || undefined,
+          customerName: t.customer_name || undefined,
+          primaryAssociateId: t.primary_associate_id || 'system',
+          primaryAssociateName: t.primary_associate_name || 'النظام',
+          splitAssociates: t.split_associates,
+          commissions: t.commissions || [],
+          notes: t.notes || '',
+          status: t.status || 'مكتملة',
+          amountPaid: Number(t.amount_paid ?? t.grand_total ?? 0),
+          amountDeferred: Number(t.amount_deferred ?? 0),
+          splitPayments: t.split_payments,
+          originalCart: t.original_cart,
+          isSynced: true,
+        };
+      });
+      await db.transactions.bulkPut(txs);
+      syncedCounts.transactions = txs.length;
+    }
+
+    // 6. Sync Associates
+    const assocRes = await fetchSelectiveFromSupabase(
+      'associates',
+      'id, name, username, password, pin, role, email, phone, commission_rate, daily_goal, hourly_rate, avatar, advances_balance, is_clocked_in, permissions',
+      lastSync
+    );
+    if (assocRes.data && assocRes.data.length > 0) {
+      const assocs = assocRes.data.map(mapDbAssociateToAssociate);
+      await db.associates.bulkPut(assocs);
+      syncedCounts.associates = assocs.length;
+    }
+
+    // 7. Sync Closed Shifts
+    const shiftRes = await fetchSelectiveFromSupabase(
+      'closed_shifts',
+      'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance',
+      lastSync
+    );
+    if (shiftRes.data && shiftRes.data.length > 0) {
+      const shifts = shiftRes.data.map(mapDbShiftToClosedShift);
+      await db.closedShifts.bulkPut(shifts);
+      syncedCounts.closedShifts = shifts.length;
+    }
+
+    // 8. Sync Expenses
+    const expRes = await fetchSelectiveFromSupabase(
+      'expenses',
+      'id, amount, category, description, timestamp, associate_id, associate_name, linked_supplier_id, linked_supplier_name, linked_associate_id, linked_associate_name',
+      lastSync
+    );
+    if (expRes.data && expRes.data.length > 0) {
+      const exps = expRes.data.map(mapDbExpenseToExpense);
+      await db.expenses.bulkPut(exps);
+      syncedCounts.expenses = exps.length;
+    }
+
+    // Update last sync timestamp
+    await setLastSyncTimestamp(nextSyncTimestamp);
+    console.log('[SUPABASE DELTA SYNC] Completed successfully. Next timestamp:', nextSyncTimestamp);
+    return { success: true, syncedCounts };
+  } catch (err: any) {
+    console.warn('[SUPABASE DELTA SYNC] Exception during sync:', err?.message || String(err));
+    return { success: false, syncedCounts, error: err };
+  }
+}
+
+// --- 3. OUTBOX QUEUE WORKER (Offline Write Engine) ---
+
+/**
+ * Background Sync Worker that pulls items from Dexie `pendingSync` and pushes to Supabase
+ */
+export async function processPendingSyncQueue(): Promise<{
+  processedCount: number;
+  remainingCount: number;
+  error?: any;
+}> {
+  const pendingItems = await db.pendingSync.orderBy('id').toArray();
+  if (pendingItems.length === 0) {
+    return { processedCount: 0, remainingCount: 0 };
+  }
+
+  console.log(`[OUTBOX WORKER] Processing ${pendingItems.length} queued mutations...`);
+  let processedCount = 0;
+
+  for (const item of pendingItems) {
+    try {
+      let result: { success: boolean; error?: any } = { success: false };
+
+      switch (item.tableName) {
+        case 'products':
+          if (item.operation === 'INSERT') result = await insertProductToSupabase(item.payload);
+          else if (item.operation === 'UPDATE') result = await updateProductInSupabase(item.payload);
+          else if (item.operation === 'DELETE') result = await deleteProductFromSupabase(item.payload);
+          break;
+
+        case 'customers':
+          if (item.operation === 'INSERT') result = await insertCustomerToSupabase(item.payload);
+          else if (item.operation === 'UPDATE') result = await updateCustomerInSupabase(item.payload);
+          else if (item.operation === 'DELETE') result = await deleteCustomerFromSupabase(item.payload);
+          break;
+
+        case 'suppliers':
+          if (item.operation === 'INSERT') result = await insertSupplierToSupabase(item.payload);
+          else if (item.operation === 'UPDATE') result = await updateSupplierInSupabase(item.payload);
+          else if (item.operation === 'DELETE') result = await deleteSupplierFromSupabase(item.payload);
+          break;
+
+        case 'supplier_transactions':
+          if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+            result = await insertSupplierTransactionToSupabase(item.payload);
+          }
+          break;
+
+        case 'transactions':
+          if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+            result = await insertTransactionToSupabase(item.payload);
+          } else if (item.operation === 'DELETE') {
+            result = await deleteTransactionFromSupabase(item.payload);
+          }
+          break;
+
+        case 'associates':
+          if (item.operation === 'INSERT') result = await insertAssociateToSupabase(item.payload);
+          else if (item.operation === 'UPDATE') result = await updateAssociateInSupabase(item.payload);
+          else if (item.operation === 'DELETE') result = await deleteAssociateFromSupabase(item.payload);
+          break;
+
+        case 'closed_shifts':
+          if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+            result = await insertClosedShiftToSupabase(item.payload);
+          }
+          break;
+
+        case 'expenses':
+          if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+            result = await insertExpenseToSupabase(item.payload);
+          } else if (item.operation === 'DELETE') {
+            result = await deleteExpenseFromSupabase(item.payload);
+          }
+          break;
+
+        case 'discounts':
+          if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
+            result = await insertDiscountToSupabase(item.payload);
+          } else if (item.operation === 'DELETE') {
+            result = await deleteDiscountFromSupabase(item.payload);
+          }
+          break;
+      }
+
+      if (result.success && item.id) {
+        await db.pendingSync.delete(item.id);
+        processedCount++;
+      } else {
+        // If operation failed due to network, increment retry and stop processing remaining
+        if (item.id) {
+          await db.pendingSync.update(item.id, { retryCount: item.retryCount + 1 });
+        }
+        console.warn(`[OUTBOX WORKER] Failed to process queue item #${item.id} for table ${item.tableName}. Network offline?`);
+        break;
+      }
+    } catch (err) {
+      console.error(`[OUTBOX WORKER] Exception processing queue item #${item.id}:`, err);
+      break;
+    }
+  }
+
+  const remaining = await db.pendingSync.count();
+  console.log(`[OUTBOX WORKER] Finished batch. Processed: ${processedCount}, Remaining in queue: ${remaining}`);
+  return { processedCount, remainingCount: remaining };
+}
+
+// --- DIRECT SUPABASE API IMPLEMENTATIONS (Used by Worker & Initial Fallbacks) ---
 
 export async function fetchProductsFromSupabase(): Promise<{ data: Product[]; error?: any }> {
-  console.log('[SUPABASE] Fetching products...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('products');
-    if (error && (!data || data.length === 0)) {
-      console.warn('[SUPABASE] fetchProductsFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const products = (data || []).map(mapDbProductToProduct);
-    console.log(`[SUPABASE] Loaded ${products.length} products`);
-    return { data: products };
+    const res = await fetchSelectiveFromSupabase('products', 'id, name, sku, barcode, category, price, wholesale_price, price_installment, cost, stock_quantity, description, image, barcodes');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbProductToProduct) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchProductsFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertProductToSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
-  console.log('[SUPABASE] Inserting product:', product.name);
   try {
     const payload = mapProductToDbPayload(product);
     const { data, error } = await safeSupabaseMutation(
       async (p) => await supabase.from('products').insert([p]).select().single(),
       payload
     );
-    if (error) {
-      console.error('[SUPABASE ERROR] insertProductToSupabase:', error.message || error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true, data: data ? mapDbProductToProduct(data) : product };
   } catch (err: any) {
-    console.error('[SUPABASE ERROR] insertProductToSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
 export async function updateProductInSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
-  console.log('[SUPABASE] Updating product:', product.id);
   try {
     const payload = mapProductToDbPayload(product);
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
-
     const { data, error } = await safeSupabaseMutation(
       async (p) => {
         let query = supabase.from('products').update(p);
-        if (idNum !== null) {
-          query = query.eq('id', idNum);
-        } else {
-          query = query.eq('name', product.name);
-        }
+        if (idNum !== null) query = query.eq('id', idNum);
+        else query = query.eq('name', product.name);
         return await query.select().single();
       },
       payload
     );
-
-    if (error) {
-      console.error('[SUPABASE ERROR] updateProductInSupabase:', error.message || error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true, data: data ? mapDbProductToProduct(data) : product };
   } catch (err: any) {
-    console.error('[SUPABASE ERROR] updateProductInSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
 export async function deleteProductFromSupabase(productId: string): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Deleting product:', productId);
   try {
     let query = supabase.from('products').delete();
-    if (productId && !isNaN(Number(productId))) {
-      query = query.eq('id', Number(productId));
-    } else {
-      query = query.or(`id.eq.${productId},name.eq.${productId}`);
-    }
-
+    if (productId && !isNaN(Number(productId))) query = query.eq('id', Number(productId));
+    else query = query.or(`id.eq.${productId},name.eq.${productId}`);
     const { error } = await query;
-    if (error) {
-      console.error('[SUPABASE ERROR] deleteProductFromSupabase:', error.message || error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err: any) {
-    console.error('[SUPABASE ERROR] deleteProductFromSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
 export async function bulkDeleteProductsFromSupabase(productIds: string[]): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Bulk deleting products:', productIds.length);
   try {
     const numericIds = productIds.map((id) => Number(id)).filter((id) => !isNaN(id));
     if (numericIds.length === 0) return { success: true };
-
     const { error } = await supabase.from('products').delete().in('id', numericIds);
-    if (error) {
-      console.error('[SUPABASE ERROR] bulkDeleteProductsFromSupabase:', error.message || error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err: any) {
-    console.error('[SUPABASE ERROR] bulkDeleteProductsFromSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
 export async function clearAllProductsFromSupabase(): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Clearing all products...');
   try {
     const { error } = await supabase.from('products').delete().gt('id', -1);
-    if (error) {
-      console.error('[SUPABASE ERROR] clearAllProductsFromSupabase:', error.message || error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err: any) {
-    console.error('[SUPABASE ERROR] clearAllProductsFromSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
-// --- 3. CUSTOMERS API ---
-
 export async function fetchCustomersFromSupabase(): Promise<{ data: Customer[]; error?: any }> {
-  console.log('[SUPABASE] Fetching customers...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('customers');
-    if (error && (!data || data.length === 0)) {
-      console.warn('[SUPABASE] fetchCustomersFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const customers = (data || []).map(mapDbCustomerToCustomer);
-    console.log(`[SUPABASE] Loaded ${customers.length} customers`);
-    return { data: customers };
+    const res = await fetchSelectiveFromSupabase('customers', 'id, name, phone, email, address, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, current_debt, notes, monthly_installment_amount');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbCustomerToCustomer) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchCustomersFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertCustomerToSupabase(customer: Customer): Promise<{ success: boolean; data?: Customer; error?: any }> {
-  console.log('[SUPABASE] Inserting customer:', customer.id);
   try {
     const payload = mapCustomerToDbPayload(customer);
     const { data, error } = await supabase.from('customers').insert([payload]).select().single();
     if (error) {
       const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
-      if (upsertErr) {
-        console.error('[SUPABASE ERROR] insertCustomerToSupabase:', upsertErr);
-        return { success: false, error: upsertErr };
-      }
+      if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbCustomerToCustomer(upsertData) };
     }
     return { success: true, data: mapDbCustomerToCustomer(data) };
   } catch (err) {
-    console.error('[SUPABASE ERROR] insertCustomerToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function updateCustomerInSupabase(customer: Customer): Promise<{ success: boolean; data?: Customer; error?: any }> {
-  console.log('[SUPABASE] Updating customer:', customer.id);
   try {
     const payload = mapCustomerToDbPayload(customer);
     const targetId = payload.id || toSafeDbId(customer.id) || customer.id;
     const { data, error } = await supabase.from('customers').update(payload).eq('id', targetId).select().single();
     if (error) {
       const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select().single();
-      if (upsertErr) {
-        console.error('[SUPABASE ERROR] updateCustomerInSupabase:', upsertErr);
-        return { success: false, error: upsertErr };
-      }
+      if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbCustomerToCustomer(upsertData) };
     }
     return { success: true, data: mapDbCustomerToCustomer(data) };
   } catch (err) {
-    console.error('[SUPABASE ERROR] updateCustomerInSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function deleteCustomerFromSupabase(customerId: string): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Deleting customer:', customerId);
   try {
     const targetId = toSafeDbId(customerId) || customerId;
     const { error } = await supabase.from('customers').delete().eq('id', targetId);
-    if (error) {
-      console.error('[SUPABASE ERROR] deleteCustomerFromSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] deleteCustomerFromSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-// --- 4. SUPPLIERS API ---
-
 export async function fetchSuppliersFromSupabase(): Promise<{ data: Supplier[]; error?: any }> {
-  console.log('[SUPABASE] Fetching suppliers...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('suppliers');
-    if (error && (!data || data.length === 0)) {
-      console.warn('[SUPABASE] fetchSuppliersFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const suppliers = (data || []).map(mapDbSupplierToSupplier);
-    console.log(`[SUPABASE] Loaded ${suppliers.length} suppliers`);
-    return { data: suppliers };
+    const res = await fetchSelectiveFromSupabase('suppliers', 'id, name, company_name, phone, email, address, category, current_balance, notes, tax_number');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbSupplierToSupplier) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchSuppliersFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
-  console.log('[SUPABASE] Inserting supplier:', supplier.id);
   try {
     const payload = mapSupplierToDbPayload(supplier);
     const { data, error } = await supabase.from('suppliers').insert([payload]).select().single();
     if (error) {
       const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select().single();
-      if (upsertErr) {
-        console.error('[SUPABASE ERROR] insertSupplierToSupabase:', upsertErr);
-        return { success: false, error: upsertErr };
-      }
+      if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbSupplierToSupplier(upsertData) };
     }
     return { success: true, data: mapDbSupplierToSupplier(data) };
   } catch (err) {
-    console.error('[SUPABASE ERROR] insertSupplierToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function updateSupplierInSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
-  console.log('[SUPABASE] Updating supplier:', supplier.id);
   try {
     const payload = mapSupplierToDbPayload(supplier);
     const { data, error } = await supabase.from('suppliers').update(payload).eq('id', supplier.id).select().single();
     if (error) {
       const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select().single();
-      if (upsertErr) {
-        console.error('[SUPABASE ERROR] updateSupplierInSupabase:', upsertErr);
-        return { success: false, error: upsertErr };
-      }
+      if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: mapDbSupplierToSupplier(upsertData) };
     }
     return { success: true, data: mapDbSupplierToSupplier(data) };
   } catch (err) {
-    console.error('[SUPABASE ERROR] updateSupplierInSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function deleteSupplierFromSupabase(supplierId: string): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Deleting supplier:', supplierId);
   try {
     const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
-    if (error) {
-      console.error('[SUPABASE ERROR] deleteSupplierFromSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] deleteSupplierFromSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-// --- 5. SUPPLIER TRANSACTIONS API ---
-
 export async function fetchSupplierTransactionsFromSupabase(): Promise<{ data: SupplierTransaction[]; error?: any }> {
-  console.log('[SUPABASE] Fetching supplier transactions...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('supplier_transactions');
-    if (error && (!data || data.length === 0)) {
-      console.warn('[SUPABASE] fetchSupplierTransactionsFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const txs = (data || []).map(mapDbSupplierTxToSupplierTx);
-    console.log(`[SUPABASE] Loaded ${txs.length} supplier transactions`);
-    return { data: txs };
+    const res = await fetchSelectiveFromSupabase('supplier_transactions', 'id, supplier_id, supplier_name, type, amount, date, reference_number, payment_method, notes, associate_name');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbSupplierTxToSupplierTx) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchSupplierTransactionsFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertSupplierTransactionToSupabase(tx: SupplierTransaction): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Inserting supplier transaction:', tx.id);
   try {
     const payload = mapSupplierTxToDbPayload(tx);
     const { error } = await supabase.from('supplier_transactions').upsert([payload]);
-    if (error) {
-      console.error('[SUPABASE ERROR] insertSupplierTransactionToSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] insertSupplierTransactionToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-// --- 6. TRANSACTIONS & ITEMS API ---
-
 export async function fetchTransactionsFromSupabase(): Promise<{ data: Transaction[]; error?: any }> {
-  console.log('[SUPABASE] Fetching transactions & items...');
   try {
-    const { data: txData, error: txError } = await fetchAllRowsFromSupabase('transactions', 'timestamp', false);
+    const txRes = await fetchSelectiveFromSupabase('transactions', 'id, receipt_number, timestamp, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, commissions, notes, status, amount_paid, amount_deferred, split_payments, original_cart');
+    if (txRes.error) return { data: [], error: txRes.error };
 
-    if (txError && (!txData || txData.length === 0)) {
-      console.warn('[SUPABASE] fetchTransactionsFromSupabase failed:', txError.message || txError);
-      return { data: [], error: txError };
-    }
-
-    const { data: itemsData, error: itemsError } = await fetchAllRowsFromSupabase('transaction_items');
-    if (itemsError) {
-      console.warn('[SUPABASE] transaction_items select warning:', itemsError);
-    }
-
-    const itemsByTxId: Record<string, any[]> = {};
-    if (itemsData && Array.isArray(itemsData)) {
-      itemsData.forEach((item: any) => {
-        const tid = String(item.transaction_id || item.transactionId);
-        if (!itemsByTxId[tid]) itemsByTxId[tid] = [];
-        itemsByTxId[tid].push({
-          productId: String(item.product_id || item.productId || ''),
-          productName: item.product_name || item.productName || 'منتج',
+    const itemsRes = await fetchSelectiveFromSupabase('transaction_items', 'transaction_id, product_id, product_name, sku, quantity, price_tier, unit_price, total_price, assigned_associate_id');
+    const itemsByTx: Record<string, any[]> = {};
+    if (itemsRes.data) {
+      itemsRes.data.forEach((item: any) => {
+        const tid = String(item.transaction_id);
+        if (!itemsByTx[tid]) itemsByTx[tid] = [];
+        itemsByTx[tid].push({
+          productId: String(item.product_id || ''),
+          productName: item.product_name || 'منتج',
           sku: item.sku || '',
           quantity: Number(item.quantity || 1),
-          priceTier: item.price_tier || item.priceTier || 'cash',
-          unitPrice: Number(item.unit_price || item.unitPrice || 0),
-          totalPrice: Number(item.total_price || item.totalPrice || 0),
-          discountAmount: Number(item.discount_amount || item.discountAmount || 0),
-          discountPercent: Number(item.discount_percent || item.discountPercent || 0),
-          assignedAssociateId: item.assigned_associate_id || item.assignedAssociateId || undefined,
+          priceTier: item.price_tier || 'cash',
+          unitPrice: Number(item.unit_price || 0),
+          totalPrice: Number(item.total_price || 0),
+          assignedAssociateId: item.assigned_associate_id,
         });
       });
     }
 
-    const transactions: Transaction[] = (txData || []).map((t: any) => {
+    const txs: Transaction[] = (txRes.data || []).map((t: any) => {
       const id = String(t.id);
-      const items = itemsByTxId[id] || (Array.isArray(t.items) ? t.items : []);
       return {
         id,
-        receiptNumber: t.receipt_number || t.receiptNumber || `RCP-${id}`,
-        timestamp: t.timestamp || t.created_at || new Date().toISOString(),
-        items,
+        receiptNumber: t.receipt_number || `RCP-${id}`,
+        timestamp: t.timestamp || new Date().toISOString(),
+        items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
         subtotal: Number(t.subtotal || 0),
-        discountTotal: Number(t.discount_total || t.discountTotal || 0),
-        taxTotal: Number(t.tax_total || t.taxTotal || 0),
-        grandTotal: Number(t.grand_total || t.grandTotal || 0),
-        paymentMethod: t.payment_method || t.paymentMethod || 'كاش',
-        paymentDetails: t.payment_details || t.paymentDetails || '',
-        customerId: t.customer_id || t.customerId || undefined,
-        customerName: t.customer_name || t.customerName || undefined,
-        primaryAssociateId: t.primary_associate_id || t.primaryAssociateId || 'system',
-        primaryAssociateName: t.primary_associate_name || t.primaryAssociateName || 'النظام',
-        splitAssociates: Array.isArray(t.split_associates)
-          ? t.split_associates
-          : Array.isArray(t.splitAssociates)
-            ? t.splitAssociates
-            : undefined,
-        commissions: Array.isArray(t.commissions) ? t.commissions : [],
+        discountTotal: Number(t.discount_total || 0),
+        taxTotal: Number(t.tax_total || 0),
+        grandTotal: Number(t.grand_total || 0),
+        paymentMethod: t.payment_method || 'كاش',
+        paymentDetails: t.payment_details || '',
+        customerId: t.customer_id || undefined,
+        customerName: t.customer_name || undefined,
+        primaryAssociateId: t.primary_associate_id || 'system',
+        primaryAssociateName: t.primary_associate_name || 'النظام',
+        splitAssociates: t.split_associates,
+        commissions: t.commissions || [],
         notes: t.notes || '',
         status: t.status || 'مكتملة',
-        amountPaid: Number(t.amount_paid ?? t.amountPaid ?? t.grand_total ?? 0),
-        amountDeferred: Number(t.amount_deferred ?? t.amountDeferred ?? 0),
-        splitPayments: Array.isArray(t.split_payments)
-          ? t.split_payments
-          : Array.isArray(t.splitPayments)
-            ? t.splitPayments
-            : undefined,
-        originalCart: t.original_cart || t.originalCart || undefined,
+        amountPaid: Number(t.amount_paid ?? t.grand_total ?? 0),
+        amountDeferred: Number(t.amount_deferred ?? 0),
+        splitPayments: t.split_payments,
+        originalCart: t.original_cart,
+        isSynced: true,
       };
     });
 
-    console.log(`[SUPABASE] Loaded ${transactions.length} transactions`);
-    return { data: transactions };
+    return { data: txs };
   } catch (err) {
-    console.error('[SUPABASE ERROR] fetchTransactionsFromSupabase exception:', err);
     return { data: [], error: err };
   }
 }
 
 export async function insertTransactionToSupabase(transaction: Transaction): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Inserting transaction:', transaction.id);
   try {
     const payload = {
       id: transaction.id,
@@ -979,18 +1090,14 @@ export async function insertTransactionToSupabase(transaction: Transaction): Pro
       amount_paid: transaction.amountPaid || 0,
       amount_deferred: transaction.amountDeferred || 0,
       split_payments: transaction.splitPayments || null,
+      updated_at: new Date().toISOString(),
     };
 
     const { error: txError } = await supabase.from('transactions').upsert([payload]);
-    if (txError) {
-      console.error('[SUPABASE ERROR] insertTransactionToSupabase tx record:', txError);
-      return { success: false, error: txError };
-    }
+    if (txError) return { success: false, error: txError };
 
-    // Insert items into transaction_items
     if (transaction.items && transaction.items.length > 0) {
       await supabase.from('transaction_items').delete().eq('transaction_id', transaction.id);
-
       const itemsPayload = transaction.items.map((item) => ({
         transaction_id: transaction.id,
         product_id: item.productId,
@@ -1002,76 +1109,51 @@ export async function insertTransactionToSupabase(transaction: Transaction): Pro
         total_price: item.totalPrice,
         assigned_associate_id: item.assignedAssociateId || null,
       }));
-
-      const { error: itemsError } = await supabase.from('transaction_items').insert(itemsPayload);
-      if (itemsError) {
-        console.warn('[SUPABASE] transaction_items insert error:', itemsError);
-      }
+      await supabase.from('transaction_items').insert(itemsPayload);
     }
 
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] insertTransactionToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function deleteTransactionFromSupabase(transactionId: string): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Deleting transaction:', transactionId);
   try {
     await supabase.from('transaction_items').delete().eq('transaction_id', transactionId);
     const { error } = await supabase.from('transactions').delete().eq('id', transactionId);
-    if (error) {
-      console.error('[SUPABASE ERROR] deleteTransactionFromSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] deleteTransactionFromSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-// --- 7. ASSOCIATES API ---
-
 export async function fetchAssociatesFromSupabase(): Promise<{ data: Associate[]; error?: any }> {
-  console.log('[SUPABASE] Fetching associates...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('associates');
-    if (error && (!data || data.length === 0)) {
-      console.warn('[SUPABASE] fetchAssociatesFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const associates = (data || []).map(mapDbAssociateToAssociate);
-    console.log(`[SUPABASE] Loaded ${associates.length} associates`);
-    return { data: associates };
+    const res = await fetchSelectiveFromSupabase('associates', 'id, name, username, password, pin, role, email, phone, commission_rate, daily_goal, hourly_rate, avatar, advances_balance, is_clocked_in, permissions');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbAssociateToAssociate) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchAssociatesFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertAssociateToSupabase(associate: Associate): Promise<{ success: boolean; data?: Associate; error?: any }> {
-  console.log('[SUPABASE] Inserting associate:', associate.id);
   try {
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
       async (p) => await supabase.from('associates').upsert([p]).select().single(),
       payload
     );
-    if (error) {
-      console.error('[SUPABASE ERROR] insertAssociateToSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true, data: data ? mapDbAssociateToAssociate(data) : associate };
   } catch (err) {
-    console.error('[SUPABASE ERROR] insertAssociateToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function updateAssociateInSupabase(associate: Associate): Promise<{ success: boolean; data?: Associate; error?: any }> {
-  console.log('[SUPABASE] Updating associate:', associate.id);
   try {
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
@@ -1083,138 +1165,87 @@ export async function updateAssociateInSupabase(associate: Associate): Promise<{
         async (p) => await supabase.from('associates').upsert([p]).select().single(),
         payload
       );
-      if (upsertErr) {
-        console.error('[SUPABASE ERROR] updateAssociateInSupabase:', upsertErr);
-        return { success: false, error: upsertErr };
-      }
+      if (upsertErr) return { success: false, error: upsertErr };
       return { success: true, data: upsertData ? mapDbAssociateToAssociate(upsertData) : associate };
     }
     return { success: true, data: data ? mapDbAssociateToAssociate(data) : associate };
   } catch (err) {
-    console.error('[SUPABASE ERROR] updateAssociateInSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function deleteAssociateFromSupabase(associateId: string): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Deleting associate:', associateId);
   try {
     const { error } = await supabase.from('associates').delete().eq('id', associateId);
-    if (error) {
-      console.error('[SUPABASE ERROR] deleteAssociateFromSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] deleteAssociateFromSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-// --- 8. CLOSED SHIFTS API ---
-
 export async function fetchClosedShiftsFromSupabase(): Promise<{ data: ClosedShift[]; error?: any }> {
-  console.log('[SUPABASE] Fetching closed shifts...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('closed_shifts', 'created_at', false);
-    if (error && (!data || data.length === 0)) {
-      console.warn('[SUPABASE] fetchClosedShiftsFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const shifts = (data || []).map(mapDbShiftToClosedShift);
-    console.log(`[SUPABASE] Loaded ${shifts.length} closed shifts`);
-    return { data: shifts };
+    const res = await fetchSelectiveFromSupabase('closed_shifts', 'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbShiftToClosedShift) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchClosedShiftsFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertClosedShiftToSupabase(shift: ClosedShift): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Inserting closed shift:', shift.id);
   try {
     const payload = mapClosedShiftToDbPayload(shift);
     const { error } = await supabase.from('closed_shifts').upsert([payload]);
-    if (error) {
-      console.warn('[SUPABASE] insertClosedShiftToSupabase failed:', error.message || error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err: any) {
-    console.warn('[SUPABASE] insertClosedShiftToSupabase exception:', err?.message || String(err));
     return { success: false, error: err };
   }
 }
 
-// --- 9. EXPENSES API ---
-
 export async function fetchExpensesFromSupabase(): Promise<{ data: POSExpense[]; error?: any }> {
-  console.log('[SUPABASE] Fetching expenses...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('expenses');
-    if (error && (!data || data.length === 0)) {
-      if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
-        console.warn('[SUPABASE] Table "expenses" not found in schema cache. Returning empty list.');
-        return { data: [] };
-      }
-      console.warn('[SUPABASE] fetchExpensesFromSupabase failed:', error.message || error);
-      return { data: [], error };
-    }
-    const expenses = (data || []).map(mapDbExpenseToExpense);
-    console.log(`[SUPABASE] Loaded ${expenses.length} expenses`);
-    return { data: expenses };
+    const res = await fetchSelectiveFromSupabase('expenses', 'id, amount, category, description, timestamp, associate_id, associate_name, linked_supplier_id, linked_supplier_name, linked_associate_id, linked_associate_name');
+    if (res.error) return { data: [], error: res.error };
+    return { data: (res.data || []).map(mapDbExpenseToExpense) };
   } catch (err: any) {
-    console.warn('[SUPABASE] fetchExpensesFromSupabase exception:', err?.message || String(err));
     return { data: [], error: err };
   }
 }
 
 export async function insertExpenseToSupabase(expense: POSExpense): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Inserting expense:', expense.id);
   try {
     const payload = mapExpenseToDbPayload(expense);
     const { error } = await supabase.from('expenses').upsert([payload]);
-    if (error) {
-      console.error('[SUPABASE ERROR] insertExpenseToSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] insertExpenseToSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
 export async function deleteExpenseFromSupabase(expenseId: string): Promise<{ success: boolean; error?: any }> {
-  console.log('[SUPABASE] Deleting expense:', expenseId);
   try {
     const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
-    if (error) {
-      console.error('[SUPABASE ERROR] deleteExpenseFromSupabase:', error);
-      return { success: false, error };
-    }
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
-    console.error('[SUPABASE ERROR] deleteExpenseFromSupabase exception:', err);
     return { success: false, error: err };
   }
 }
 
-// --- 10. DISCOUNTS API ---
-
 export async function fetchDiscountsFromSupabase(): Promise<{ data: ProductDiscount[]; error?: any }> {
-  console.log('[SUPABASE] Fetching discounts...');
   try {
-    const { data, error } = await fetchAllRowsFromSupabase('discounts');
-    if (error && (!data || data.length === 0)) {
-      return { data: [] };
-    }
-    const discounts: ProductDiscount[] = (data || []).map((d: any) => ({
+    const res = await fetchSelectiveFromSupabase('discounts', 'product_id, type, value, is_active, apply_to');
+    if (res.error) return { data: [] };
+    const discounts: ProductDiscount[] = (res.data || []).map((d: any) => ({
       productId: String(d.product_id || d.productId),
       type: d.type || 'percentage',
       value: Number(d.value || 0),
-      isActive: d.is_active ?? d.isActive ?? true,
-      applyTo: d.apply_to || d.applyTo || 'both',
+      isActive: d.is_active ?? true,
+      applyTo: d.apply_to || 'both',
     }));
     return { data: discounts };
   } catch {
@@ -1248,7 +1279,7 @@ export async function deleteDiscountFromSupabase(productId: string): Promise<{ s
   }
 }
 
-// --- COMPATIBILITY ALIASES FOR EXISTING CODE ---
+// --- COMPATIBILITY ALIASES ---
 export const syncProductToSupabase = async (p: Product) => updateProductInSupabase(p);
 export const syncCustomerToSupabase = async (c: Customer) => updateCustomerInSupabase(c);
 export const syncSupplierToSupabase = async (s: Supplier) => updateSupplierInSupabase(s);

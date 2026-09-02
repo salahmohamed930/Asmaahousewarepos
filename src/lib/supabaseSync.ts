@@ -523,13 +523,54 @@ export function mapClosedShiftToDbPayload(shift: ClosedShift): any {
   };
 }
 
+// --- PAGINATED FETCH HELPER (Bypasses Supabase 100/1000 row limits) ---
+export async function fetchAllRowsFromSupabase(
+  tableName: string,
+  orderColumn?: string,
+  ascending: boolean = false
+): Promise<{ data: any[]; error?: any }> {
+  let allRows: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    let query = supabase.from(tableName).select('*').range(from, to);
+    if (orderColumn) {
+      query = query.order(orderColumn, { ascending });
+    }
+    const { data, error } = await query;
+    if (error) {
+      if (allRows.length > 0) {
+        console.warn(`[SUPABASE] Partial fetch for ${tableName} up to page ${page}:`, error.message || error);
+        break;
+      }
+      return { data: [], error };
+    }
+    if (data && data.length > 0) {
+      allRows = allRows.concat(data);
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return { data: allRows };
+}
+
 // --- 2. PRODUCTS API ---
 
 export async function fetchProductsFromSupabase(): Promise<{ data: Product[]; error?: any }> {
   console.log('[SUPABASE] Fetching products...');
   try {
-    const { data, error } = await supabase.from('products').select('*');
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('products');
+    if (error && (!data || data.length === 0)) {
       console.warn('[SUPABASE] fetchProductsFromSupabase failed:', error.message || error);
       return { data: [], error };
     }
@@ -651,8 +692,8 @@ export async function clearAllProductsFromSupabase(): Promise<{ success: boolean
 export async function fetchCustomersFromSupabase(): Promise<{ data: Customer[]; error?: any }> {
   console.log('[SUPABASE] Fetching customers...');
   try {
-    const { data, error } = await supabase.from('customers').select('*');
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('customers');
+    if (error && (!data || data.length === 0)) {
       console.warn('[SUPABASE] fetchCustomersFromSupabase failed:', error.message || error);
       return { data: [], error };
     }
@@ -727,8 +768,8 @@ export async function deleteCustomerFromSupabase(customerId: string): Promise<{ 
 export async function fetchSuppliersFromSupabase(): Promise<{ data: Supplier[]; error?: any }> {
   console.log('[SUPABASE] Fetching suppliers...');
   try {
-    const { data, error } = await supabase.from('suppliers').select('*');
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('suppliers');
+    if (error && (!data || data.length === 0)) {
       console.warn('[SUPABASE] fetchSuppliersFromSupabase failed:', error.message || error);
       return { data: [], error };
     }
@@ -801,8 +842,8 @@ export async function deleteSupplierFromSupabase(supplierId: string): Promise<{ 
 export async function fetchSupplierTransactionsFromSupabase(): Promise<{ data: SupplierTransaction[]; error?: any }> {
   console.log('[SUPABASE] Fetching supplier transactions...');
   try {
-    const { data, error } = await supabase.from('supplier_transactions').select('*');
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('supplier_transactions');
+    if (error && (!data || data.length === 0)) {
       console.warn('[SUPABASE] fetchSupplierTransactionsFromSupabase failed:', error.message || error);
       return { data: [], error };
     }
@@ -836,17 +877,14 @@ export async function insertSupplierTransactionToSupabase(tx: SupplierTransactio
 export async function fetchTransactionsFromSupabase(): Promise<{ data: Transaction[]; error?: any }> {
   console.log('[SUPABASE] Fetching transactions & items...');
   try {
-    const { data: txData, error: txError } = await supabase
-      .from('transactions')
-      .select('*')
-      .order('timestamp', { ascending: false });
+    const { data: txData, error: txError } = await fetchAllRowsFromSupabase('transactions', 'timestamp', false);
 
-    if (txError) {
+    if (txError && (!txData || txData.length === 0)) {
       console.warn('[SUPABASE] fetchTransactionsFromSupabase failed:', txError.message || txError);
       return { data: [], error: txError };
     }
 
-    const { data: itemsData, error: itemsError } = await supabase.from('transaction_items').select('*');
+    const { data: itemsData, error: itemsError } = await fetchAllRowsFromSupabase('transaction_items');
     if (itemsError) {
       console.warn('[SUPABASE] transaction_items select warning:', itemsError);
     }
@@ -999,8 +1037,8 @@ export async function deleteTransactionFromSupabase(transactionId: string): Prom
 export async function fetchAssociatesFromSupabase(): Promise<{ data: Associate[]; error?: any }> {
   console.log('[SUPABASE] Fetching associates...');
   try {
-    const { data, error } = await supabase.from('associates').select('*');
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('associates');
+    if (error && (!data || data.length === 0)) {
       console.warn('[SUPABASE] fetchAssociatesFromSupabase failed:', error.message || error);
       return { data: [], error };
     }
@@ -1078,8 +1116,8 @@ export async function deleteAssociateFromSupabase(associateId: string): Promise<
 export async function fetchClosedShiftsFromSupabase(): Promise<{ data: ClosedShift[]; error?: any }> {
   console.log('[SUPABASE] Fetching closed shifts...');
   try {
-    const { data, error } = await supabase.from('closed_shifts').select('*').order('created_at', { ascending: false });
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('closed_shifts', 'created_at', false);
+    if (error && (!data || data.length === 0)) {
       console.warn('[SUPABASE] fetchClosedShiftsFromSupabase failed:', error.message || error);
       return { data: [], error };
     }
@@ -1113,8 +1151,8 @@ export async function insertClosedShiftToSupabase(shift: ClosedShift): Promise<{
 export async function fetchExpensesFromSupabase(): Promise<{ data: POSExpense[]; error?: any }> {
   console.log('[SUPABASE] Fetching expenses...');
   try {
-    const { data, error } = await supabase.from('expenses').select('*');
-    if (error) {
+    const { data, error } = await fetchAllRowsFromSupabase('expenses');
+    if (error && (!data || data.length === 0)) {
       if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
         console.warn('[SUPABASE] Table "expenses" not found in schema cache. Returning empty list.');
         return { data: [] };
@@ -1167,9 +1205,8 @@ export async function deleteExpenseFromSupabase(expenseId: string): Promise<{ su
 export async function fetchDiscountsFromSupabase(): Promise<{ data: ProductDiscount[]; error?: any }> {
   console.log('[SUPABASE] Fetching discounts...');
   try {
-    const { data, error } = await supabase.from('discounts').select('*');
-    if (error) {
-      // discounts table might not exist in some schemas, return empty array silently
+    const { data, error } = await fetchAllRowsFromSupabase('discounts');
+    if (error && (!data || data.length === 0)) {
       return { data: [] };
     }
     const discounts: ProductDiscount[] = (data || []).map((d: any) => ({

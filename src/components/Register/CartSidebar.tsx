@@ -247,41 +247,41 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 </div>
               </div>
             ) : (
-              <div>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-stone-400 absolute right-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="بحث باسم العميل أو التليفون..."
-                    value={customerSearch}
-                    onFocus={() => setIsCustomerDropdownOpen(true)}
-                    onChange={(e) => {
-                      setCustomerSearch(e.target.value);
-                      setIsCustomerDropdownOpen(true);
-                    }}
-                    className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-8 pl-14 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
-                  />
-                  <div className="absolute left-1.5 top-1.5 flex items-center space-x-1 space-x-reverse">
+              <div className="relative">
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-stone-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="بحث باسم العميل أو التليفون..."
+                      value={customerSearch}
+                      onFocus={() => setIsCustomerDropdownOpen(true)}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        setIsCustomerDropdownOpen(true);
+                      }}
+                      className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-8 pl-7 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                    />
                     {customerSearch && (
                       <button
                         type="button"
                         onClick={() => setCustomerSearch('')}
-                        className="p-0.5 text-stone-400 hover:text-stone-200 rounded-md hover:bg-stone-800 transition-colors"
+                        className="absolute left-2 top-2 p-0.5 text-stone-400 hover:text-stone-200 rounded-md hover:bg-stone-800 transition-colors"
                         title="مسح البحث"
                       >
                         <X className="w-3 h-3" />
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleOpenAddCustomerForm}
-                      className="px-1.5 py-0.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-[9px] font-bold flex items-center space-x-1 space-x-reverse transition-colors"
-                      title="إضافة عميل جديد بنقل رقم الهاتف"
-                    >
-                      <UserPlus className="w-2.5 h-2.5" />
-                      <span>جديد</span>
-                    </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddCustomerForm}
+                    className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1 space-x-reverse transition-colors shrink-0 shadow-sm"
+                    title="إضافة عميل جديد بنقل رقم الهاتف"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>جديد</span>
+                  </button>
                 </div>
 
                 {/* Quick Add Customer Modal / Inline Form */}
@@ -333,7 +333,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                 {/* Customer Search Dropdown */}
                 {isCustomerDropdownOpen && !showAddCustomerForm && (
-                  <div className="absolute left-0 right-0 top-12 bg-stone-900 border border-stone-800 rounded-2xl shadow-2xl p-2 z-40 max-h-56 overflow-y-auto">
+                  <div className="absolute left-0 right-0 top-10 bg-stone-900 border border-stone-800 rounded-2xl shadow-2xl p-2 z-40 max-h-56 overflow-y-auto">
                     <div className="flex items-center justify-between text-[10px] font-bold text-stone-400 p-1 border-b border-stone-800 mb-1">
                       <span>اختر عميلاً من قاعدة البيانات ({filteredCustomers.length}):</span>
                       <button

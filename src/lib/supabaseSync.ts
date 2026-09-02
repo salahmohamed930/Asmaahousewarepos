@@ -480,13 +480,13 @@ export function mapClosedShiftToDbPayload(shift: ClosedShift): any {
 // --- 2. SELECTIVE & DELTA FETCH ENGINE ---
 
 /**
- * Optimized Selective Query Helper with Pagination & Delta Filter
+ * Safe, Robust Selective/Full Query Helper with Pagination, Recovery Fallbacks & Console Diagnostics
  */
 async function fetchSelectiveFromSupabase(
   tableName: string,
-  columns: string,
+  columns: string = '*',
   lastSyncTimestamp?: string | null,
-  orderColumn: string = 'updated_at'
+  orderColumn?: string
 ): Promise<{ data: any[]; error?: any }> {
   let allRows: any[] = [];
   let page = 0;
@@ -496,10 +496,10 @@ async function fetchSelectiveFromSupabase(
   while (hasMore) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
-    let query = supabase.from(tableName).select(columns).range(from, to);
+
+    let query = supabase.from(tableName).select('*').range(from, to);
 
     if (lastSyncTimestamp) {
-      // Delta sync filter
       query = query.or(`updated_at.gt.${lastSyncTimestamp},created_at.gt.${lastSyncTimestamp}`);
     }
 
@@ -507,15 +507,35 @@ async function fetchSelectiveFromSupabase(
       query = query.order(orderColumn, { ascending: true, nullsFirst: false });
     }
 
-    const { data, error } = await query;
+    let { data, error, status } = await query;
+
+    console.log(
+      `[SUPABASE QUERY] Table: '${tableName}' | Range: ${from}-${to} | Filter: ${
+        lastSyncTimestamp ? 'delta (' + lastSyncTimestamp + ')' : 'FULL'
+      } | Status: ${status || (error ? 'Error' : '200 OK')} | Records: ${data?.length || 0}${
+        error ? ` | Error: ${error.message}` : ''
+      }`
+    );
+
     if (error) {
-      // If order by updated_at fails (column missing), retry without filter or fallback to id
-      if (error.message?.includes('updated_at') || error.code === '42703') {
-        const fallbackRes = await supabase.from(tableName).select(columns).range(from, to);
-        return { data: fallbackRes.data || [] };
+      // Recovery Fallback: If delta filter or order failed (e.g. updated_at column missing), retry full fetch with select('*')
+      console.warn(
+        `[SUPABASE QUERY RECOVERY] Query failed on table '${tableName}' (${error.message}). Retrying with full select('*')...`
+      );
+      const fallbackQuery = supabase.from(tableName).select('*').range(from, to);
+      const fallbackRes = await fallbackQuery;
+
+      console.log(
+        `[SUPABASE QUERY RECOVERY RESULT] Table: '${tableName}' | Status: ${
+          fallbackRes.status || (fallbackRes.error ? 'Error' : '200 OK')
+        } | Records: ${fallbackRes.data?.length || 0}${fallbackRes.error ? ` | Error: ${fallbackRes.error.message}` : ''}`
+      );
+
+      if (fallbackRes.error) {
+        return { data: [], error: fallbackRes.error };
       }
-      if (allRows.length > 0) break;
-      return { data: [], error };
+      data = fallbackRes.data || [];
+      hasMore = false;
     }
 
     if (data && data.length > 0) {
@@ -590,17 +610,27 @@ async function performDeltaSyncInternal(): Promise<{
   syncedCounts: Record<string, number>;
   error?: any;
 }> {
-  console.log('[SUPABASE DELTA SYNC] Starting delta sync...');
+  console.log('[SUPABASE DELTA SYNC] Starting sync cycle...');
   const lastSync = await getLastSyncTimestamp();
   const nextSyncTimestamp = new Date().toISOString();
   const syncedCounts: Record<string, number> = {};
 
   try {
+    // Check local counts to force full initial sync if local Dexie tables are empty
+    const localProdCount = await db.products.count();
+    const localCustCount = await db.customers.count();
+    const localSuppCount = await db.suppliers.count();
+    const localStxCount = await db.supplierTransactions.count();
+    const localTxCount = await db.transactions.count();
+    const localAssocCount = await db.associates.count();
+    const localShiftCount = await db.closedShifts.count();
+    const localExpCount = await db.expenses.count();
+
     // 1. Sync Products (including soft-delete check)
     const prodRes = await fetchSelectiveFromSupabase(
       'products',
-      'id, name, sku, barcode, category, price, wholesale_price, price_installment, cost, stock_quantity, description, image, barcodes, is_deleted',
-      lastSync
+      '*',
+      localProdCount === 0 ? null : lastSync
     );
     if (prodRes.data && prodRes.data.length > 0) {
       const activeProds: Product[] = [];
@@ -626,8 +656,8 @@ async function performDeltaSyncInternal(): Promise<{
     // 2. Sync Customers
     const custRes = await fetchSelectiveFromSupabase(
       'customers',
-      'id, name, phone, email, address, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, current_debt, notes, monthly_installment_amount, is_deleted',
-      lastSync
+      '*',
+      localCustCount === 0 ? null : lastSync
     );
     if (custRes.data && custRes.data.length > 0) {
       const activeCusts: Customer[] = [];
@@ -653,8 +683,8 @@ async function performDeltaSyncInternal(): Promise<{
     // 3. Sync Suppliers
     const suppRes = await fetchSelectiveFromSupabase(
       'suppliers',
-      'id, name, company_name, phone, email, address, category, current_balance, notes, tax_number, is_deleted',
-      lastSync
+      '*',
+      localSuppCount === 0 ? null : lastSync
     );
     if (suppRes.data && suppRes.data.length > 0) {
       const activeSupps: Supplier[] = [];
@@ -680,8 +710,8 @@ async function performDeltaSyncInternal(): Promise<{
     // 4. Sync Supplier Transactions
     const stxRes = await fetchSelectiveFromSupabase(
       'supplier_transactions',
-      'id, supplier_id, supplier_name, type, amount, date, reference_number, payment_method, notes, associate_name, is_deleted',
-      lastSync
+      '*',
+      localStxCount === 0 ? null : lastSync
     );
     if (stxRes.data && stxRes.data.length > 0) {
       const activeStxs: SupplierTransaction[] = [];
@@ -707,11 +737,11 @@ async function performDeltaSyncInternal(): Promise<{
     // 5. Sync Transactions
     const txRes = await fetchSelectiveFromSupabase(
       'transactions',
-      'id, receipt_number, timestamp, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, commissions, notes, status, amount_paid, amount_deferred, split_payments, original_cart, is_deleted',
-      lastSync
+      '*',
+      localTxCount === 0 ? null : lastSync
     );
     if (txRes.data && txRes.data.length > 0) {
-      const itemsRes = await fetchSelectiveFromSupabase('transaction_items', 'transaction_id, product_id, product_name, sku, quantity, price_tier, unit_price, total_price, assigned_associate_id');
+      const itemsRes = await fetchSelectiveFromSupabase('transaction_items', '*');
       const itemsByTx: Record<string, any[]> = {};
       if (itemsRes.data) {
         itemsRes.data.forEach((item: any) => {
@@ -777,8 +807,8 @@ async function performDeltaSyncInternal(): Promise<{
     // 6. Sync Associates
     const assocRes = await fetchSelectiveFromSupabase(
       'associates',
-      'id, name, username, password, pin, role, email, phone, commission_rate, daily_goal, hourly_rate, avatar, advances_balance, is_clocked_in, permissions, is_deleted',
-      lastSync
+      '*',
+      localAssocCount === 0 ? null : lastSync
     );
     if (assocRes.data && assocRes.data.length > 0) {
       const activeAssocs: Associate[] = [];
@@ -804,8 +834,8 @@ async function performDeltaSyncInternal(): Promise<{
     // 7. Sync Closed Shifts
     const shiftRes = await fetchSelectiveFromSupabase(
       'closed_shifts',
-      'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance, is_deleted',
-      lastSync
+      '*',
+      localShiftCount === 0 ? null : lastSync
     );
     if (shiftRes.data && shiftRes.data.length > 0) {
       const activeShifts: ClosedShift[] = [];
@@ -831,8 +861,8 @@ async function performDeltaSyncInternal(): Promise<{
     // 8. Sync Expenses
     const expRes = await fetchSelectiveFromSupabase(
       'expenses',
-      'id, amount, category, description, timestamp, associate_id, associate_name, linked_supplier_id, linked_supplier_name, linked_associate_id, linked_associate_name, is_deleted',
-      lastSync
+      '*',
+      localExpCount === 0 ? null : lastSync
     );
     if (expRes.data && expRes.data.length > 0) {
       const activeExps: POSExpense[] = [];

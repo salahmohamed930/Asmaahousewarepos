@@ -3,6 +3,7 @@ import { usePOS } from '../../context/POSContext';
 import { Customer, PaymentMethod, Transaction } from '../../types';
 import { X, DollarSign, UserCheck, CheckCircle, AlertCircle, Search, CreditCard, Printer } from 'lucide-react';
 import { ReceiptModal } from '../Register/ReceiptModal';
+import { CustomerStatementReceiptModal } from './CustomerStatementReceiptModal';
 
 interface CustomerPaymentModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [completedTx, setCompletedTx] = useState<Transaction | null>(null);
+  const [showStatementModal, setShowStatementModal] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialCustomerId) {
@@ -127,21 +129,33 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
 
           {/* Notifications */}
           {successMsg && (
-            <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs rounded-2xl p-3 flex items-center justify-between gap-2">
+            <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
               <div className="flex items-center space-x-2 space-x-reverse">
-                <CheckCircle className="w-4 h-4 shrink-0" />
+                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
                 <span className="font-bold">{successMsg}</span>
               </div>
-              {completedTx && (
-                <button
-                  type="button"
-                  onClick={() => setCompletedTx(completedTx)}
-                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse shrink-0"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة الإيصال</span>
-                </button>
-              )}
+              <div className="flex items-center space-x-2 space-x-reverse shrink-0">
+                {completedTx && (
+                  <button
+                    type="button"
+                    onClick={() => setCompletedTx(completedTx)}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>إيصال السداد</span>
+                  </button>
+                )}
+                {selectedCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => setShowStatementModal(true)}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>كشف حساب (3 أشهر)</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -326,8 +340,15 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
         transaction={completedTx}
         onClose={() => {
           setCompletedTx(null);
-          onClose();
         }}
+      />
+    )}
+
+    {/* Statement Printable Modal */}
+    {showStatementModal && selectedCustomer && (
+      <CustomerStatementReceiptModal
+        customer={selectedCustomer}
+        onClose={() => setShowStatementModal(false)}
       />
     )}
   </>

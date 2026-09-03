@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ReceiptModal } from '../Register/ReceiptModal';
 import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
+import { CustomerStatementReceiptModal } from './CustomerStatementReceiptModal';
 
 interface CustomerAccountModalProps {
   customer: Customer;
@@ -40,6 +41,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
   const { transactions, payCustomerDebt, currentAssociate, updateCustomer } = usePOS();
   const [activeTab, setActiveTab] = useState<ActiveSubTab>('overview');
   const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
+  const [showStatementModal, setShowStatementModal] = useState<boolean>(false);
   
   // Basic Info States (Name, Phone, Email)
   const [customerName, setCustomerName] = useState<string>(customer.name || '');
@@ -229,12 +231,24 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             )}
           </div>
           
-          <button
-            onClick={onClose}
-            className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2 space-x-reverse shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowStatementModal(true)}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 space-x-reverse shadow-lg"
+              title="طباعة كشف حساب حراري للعميل لآخر 3 أشهر"
+            >
+              <Printer className="w-4 h-4" />
+              <span className="hidden sm:inline">طباعة كشف حساب (3 أشهر)</span>
+              <span className="sm:hidden">كشف حساب</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-stone-400 hover:text-white p-2 rounded-xl hover:bg-stone-800 transition-colors shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -603,21 +617,31 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
                   </div>
 
                   {paymentSuccess && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl p-3 mb-4 flex items-center justify-between gap-2">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl p-3 mb-4 flex flex-col sm:flex-row items-center justify-between gap-2">
                       <div className="flex items-start space-x-2 space-x-reverse">
-                        <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
                         <span>{paymentSuccess}</span>
                       </div>
-                      {completedTx && (
+                      <div className="flex items-center space-x-1.5 space-x-reverse shrink-0">
+                        {completedTx && (
+                          <button
+                            type="button"
+                            onClick={() => setCompletedTx(completedTx)}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>إيصال السداد</span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => setCompletedTx(completedTx)}
-                          className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse shrink-0"
+                          onClick={() => setShowStatementModal(true)}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center space-x-1 space-x-reverse"
                         >
                           <Printer className="w-3.5 h-3.5" />
-                          <span>طباعة الإيصال</span>
+                          <span>كشف حساب (3 أشهر)</span>
                         </button>
-                      )}
+                      </div>
                     </div>
                   )}
 
@@ -885,6 +909,14 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
         <InvoiceDetailModal
           transaction={selectedTxForDetail}
           onClose={() => setSelectedTxForDetail(null)}
+        />
+      )}
+
+      {/* Customer 3-Month Statement Thermal Modal */}
+      {showStatementModal && (
+        <CustomerStatementReceiptModal
+          customer={customer}
+          onClose={() => setShowStatementModal(false)}
         />
       )}
     </div>

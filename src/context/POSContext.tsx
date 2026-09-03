@@ -252,6 +252,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showQRCode: true,
       showLogo: false,
       receiptType: 'thermal' as const,
+      directPrintEnabled: true,
+      invoicePrinterName: '',
+      barcodePrinterName: '',
+      invoiceCopies: 1,
+      barcodeCopies: 1,
+      invoicePaperSize: '80mm',
+      barcodePaperSize: '38x25mm',
     };
     if (saved) {
       try {
@@ -1272,7 +1279,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await db.transactions.delete(transactionId);
     await addToPendingQueue('transactions', 'DELETE', { id: transactionId });
     setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
-    if (activeHeldTransactionId === transactionId) setActiveHeldTransactionId(null);
+    if (activeHeldTransactionId === transactionId) {
+      setActiveHeldTransactionId(null);
+      clearCart();
+    }
     processPendingSyncQueue();
   };
 

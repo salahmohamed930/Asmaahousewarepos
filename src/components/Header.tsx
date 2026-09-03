@@ -105,26 +105,14 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="bg-stone-900 text-stone-100 border-b border-stone-800 sticky top-0 z-30 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+      <header className="bg-stone-900 text-stone-100 border-b border-stone-800 sticky top-0 z-30 shadow-md w-full max-w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+          <div className="flex items-center justify-between gap-2 sm:gap-4 h-16 w-full min-w-0">
             
-            {/* Right Brand & Store Info */}
-            <div className="flex items-center space-x-3 space-x-reverse">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                <Store className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center space-x-2 space-x-reverse">
-                  <span className="font-extrabold text-lg tracking-tight text-white">
-                    أسماء للأدوات المنزلية
-                  </span>
-                </div>
-              </div>
-            </div>
+            {/* Right Brand & Store Info (Removed logo & title to prevent horizontal overflow) */}
 
             {/* Navigation Tabs */}
-            <nav className="hidden md:flex space-x-1 space-x-reverse bg-stone-950/60 p-1.5 rounded-xl border border-stone-800">
+            <nav className="hidden md:flex items-center space-x-1 space-x-reverse bg-stone-950/60 p-1.5 rounded-xl border border-stone-800 overflow-x-auto no-scrollbar max-w-full min-w-0 shrink">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -133,7 +121,7 @@ export const Header: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 space-x-reverse px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex items-center space-x-2 space-x-reverse px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
                       isActive
                         ? 'bg-amber-600 text-white shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/60'
@@ -156,7 +144,7 @@ export const Header: React.FC = () => {
             </nav>
 
             {/* Left Active Associate Switcher & Actions */}
-            <div className="flex items-center space-x-3 space-x-reverse">
+            <div className="flex items-center space-x-2 sm:space-x-3 space-x-reverse shrink-0 min-w-0">
               {/* Sync Status Badge & Controls */}
               <SyncStatusIndicator />
 

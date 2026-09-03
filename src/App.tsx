@@ -45,10 +45,10 @@ const MainLayout: React.FC = () => {
     hasPermission('view_wholesale_price');
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white w-full max-w-full overflow-x-hidden">
       <Header />
 
-      <main className="flex-1">
+      <main className="flex-1 w-full min-w-0">
         {activeTab === 'register' && (hasPermission('create_invoice') ? <RegisterView /> : <AccessDenied title="ليس لديك صلاحية إنشاء الفواتير" />)}
         {activeTab === 'associates' && (hasPermission('manage_associates') ? <AssociatesView /> : <AccessDenied title="ليس لديك صلاحية إدارة الموظفين" />)}
         {activeTab === 'analytics' && (hasPermission('view_analytics') ? <AnalyticsView /> : <AccessDenied title="ليس لديك صلاحية عرض التقارير" />)}

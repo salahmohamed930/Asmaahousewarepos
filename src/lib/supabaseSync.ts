@@ -207,6 +207,52 @@ export function isColumnMissing(tableName: string, colName: string): boolean {
   return missingColumnsByTable[tableName]?.has(colName.toLowerCase()) ?? false;
 }
 
+export function extractIdFromPayload(payload: any): string {
+  if (payload === null || payload === undefined) return '';
+  if (typeof payload === 'object') {
+    return String(
+      payload.id ||
+      payload.productId ||
+      payload.customerId ||
+      payload.supplierId ||
+      payload.transactionId ||
+      payload.associateId ||
+      payload.expenseId ||
+      payload.product_id ||
+      ''
+    );
+  }
+  return String(payload);
+}
+
+export async function cleanupOrphanLocalRecords(
+  tableName: 'products' | 'customers' | 'suppliers' | 'supplierTransactions' | 'transactions' | 'associates' | 'closedShifts' | 'expenses',
+  remoteActiveItems: any[],
+  pendingTableName: string
+) {
+  try {
+    const remoteIds = new Set(remoteActiveItems.map((r) => String(r.id)));
+    const pendingItems = await db.pendingSync.where('tableName').equals(pendingTableName).toArray();
+    const pendingIds = new Set(
+      pendingItems.map((p) => {
+        const id = extractIdFromPayload(p.payload);
+        return String(id);
+      })
+    );
+    const localTable = db[tableName] as any;
+    const localItems = await localTable.toArray();
+    const orphanIds = localItems
+      .filter((item: any) => item.isSynced && !remoteIds.has(String(item.id)) && !pendingIds.has(String(item.id)))
+      .map((item: any) => item.id);
+    if (orphanIds.length > 0) {
+      await localTable.bulkDelete(orphanIds);
+      console.log(`[ORPHAN CLEANUP] Removed ${orphanIds.length} deleted records from local table ${tableName}`);
+    }
+  } catch (err) {
+    console.warn(`[ORPHAN CLEANUP ERROR] Table ${tableName}:`, err);
+  }
+}
+
 export function sanitizePayloadForTable(tableName: string, payload: any): any {
   if (!payload || typeof payload !== 'object') return payload;
   if (Array.isArray(payload)) {
@@ -971,6 +1017,7 @@ async function performDeltaSyncInternal(): Promise<{
         await db.transactions.bulkDelete(deletedTxIds);
         console.log(`[SOFT-DELETE SYNC] Deleted ${deletedTxIds.length} soft-deleted transactions from Dexie.js`);
       }
+      await cleanupOrphanLocalRecords('transactions', activeTxs, 'transactions');
       syncedCounts.transactions = activeTxs.length;
     }
 
@@ -1286,10 +1333,12 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
   }
 }
 
-export async function deleteProductFromSupabase(productId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteProductFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const productId = extractIdFromPayload(payload);
+    if (!productId) return { success: true };
     let query = supabase.from('products').delete();
-    if (productId && !isNaN(Number(productId))) query = query.eq('id', Number(productId));
+    if (!isNaN(Number(productId))) query = query.eq('id', Number(productId));
     else query = query.or(`id.eq.${productId},name.eq.${productId}`);
     const { error } = await query;
     if (error) return { success: false, error };
@@ -1378,8 +1427,10 @@ export async function updateCustomerInSupabase(customer: Customer): Promise<{ su
   }
 }
 
-export async function deleteCustomerFromSupabase(customerId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteCustomerFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const customerId = extractIdFromPayload(payload);
+    if (!customerId) return { success: true };
     const targetId = toSafeDbId(customerId) || customerId;
     const { error } = await supabase.from('customers').delete().eq('id', targetId);
     if (error) return { success: false, error };
@@ -1445,8 +1496,10 @@ export async function updateSupplierInSupabase(supplier: Supplier): Promise<{ su
   }
 }
 
-export async function deleteSupplierFromSupabase(supplierId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteSupplierFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const supplierId = extractIdFromPayload(payload);
+    if (!supplierId) return { success: true };
     const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
     if (error) return { success: false, error };
     return { success: true };
@@ -1607,8 +1660,10 @@ export async function insertTransactionToSupabase(transaction: Transaction): Pro
   }
 }
 
-export async function deleteTransactionFromSupabase(transactionId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteTransactionFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const transactionId = extractIdFromPayload(payload);
+    if (!transactionId) return { success: true };
     await supabase.from('transaction_items').delete().eq('transaction_id', transactionId);
     const { error } = await supabase.from('transactions').delete().eq('id', transactionId);
     if (error) return { success: false, error };
@@ -1666,8 +1721,10 @@ export async function updateAssociateInSupabase(associate: Associate): Promise<{
   }
 }
 
-export async function deleteAssociateFromSupabase(associateId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteAssociateFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const associateId = extractIdFromPayload(payload);
+    if (!associateId) return { success: true };
     const { error } = await supabase.from('associates').delete().eq('id', associateId);
     if (error) return { success: false, error };
     return { success: true };
@@ -1726,8 +1783,10 @@ export async function insertExpenseToSupabase(expense: POSExpense): Promise<{ su
   }
 }
 
-export async function deleteExpenseFromSupabase(expenseId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteExpenseFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const expenseId = extractIdFromPayload(payload);
+    if (!expenseId) return { success: true };
     const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
     if (error) return { success: false, error };
     return { success: true };
@@ -1775,8 +1834,10 @@ export async function insertDiscountToSupabase(discount: ProductDiscount): Promi
   }
 }
 
-export async function deleteDiscountFromSupabase(productId: string): Promise<{ success: boolean; error?: any }> {
+export async function deleteDiscountFromSupabase(payload: any): Promise<{ success: boolean; error?: any }> {
   try {
+    const productId = extractIdFromPayload(payload);
+    if (!productId) return { success: true };
     await supabase.from('discounts').delete().eq('product_id', productId);
     return { success: true };
   } catch (err) {

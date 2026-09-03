@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { getSupabaseKeys } from '../../lib/supabase';
+import { qzPrinterService, PrinterServiceStatus } from '../../services/qzPrinterService';
 import {
   FUNCTION_KEYS_LIST,
   DEFAULT_SHORTCUT_KEYS,
@@ -24,6 +25,14 @@ import {
   Database,
   Keyboard,
   Command,
+  Zap,
+  Search,
+  AlertCircle,
+  CheckCircle2,
+  HelpCircle,
+  Tag,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -51,6 +60,90 @@ export const SettingsView: React.FC = () => {
 
   const [diagnosticResult, setDiagnosticResult] = useState<{ success?: boolean; msg?: string } | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
+
+  // Direct Printing Service States (QZ Tray)
+  const [printerStatus, setPrinterStatus] = useState<PrinterServiceStatus>(qzPrinterService.getStatus());
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<string[]>([]);
+  const [isSearchingPrinters, setIsSearchingPrinters] = useState<boolean>(false);
+  const [isTestingInvoice, setIsTestingInvoice] = useState<boolean>(false);
+  const [isTestingBarcode, setIsTestingBarcode] = useState<boolean>(false);
+  const [printTestResult, setPrintTestResult] = useState<{ success?: boolean; msg: string } | null>(null);
+  const [showQzGuideModal, setShowQzGuideModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubscribe = qzPrinterService.subscribeStatus((st) => {
+      setPrinterStatus(st);
+    });
+    // Auto connect attempt
+    qzPrinterService.connect().catch(() => {});
+    return () => unsubscribe();
+  }, []);
+
+  const handleDiscoverPrinters = async () => {
+    setIsSearchingPrinters(true);
+    setPrintTestResult(null);
+    try {
+      const res = await qzPrinterService.findPrinters();
+      if (res.success) {
+        setDiscoveredPrinters(res.printers);
+        if (res.printers.length === 0) {
+          setPrintTestResult({ success: false, msg: 'لم يتم العثور على أي طابعات معرفة في نظام Windows.' });
+        } else {
+          setPrintTestResult({ success: true, msg: `تم اكتشاف عدد (${res.printers.length}) طابعة معرفة في الويندوز بنجاح.` });
+        }
+      } else {
+        setPrintTestResult({ success: false, msg: res.error || 'فشل اكتشاف الطابعات.' });
+      }
+    } finally {
+      setIsSearchingPrinters(false);
+    }
+  };
+
+  const handleTestInvoicePrinter = async () => {
+    const targetPrinter = settings.printSettings.invoicePrinterName;
+    if (!targetPrinter) {
+      alert('يرجى اختيار وتحديد اسم طابعة الفواتير أولاً من القائمة.');
+      return;
+    }
+    setIsTestingInvoice(true);
+    setPrintTestResult(null);
+    try {
+      const res = await qzPrinterService.testInvoicePrinter(
+        targetPrinter,
+        settings.printSettings.invoicePaperSize || '80mm'
+      );
+      if (res.success) {
+        setPrintTestResult({ success: true, msg: `تم إرسال طباعة تجريبية بنجاح إلى طابعة الفواتير (${targetPrinter})!` });
+      } else {
+        setPrintTestResult({ success: false, msg: `فشل اختبار طابعة الفواتير: ${res.error}` });
+      }
+    } finally {
+      setIsTestingInvoice(false);
+    }
+  };
+
+  const handleTestBarcodePrinter = async () => {
+    const targetPrinter = settings.printSettings.barcodePrinterName;
+    if (!targetPrinter) {
+      alert('يرجى اختيار وتحديد اسم طابعة الباركود والملصقات أولاً من القائمة.');
+      return;
+    }
+    setIsTestingBarcode(true);
+    setPrintTestResult(null);
+    try {
+      const res = await qzPrinterService.testBarcodePrinter(
+        targetPrinter,
+        settings.printSettings.barcodePaperSize || '38x25mm'
+      );
+      if (res.success) {
+        setPrintTestResult({ success: true, msg: `تم إرسال ملصق باركود تجريبي بنجاح إلى طابعة الباركود (${targetPrinter})!` });
+      } else {
+        setPrintTestResult({ success: false, msg: `فشل اختبار طابعة الباركود: ${res.error}` });
+      }
+    } finally {
+      setIsTestingBarcode(false);
+    }
+  };
 
   const triggerSuccess = (msg: string) => {
     setSuccessMessage(msg);
@@ -287,6 +380,296 @@ export const SettingsView: React.FC = () => {
                 <span className="text-xs">المظهر النهاري (Light)</span>
               </button>
             </div>
+          </div>
+
+          {/* SECTION 1.5: Direct Silent Printing (QZ Tray Local Bridge) */}
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-4 shadow-md space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+              <h2 className="text-sm font-black text-amber-500 flex items-center space-x-2 space-x-reverse">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span>نظام الطباعة المباشرة بدون نوافذ (Direct Printing)</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowQzGuideModal(true)}
+                className="text-stone-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-stone-800 transition-colors flex items-center space-x-1 space-x-reverse text-[11px] font-bold"
+                title="دليل تثبيت وتفعيل QZ Tray على Windows"
+              >
+                <HelpCircle className="w-4 h-4 text-amber-400" />
+                <span>دليل التشغيل</span>
+              </button>
+            </div>
+
+            {/* Connection Status Banner */}
+            <div
+              className={`p-3 rounded-xl border text-xs ${
+                printerStatus.isConnected
+                  ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                  : printerStatus.isConnecting
+                  ? 'bg-amber-950/40 border-amber-800/60 text-amber-300'
+                  : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-bold flex items-center space-x-1.5 space-x-reverse">
+                  {printerStatus.isConnected ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400" />
+                  )}
+                  <span>حالة اتصال خدمة الطباعة المباشرة:</span>
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                    printerStatus.isConnected
+                      ? 'bg-emerald-900/80 text-emerald-200'
+                      : 'bg-rose-900/80 text-rose-200'
+                  }`}
+                >
+                  {printerStatus.isConnected
+                    ? 'متصل بنجاح (QZ Active)'
+                    : 'غير متصل (QZ Offline)'}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                {printerStatus.statusText}
+              </p>
+              {printerStatus.lastError && (
+                <p className="text-[10px] text-rose-300 font-bold mt-1 bg-stone-950/60 p-2 rounded border border-rose-900/50">
+                  تنبيه: {printerStatus.lastError}
+                </p>
+              )}
+            </div>
+
+            {/* Direct Print Toggle */}
+            <div className="flex items-center justify-between bg-stone-950/80 p-3 rounded-xl border border-stone-800">
+              <div>
+                <span className="text-xs font-bold text-stone-200 block">
+                  تفعيل الطباعة المباشرة والتلقائية
+                </span>
+                <span className="text-[10px] text-stone-400 block">
+                  توجيه الفواتير والباركود فوراً للطابعة دون إظهار نافذة Windows Print.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.printSettings.directPrintEnabled !== false}
+                onChange={(e) =>
+                  handlePrintSettingChange('directPrintEnabled', e.target.checked)
+                }
+                className="w-4 h-4 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
+              />
+            </div>
+
+            {/* Discover Printers Action */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleDiscoverPrinters}
+                disabled={isSearchingPrinters}
+                className="w-full py-2 bg-stone-800 hover:bg-stone-750 text-stone-100 border border-stone-700/80 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 space-x-reverse shadow-sm disabled:opacity-50"
+              >
+                <Search className={`w-3.5 h-3.5 text-amber-400 ${isSearchingPrinters ? 'animate-spin' : ''}`} />
+                <span>
+                  {isSearchingPrinters
+                    ? 'جاري فحص واكتشاف طابعات الويندوز...'
+                    : 'اكتشاف الطابعات المتاحة في Windows'}
+                </span>
+              </button>
+            </div>
+
+            {/* Printer Assignments & Controls */}
+            <div className="space-y-3 pt-2">
+              {/* Invoice Printer Assignment */}
+              <div className="bg-stone-950 p-3 rounded-xl border border-stone-850 space-y-2">
+                <label className="block text-stone-300 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5 space-x-reverse">
+                    <Printer className="w-3.5 h-3.5 text-amber-500" />
+                    <span>طابعة الفواتير (INVOICE_PRINTER_NAME):</span>
+                  </span>
+                  <span className="text-[10px] text-stone-500">طابعة الحراري / A4</span>
+                </label>
+
+                {discoveredPrinters.length > 0 ? (
+                  <select
+                    value={settings.printSettings.invoicePrinterName || ''}
+                    onChange={(e) =>
+                      handlePrintSettingChange('invoicePrinterName', e.target.value)
+                    }
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
+                  >
+                    <option value="">-- اختر طابعة الفواتير --</option>
+                    {discoveredPrinters.map((pName) => (
+                      <option key={`inv_prn_${pName}`} value={pName}>
+                        {pName}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="اسم طابعة الفواتير بالويندوز (مثال: POS-80 أو XP-80)"
+                    value={settings.printSettings.invoicePrinterName || ''}
+                    onChange={(e) =>
+                      handlePrintSettingChange('invoicePrinterName', e.target.value)
+                    }
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
+                  />
+                )}
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[10px] text-stone-400 font-bold mb-1">مقاس الورق:</label>
+                    <select
+                      value={settings.printSettings.invoicePaperSize || '80mm'}
+                      onChange={(e) =>
+                        handlePrintSettingChange('invoicePaperSize', e.target.value)
+                      }
+                      className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-stone-200 text-xs font-bold"
+                    >
+                      <option value="80mm">حراري 80mm</option>
+                      <option value="58mm">حراري 58mm</option>
+                      <option value="A4">A4 قياسي</option>
+                      <option value="A5">A5 قياسي</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-stone-400 font-bold mb-1">عدد النسخ:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="5"
+                      value={settings.printSettings.invoiceCopies || 1}
+                      onChange={(e) =>
+                        handlePrintSettingChange(
+                          'invoiceCopies',
+                          Math.max(1, parseInt(e.target.value) || 1)
+                        )
+                      }
+                      className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-stone-200 text-xs font-bold text-center"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestInvoicePrinter}
+                  disabled={isTestingInvoice}
+                  className="w-full py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>
+                    {isTestingInvoice
+                      ? 'جاري طباعة الاختبار...'
+                      : 'اختبار طابعة الفواتير (Test Invoice Printer)'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Barcode Printer Assignment */}
+              <div className="bg-stone-950 p-3 rounded-xl border border-stone-850 space-y-2">
+                <label className="block text-stone-300 text-xs font-bold flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5 space-x-reverse">
+                    <Tag className="w-3.5 h-3.5 text-amber-500" />
+                    <span>طابعة الباركود والملصقات (BARCODE_PRINTER_NAME):</span>
+                  </span>
+                  <span className="text-[10px] text-stone-500">طابعة الاستيكر</span>
+                </label>
+
+                {discoveredPrinters.length > 0 ? (
+                  <select
+                    value={settings.printSettings.barcodePrinterName || ''}
+                    onChange={(e) =>
+                      handlePrintSettingChange('barcodePrinterName', e.target.value)
+                    }
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
+                  >
+                    <option value="">-- اختر طابعة الباركود --</option>
+                    {discoveredPrinters.map((pName) => (
+                      <option key={`bar_prn_${pName}`} value={pName}>
+                        {pName}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="اسم طابعة الباركود بالويندوز (مثال: Xprinter XP-365B)"
+                    value={settings.printSettings.barcodePrinterName || ''}
+                    onChange={(e) =>
+                      handlePrintSettingChange('barcodePrinterName', e.target.value)
+                    }
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
+                  />
+                )}
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[10px] text-stone-400 font-bold mb-1">مقاس الملصق:</label>
+                    <select
+                      value={settings.printSettings.barcodePaperSize || '38x25mm'}
+                      onChange={(e) =>
+                        handlePrintSettingChange('barcodePaperSize', e.target.value)
+                      }
+                      className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-stone-200 text-xs font-bold"
+                    >
+                      <option value="38x25mm">38mm x 25mm (قياسي)</option>
+                      <option value="40x25mm">40mm x 25mm</option>
+                      <option value="50x25mm">50mm x 25mm</option>
+                      <option value="50x30mm">50mm x 30mm</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-stone-400 font-bold mb-1">عدد النسخ:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={settings.printSettings.barcodeCopies || 1}
+                      onChange={(e) =>
+                        handlePrintSettingChange(
+                          'barcodeCopies',
+                          Math.max(1, parseInt(e.target.value) || 1)
+                        )
+                      }
+                      className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-stone-200 text-xs font-bold text-center"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestBarcodePrinter}
+                  disabled={isTestingBarcode}
+                  className="w-full py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>
+                    {isTestingBarcode
+                      ? 'جاري طباعة الباركود التجريبي...'
+                      : 'اختبار طابعة الباركود (Test Barcode Printer)'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Test Print Feedback Banner */}
+            {printTestResult && (
+              <div
+                className={`p-3 rounded-xl border text-xs font-bold flex items-start space-x-2 space-x-reverse ${
+                  printTestResult.success
+                    ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
+                    : 'bg-rose-950/60 border-rose-800/80 text-rose-300'
+                }`}
+              >
+                {printTestResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                )}
+                <div className="leading-relaxed">{printTestResult.msg}</div>
+              </div>
+            )}
           </div>
 
           {/* SECTION 2: Printing & Invoice Designs */}
@@ -912,6 +1295,62 @@ export const SettingsView: React.FC = () => {
         </div>
 
       </div>
+
+      {/* QZ Tray Setup Guide Modal */}
+      {showQzGuideModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-right">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+              <h3 className="text-base font-black text-amber-500 flex items-center space-x-2 space-x-reverse">
+                <Zap className="w-5 h-5 text-amber-400" />
+                <span>دليل تشغيل خدمة الطباعة المباشرة QZ Tray</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowQzGuideModal(false)}
+                className="text-stone-400 hover:text-stone-100 p-1 rounded-lg text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-stone-300 leading-relaxed">
+              <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
+                <p className="font-bold text-amber-400">لماذا نستخدم QZ Tray؟</p>
+                <p className="text-stone-400 text-[11px]">
+                  برنامج QZ Tray هو جسر طباعة آمن وموثوق لنظام Windows يمنع ظهور نافذة "Windows Print Dialog" عند كل عملية بيع أو طباعة باركود، مما يتيح الطباعة المباشرة الصامتة على طابعات الكاشير والباركود.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold text-stone-100">خطوات التشغيل البسيطة على جهاز الكاشير (Windows):</p>
+                <ol className="list-decimal list-inside space-y-1.5 text-stone-300 text-[11px]">
+                  <li>قم بتحميل وتثبيت برنامج QZ Tray من الموقع الرسمي: <a href="https://qz.io/download/" target="_blank" rel="noreferrer" className="text-amber-400 underline font-mono">qz.io/download</a></li>
+                  <li>افتح برنامج QZ Tray من قائمة Start في الويندوز (سيظهر رمز الجسر بجوار الساعة في شريط المهام).</li>
+                  <li>اضغط على زر <b className="text-amber-400">"اكتشاف الطابعات المتاحة"</b> في الإعدادات.</li>
+                  <li>اختر طابعة الفواتير (INVOICE_PRINTER_NAME) وطابعة الباركود (BARCODE_PRINTER_NAME).</li>
+                  <li>اضغط على أزرار الاختبار للتحقق من خروج الورق/الاستيكر فوراً.</li>
+                </ol>
+              </div>
+
+              <div className="bg-amber-950/30 border border-amber-800/40 p-3 rounded-xl text-[11px] text-amber-300">
+                <p className="font-bold mb-0.5">ملاحظة التوجيه التلقائي (Fallback):</p>
+                <p>إذا تم إغلاق برنامج QZ Tray أو توقف الخدمة لأي سبب، سيتعرف النظام تلقائياً على ذلك ويوجه أومر الطباعة فوراً إلى نافذة الطباعة القياسية بدون تعطيل حركة المبيعات.</p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowQzGuideModal(false)}
+                className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-stone-950 font-black rounded-xl text-xs transition-colors"
+              >
+                تم، فهمت ذلك
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

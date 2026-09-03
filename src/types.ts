@@ -226,6 +226,15 @@ export interface PrintSettings {
   showLogo: boolean;
   receiptType: 'thermal' | 'a4';
   facebookUrl?: string;
+
+  // Direct Printing (QZ Tray / Local Bridge) Settings
+  directPrintEnabled?: boolean;
+  invoicePrinterName?: string;
+  barcodePrinterName?: string;
+  invoiceCopies?: number;
+  barcodeCopies?: number;
+  invoicePaperSize?: '80mm' | '58mm' | 'A4' | 'A5';
+  barcodePaperSize?: '38x25mm' | '40x25mm' | '50x25mm' | '50x30mm' | 'custom';
 }
 
 export type ShortcutActionId =

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Transaction } from '../../types';
 import { Printer, X, FileText } from 'lucide-react';
 import { usePOS } from '../../context/POSContext';
-import { printElementById } from '../../utils/printHelper';
+import { smartPrintElementById } from '../../utils/printHelper';
 import { QRCodeSVG } from 'qrcode.react';
+import { CustomerStatementReceiptModal } from '../Customers/CustomerStatementReceiptModal';
 
 interface ReceiptModalProps {
   transaction: Transaction | null;
@@ -29,6 +30,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   const [receiptType, setReceiptType] = useState<'thermal' | 'a4'>(
     defaultPrintSettings.receiptType || 'thermal'
   );
+  const [showStatementModal, setShowStatementModal] = useState<boolean>(false);
 
   if (!transaction) return null;
 
@@ -106,8 +108,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
     return method || 'كاش';
   };
 
-  const handlePrint = () => {
-    printElementById('printable-receipt', {
+  const handlePrint = async () => {
+    await smartPrintElementById('printable-receipt', {
+      docType: 'invoice',
+      printSettings: settings?.printSettings,
       pageTitle: `فاتورة-${transaction.receiptNumber}`,
       isThermalReceipt: receiptType !== 'a4',
       pageCssSize: receiptType === 'a4' ? 'A4 portrait' : '80mm auto',
@@ -255,6 +259,18 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
           </div>
 
           <div className="flex items-center space-x-2 space-x-reverse">
+            {customer && (
+              <button
+                type="button"
+                onClick={() => setShowStatementModal(true)}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 space-x-reverse shadow"
+                title="طباعة كشف حساب لآخر 3 أشهر للعميل"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>كشف حساب (3 أشهر)</span>
+              </button>
+            )}
+
             {/* Format Switcher */}
             <div className="bg-stone-950 p-1 rounded-xl border border-stone-800 flex items-center">
               <button
@@ -477,6 +493,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
         </div>
 
       </div>
+
+      {/* Customer 3-Month Statement Modal */}
+      {showStatementModal && customer && (
+        <CustomerStatementReceiptModal
+          customer={customer}
+          onClose={() => setShowStatementModal(false)}
+        />
+      )}
     </div>
   );
 };

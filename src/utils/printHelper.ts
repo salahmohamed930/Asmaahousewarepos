@@ -1,3 +1,6 @@
+import { qzPrinterService, PrintDocumentType } from '../services/qzPrinterService';
+import { PrintSettings } from '../types';
+
 /**
  * Utility for printing elements cleanly using a hidden iframe to isolate the content
  * from dark mode backgrounds, modal wrappers, and iframe sandboxes.
@@ -7,8 +10,14 @@ export interface PrintOptions {
   pageCssSize?: string; // e.g. '38mm 25mm' | '50mm 30mm' | '80mm auto' | 'A4 portrait'
   customStyles?: string;
   isThermalReceipt?: boolean;
+  docType?: PrintDocumentType; // 'invoice' | 'barcode'
+  printSettings?: PrintSettings;
+  onFallbackUsed?: (reason: string) => void;
 }
 
+/**
+ * Standard browser iframe printing fallback
+ */
 export function printHtmlDirect(htmlContent: string, options?: PrintOptions) {
   // Remove any previously created print iframe
   const existingFrame = document.getElementById('pos_direct_print_frame');
@@ -108,4 +117,102 @@ export function printElementById(elementId: string, options?: PrintOptions) {
     return;
   }
   printHtmlDirect(el.outerHTML, options);
+}
+
+/**
+ * Smart Print Function:
+ * Tries direct silent printing via QZ Tray if enabled and printer is configured.
+ * Automatically falls back to browser iframe printing if direct print is unconfigured or fails.
+ */
+export async function smartPrintHtml(
+  htmlContent: string,
+  options?: PrintOptions
+): Promise<{ usedDirect: boolean; success: boolean; message?: string }> {
+  const docType: PrintDocumentType = options?.docType || 'invoice';
+  const printSettings = options?.printSettings;
+  const isDirectEnabled = printSettings?.directPrintEnabled !== false;
+
+  const targetPrinterName =
+    docType === 'invoice'
+      ? printSettings?.invoicePrinterName
+      : printSettings?.barcodePrinterName;
+
+  const copies =
+    docType === 'invoice'
+      ? printSettings?.invoiceCopies || 1
+      : printSettings?.barcodeCopies || 1;
+
+  const paperSize =
+    docType === 'invoice'
+      ? printSettings?.invoicePaperSize || '80mm'
+      : printSettings?.barcodePaperSize || '38x25mm';
+
+  // Attempt direct silent printing if enabled and target printer name exists
+  if (isDirectEnabled && targetPrinterName && targetPrinterName.trim()) {
+    let isActive = qzPrinterService.isQzActive();
+    if (!isActive) {
+      const conn = await qzPrinterService.connect();
+      isActive = conn.success;
+    }
+
+    if (isActive) {
+      const res = await qzPrinterService.printHtmlDirect(htmlContent, {
+        printerName: targetPrinterName,
+        copies,
+        paperSize,
+        docType,
+        pageTitle: options?.pageTitle,
+      });
+
+      if (res.success) {
+        return {
+          usedDirect: true,
+          success: true,
+          message: `تمت الطباعة المباشرة بنجاح على طابعة ${
+            docType === 'invoice' ? 'الفواتير' : 'الباركود'
+          } (${targetPrinterName}).`,
+        };
+      } else {
+        const fallbackReason = `تعذر الطباعة المباشرة على "${targetPrinterName}": ${res.error}. جاري التوجيه للطباعة عبر نافذة الويندوز.`;
+        if (options?.onFallbackUsed) {
+          options.onFallbackUsed(fallbackReason);
+        }
+      }
+    } else {
+      const fallbackReason =
+        'خدمة الطباعة المباشرة QZ Tray غير مشغلة على الويندوز. تم فتح نافذة الطباعة القياسية.';
+      if (options?.onFallbackUsed) {
+        options.onFallbackUsed(fallbackReason);
+      }
+    }
+  }
+
+  // Fallback to standard browser print
+  printHtmlDirect(htmlContent, options);
+  return {
+    usedDirect: false,
+    success: true,
+    message: 'تم فتح نافذة طباعة الويندوز القياسية.',
+  };
+}
+
+/**
+ * Smart Print Element by ID:
+ * Extracts element outerHTML and calls smartPrintHtml
+ */
+export async function smartPrintElementById(
+  elementId: string,
+  options?: PrintOptions
+): Promise<{ usedDirect: boolean; success: boolean; message?: string }> {
+  const el = document.getElementById(elementId);
+  if (!el) {
+    console.error(`Element with id #${elementId} not found for printing.`);
+    window.print();
+    return {
+      usedDirect: false,
+      success: false,
+      message: 'العنصر المراد طباعته غير موجود.',
+    };
+  }
+  return smartPrintHtml(el.outerHTML, options);
 }

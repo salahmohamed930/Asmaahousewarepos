@@ -23,7 +23,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { ClosedShift, Transaction } from '../../types';
-import { printElementById } from '../../utils/printHelper';
+import { smartPrintElementById } from '../../utils/printHelper';
 import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
 
 export const AnalyticsView: React.FC = () => {
@@ -34,6 +34,7 @@ export const AnalyticsView: React.FC = () => {
     closedShifts,
     closeShift,
     currentAssociate,
+    settings,
   } = usePOS();
 
   // Sub-tab selection: overview, revenues, shifts
@@ -1400,8 +1401,10 @@ export const AnalyticsView: React.FC = () => {
             {/* Action buttons */}
             <div className="flex gap-2.5 pt-2">
               <button
-                onClick={() => {
-                  printElementById('shift-print-receipt', {
+                onClick={async () => {
+                  await smartPrintElementById('shift-print-receipt', {
+                    docType: 'invoice',
+                    printSettings: settings?.printSettings,
                     pageTitle: `محضر-إغلاق-وردية-${selectedShiftToPrint.associateName}`,
                     isThermalReceipt: true,
                     pageCssSize: '80mm auto',

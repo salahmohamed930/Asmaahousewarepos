@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Product } from '../../types';
 import { Printer, X, Tag, Info, Layers, RefreshCw, AlertTriangle, Check, Sliders, Eye } from 'lucide-react';
 import { BarcodeItem } from '../Common/BarcodeItem';
-import { printElementById } from '../../utils/printHelper';
+import { smartPrintElementById } from '../../utils/printHelper';
 import { usePOS } from '../../context/POSContext';
 
 interface ProductLabelModalProps {
@@ -260,7 +260,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   const config = getLabelConfig();
   const isThermal = config.mode === 'thermal';
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (totalPrintCount <= 0) return;
 
     if (totalPrintCount > 100) {
@@ -270,7 +270,9 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
       if (!confirmPrint) return;
     }
 
-    printElementById('printable-price-labels', {
+    await smartPrintElementById('printable-price-labels', {
+      docType: 'barcode',
+      printSettings: settings?.printSettings,
       pageTitle: `ملصقات-باركود-${previewProduct.name}`,
       pageCssSize: config.pageCssSize,
       customStyles: `

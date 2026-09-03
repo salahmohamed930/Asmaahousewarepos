@@ -6,6 +6,10 @@ export interface PrinterServiceStatus {
   statusText: string;
   lastError?: string;
   lastSuccessMessage?: string;
+  isCertificateLoaded?: boolean;
+  isSigningAvailable?: boolean;
+  isDevFallback?: boolean;
+  algorithm?: string;
 }
 
 export type PrintDocumentType = 'invoice' | 'barcode';
@@ -18,9 +22,24 @@ export interface DirectPrintOptions {
   pageTitle?: string;
 }
 
+export interface BackendSecurityCheckResult {
+  configured: boolean;
+  hasCertificate: boolean;
+  hasPrivateKey: boolean;
+  algorithm: string;
+  isDevelopment: boolean;
+  isDevFallback: boolean;
+  allowedOrigins: string[];
+  isOriginAllowed?: boolean;
+}
+
 class QzPrinterService {
   private isConnecting: boolean = false;
   private isConnected: boolean = false;
+  private isCertificateLoaded: boolean = false;
+  private isSigningAvailable: boolean = false;
+  private isDevFallback: boolean = false;
+  private cachedCertificate: string | null = null;
   private lastError: string = '';
   private statusListeners: Array<(status: PrinterServiceStatus) => void> = [];
 
@@ -29,29 +48,169 @@ class QzPrinterService {
   }
 
   /**
-   * Configure QZ Tray security promises for local unsigned execution
+   * Configure genuine QZ Tray security promises:
+   * 1. Certificate Promise fetches the public X.509 certificate from /api/qz/certificate
+   * 2. Signature Promise securely delegates signing to /api/qz/sign using RSA-SHA512
+   * Note: Private key NEVER exists in frontend or browser!
    */
   private configureSecurity() {
     try {
-      if (qz && qz.security) {
-        qz.security.setCertificatePromise((resolve: any) => {
-          // Provide self-signed or empty resolver for local QZ Tray unsigned connections
-          resolve();
-        });
-        qz.security.setSignatureAlgorithm('SHA512');
-        qz.security.setSignaturePromise(() => {
-          return (resolve: any) => {
-            resolve();
-          };
-        });
-      }
+      if (!qz || !qz.security) return;
+
+      // 1. Digital Certificate Promise
+      qz.security.setCertificatePromise((resolve: (cert: string) => void, reject: (err: any) => void) => {
+        if (this.cachedCertificate) {
+          this.isCertificateLoaded = true;
+          resolve(this.cachedCertificate);
+          return;
+        }
+
+        fetch('/api/qz/certificate', {
+          headers: { Accept: 'text/plain, application/json' },
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}));
+              throw new Error(
+                errBody.error ||
+                  `فشل استرداد شهادة QZ Tray من الخادم (رمز الخطأ: ${res.status}).`
+              );
+            }
+
+            const isDevHeader = res.headers.get('X-QZ-Dev-Fallback') === 'true';
+            if (isDevHeader) {
+              this.isDevFallback = true;
+            }
+
+            const certText = await res.text();
+            const trimmedCert = certText.trim();
+
+            if (!trimmedCert.includes('BEGIN CERTIFICATE')) {
+              throw new Error('محتوى الشهادة المستردة من الخادم غير صالح (تنسيق PEM غير صحيح).');
+            }
+
+            this.cachedCertificate = trimmedCert;
+            this.isCertificateLoaded = true;
+            this.notifyListeners();
+            resolve(trimmedCert);
+          })
+          .catch((err) => {
+            this.isCertificateLoaded = false;
+            const parsed = this.categorizeSecurityError(err, 'certificate');
+            this.notifyListeners({ error: parsed });
+            reject(new Error(parsed));
+          });
+      });
+
+      // 2. Set signature algorithm to SHA-512
+      qz.security.setSignatureAlgorithm('SHA512');
+
+      // 3. Digital Signature Promise
+      qz.security.setSignaturePromise((toSign: string) => {
+        return (resolve: (sig: string) => void, reject: (err: any) => void) => {
+          fetch('/api/qz/sign', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({ request: toSign }),
+          })
+            .then(async (res) => {
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                if (res.status === 403) {
+                  throw new Error('ORIGIN_FORBIDDEN: النطاق الحالي غير مسموح له بطلب التوقيع (CORS / Allowed Origins).');
+                }
+                if (res.status === 503) {
+                  throw new Error('SIGNING_UNAVAILABLE: خدمة التوقيع على الخادم غير مجهزة بمفتاح QZ_PRIVATE_KEY.');
+                }
+                throw new Error(errData.error || `فشل التوقيع الأمني على الخادم (رمز الخطأ ${res.status}).`);
+              }
+
+              const isDevHeader = res.headers.get('X-QZ-Dev-Fallback') === 'true';
+              if (isDevHeader) {
+                this.isDevFallback = true;
+              }
+
+              const data = await res.json();
+              if (!data.signature) {
+                throw new Error('لم يتم استلام التوقيع الرقمي من الخادم.');
+              }
+
+              this.isSigningAvailable = true;
+              resolve(data.signature);
+            })
+            .catch((err) => {
+              const parsed = this.categorizeSecurityError(err, 'signature');
+              this.notifyListeners({ error: parsed });
+              reject(new Error(parsed));
+            });
+        };
+      });
     } catch (err) {
-      console.warn('QZ Security setup notice:', err);
+      console.error('QZ Security setup error:', err);
     }
   }
 
   /**
-   * Subscribe to connection status changes
+   * Diagnostic check to verify Backend Signing & Certificate status
+   */
+  public async checkBackendSecurityStatus(): Promise<BackendSecurityCheckResult> {
+    try {
+      const res = await fetch('/api/qz/status', {
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!res.ok) {
+        throw new Error(`تعذر الوصول إلى نقطة فحص الأمان (رمز: ${res.status})`);
+      }
+
+      const data: BackendSecurityCheckResult = await res.json();
+      this.isSigningAvailable = data.configured;
+      this.isCertificateLoaded = data.hasCertificate;
+      this.isDevFallback = data.isDevFallback;
+      this.notifyListeners();
+      return data;
+    } catch (err: any) {
+      this.isSigningAvailable = false;
+      this.notifyListeners({ error: `فشل التحقق من خدمة التوقيع: ${err?.message || String(err)}` });
+      return {
+        configured: false,
+        hasCertificate: false,
+        hasPrivateKey: false,
+        algorithm: 'SHA512',
+        isDevelopment: false,
+        isDevFallback: false,
+        allowedOrigins: [],
+        isOriginAllowed: false,
+      };
+    }
+  }
+
+  /**
+   * Pre-fetches and validates certificate from backend
+   */
+  public async refreshSecurity(): Promise<{ success: boolean; error?: string }> {
+    this.cachedCertificate = null;
+    try {
+      const status = await this.checkBackendSecurityStatus();
+      if (!status.configured) {
+        return {
+          success: false,
+          error: status.isDevelopment
+            ? 'خدمة التوقيع في وضع التطوير المحلي بدون مفاتيح إنتاج.'
+            : 'خدمة التوقيع والشهادة غير مجهزة في متغيرات بيئة الخادم.',
+        };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  }
+
+  /**
+   * Subscribe to connection & security status changes
    */
   public subscribeStatus(listener: (status: PrinterServiceStatus) => void): () => void {
     this.statusListeners.push(listener);
@@ -71,12 +230,16 @@ class QzPrinterService {
       isConnected: this.isConnected,
       isConnecting: this.isConnecting,
       statusText: this.isConnected
-        ? 'خدمة الطباعة المباشرة متصلة وجاهزة (QZ Tray Active)'
+        ? 'خدمة الطباعة المباشرة متصلة وموقعة بأمان (QZ Tray Secure Active)'
         : this.isConnecting
-        ? 'جاري الاتصال بخدمة الطباعة المباشرة QZ Tray...'
+        ? 'جاري الاتصال ببرنامج QZ Tray والتحقق من الشهادة...'
         : 'خدمة الطباعة المباشرة غير متصلة (QZ Tray Offline)',
       lastError: msg?.error || this.lastError,
       lastSuccessMessage: msg?.success,
+      isCertificateLoaded: this.isCertificateLoaded,
+      isSigningAvailable: this.isSigningAvailable,
+      isDevFallback: this.isDevFallback,
+      algorithm: 'SHA512',
     };
   }
 
@@ -85,7 +248,7 @@ class QzPrinterService {
    */
   public isQzActive(): boolean {
     try {
-      return qz && qz.websocket && qz.websocket.isActive();
+      return Boolean(qz && qz.websocket && qz.websocket.isActive());
     } catch {
       return false;
     }
@@ -106,7 +269,7 @@ class QzPrinterService {
     this.notifyListeners();
 
     try {
-      // Connect to QZ Tray daemon on localhost (ports 8182/8181)
+      // Connect to QZ Tray daemon on localhost (ports 8182/8181/443)
       await qz.websocket.connect({
         retries: 2,
         delay: 1,
@@ -117,7 +280,7 @@ class QzPrinterService {
       this.isConnected = true;
       this.isConnecting = false;
       this.lastError = '';
-      this.notifyListeners({ success: 'تم الاتصال بخدمة الطباعة المباشرة QZ Tray بنجاح!' });
+      this.notifyListeners({ success: 'تم الاتصال ببرنامج QZ Tray بنجاح!' });
       return { success: true };
     } catch (err: any) {
       this.isConnected = false;
@@ -175,7 +338,7 @@ class QzPrinterService {
 
     try {
       const matched = await qz.printers.find(printerName);
-      return !!matched;
+      return Boolean(matched);
     } catch {
       return false;
     }
@@ -191,9 +354,9 @@ class QzPrinterService {
     const printerName = opts.printerName?.trim();
 
     if (!printerName) {
-      const err = `لم يتم اختيار طابعة ${
+      const err = `لم يتم تحديد طابعة ${
         opts.docType === 'invoice' ? 'الفواتير' : 'الباركود'
-      } في إعدادات النظام. يرجى تحديد اسم الطابعة من شاشة الإعدادات.`;
+      } في إعدادات النظام. يرجى اختيار الطابعة من شاشة الإعدادات.`;
       this.notifyListeners({ error: err });
       return { success: false, error: err };
     }
@@ -207,7 +370,7 @@ class QzPrinterService {
       // Verify target printer exists on Windows
       const printerExists = await this.findPrinter(printerName);
       if (!printerExists) {
-        const notFoundErr = `الطابعة "${printerName}" غير موجودة في نظام Windows. تحقق من اسم الطابعة وتوصيل كابل USB/الشبكة.`;
+        const notFoundErr = `الطابعة "${printerName}" غير موجودة في نظام Windows. تحقق من اسم الطابعة وتوصيل الكابل.`;
         this.notifyListeners({ error: notFoundErr });
         return { success: false, error: notFoundErr };
       }
@@ -302,12 +465,13 @@ class QzPrinterService {
     const testHtml = `
       <div style="padding: 10px; font-family: sans-serif; text-align: center; border: 2px dashed #000;">
         <h2 style="margin: 0 0 5px 0; font-size: 16px;">أسماء للأدوات المنزليه</h2>
-        <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #000;">اختبار طابعة الفواتير (Direct Print Test)</h3>
+        <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #000;">اختبار طابعة الفواتير (Secure Direct Print)</h3>
         <p style="font-size: 11px; margin: 5px 0;">الطابعة: <b>${printerName}</b></p>
         <p style="font-size: 11px; margin: 5px 0;">مقاس الورق: <b>${paperSize}</b></p>
         <p style="font-size: 10px; margin: 5px 0;">التاريخ: ${new Date().toLocaleString('ar-EG')}</p>
+        <p style="font-size: 10px; margin: 5px 0; color: #047857;"><b>✓ التوقيع الرقمي: مشفر بـ RSA-SHA512</b></p>
         <hr style="border-top: 1px solid #000; margin: 10px 0;" />
-        <p style="font-size: 12px; font-weight: bold; margin: 0;">✓ خدمة الطباعة المباشرة تعمل بنجاح بدون نوافذ!</p>
+        <p style="font-size: 12px; font-weight: bold; margin: 0;">✓ خدمة الطباعة المباشرة الآمنة تعمل بنجاح بدون نوافذ!</p>
       </div>
     `;
 
@@ -329,7 +493,7 @@ class QzPrinterService {
     const testHtml = `
       <div style="width: 38mm; height: 25mm; padding: 2px; box-sizing: border-box; font-family: sans-serif; text-align: center; border: 1px solid #000;">
         <div style="font-size: 8px; font-weight: bold; white-space: nowrap; overflow: hidden;">أسماء للأدوات المنزليه</div>
-        <div style="font-size: 9px; font-weight: bold; margin: 1px 0;">صنف تجريبي</div>
+        <div style="font-size: 9px; font-weight: bold; margin: 1px 0;">صنف تجريبي (Secure)</div>
         <div style="font-family: monospace; font-size: 12px; font-weight: bold; letter-spacing: 1px; margin: 1px 0; border: 1px solid #000; padding: 1px;">||||||||||||||||||</div>
         <div style="font-size: 8px; font-weight: bold; font-family: monospace;">2026001122</div>
         <div style="font-size: 9px; font-weight: bold; margin-top: 1px;">السعر: 150.0 ج</div>
@@ -345,56 +509,98 @@ class QzPrinterService {
   }
 
   /**
-   * Precise Arabic Error Diagnostic Resolver
+   * Security-specific error categorizer
    */
-  private categorizeError(err: any, context: 'connect' | 'findPrinters' | 'print', printerName?: string): string {
+  private categorizeSecurityError(err: any, type: 'certificate' | 'signature'): string {
+    const raw = (err?.message || String(err)).toLowerCase();
+
+    if (raw.includes('origin_forbidden') || raw.includes('403') || raw.includes('cors')) {
+      return 'النطاق الحالي غير مصرح له بطلب التوقيع الأمني (Origin Not Allowed). يرجى إضافة نطاق التطبيق إلى QZ_ALLOWED_ORIGINS على الخادم.';
+    }
+
+    if (raw.includes('signing_unavailable') || raw.includes('503') || raw.includes('private_key')) {
+      return 'خدمة التوقيع غير متاحة على الخادم (/api/qz/sign): مفتاح QZ_PRIVATE_KEY غير مضاف في متغيرات البيئة.';
+    }
+
+    if (type === 'certificate') {
+      return `فشل تحميل الشهادة العامة لـ QZ Tray من الخادم: ${err?.message || String(err)}`;
+    }
+
+    return `فشل التوقيع الرقمي للطلب عبر الخادم: ${err?.message || String(err)}`;
+  }
+
+  /**
+   * Precise Arabic Diagnostic Resolver for All Connection & Print Cases
+   */
+  private categorizeError(
+    err: any,
+    context: 'connect' | 'findPrinters' | 'print',
+    printerName?: string
+  ): string {
     const rawMsg = (err?.message || String(err)).toLowerCase();
 
-    // Case 1: QZ Tray Not Installed / Not Running / Port Closed
+    // 1. Origin Forbidden
+    if (rawMsg.includes('origin_forbidden') || rawMsg.includes('unauthorized origin') || rawMsg.includes('403')) {
+      return 'تم رفض الاتصال الأمني: النطاق الحالي غير مسموح له في QZ_ALLOWED_ORIGINS على الخادم.';
+    }
+
+    // 2. Signing Service Unavailable
+    if (rawMsg.includes('signing_unavailable') || rawMsg.includes('qz_private_key') || rawMsg.includes('503')) {
+      return 'خدمة التوقيع الرقمي غير متاحة على الخادم: تأكد من ضبط متغير البيئة QZ_PRIVATE_KEY.';
+    }
+
+    // 3. QZ Tray Not Installed / WebSocket refused
     if (
-      rawMsg.includes('websocket') ||
       rawMsg.includes('connection refused') ||
       rawMsg.includes('econnrefused') ||
       rawMsg.includes('unable to establish connection') ||
-      rawMsg.includes('closed') ||
       rawMsg.includes('networkerror')
     ) {
-      return 'برنامج QZ Tray غير مشغل أو غير مثبت على الويندوز. يرجى فتح برنامج QZ Tray على الجهاز والتأكد من ظهور أيقونته بجوار الساعة.';
+      return 'برنامج QZ Tray غير مشغل أو غير مثبت على جهاز الويندوز. تأكد من فتح برنامج QZ Tray وظهور أيقونته بجوار الساعة.';
     }
 
-    // Case 2: Certificate or Security signing rejection
-    if (
-      rawMsg.includes('certificate') ||
-      rawMsg.includes('signature') ||
-      rawMsg.includes('untrusted') ||
-      rawMsg.includes('security') ||
-      rawMsg.includes('blocked')
-    ) {
-      return 'تم رفض الشهادة الأمنية من برنامج QZ Tray. يرجى الموافقة على طلب الاتصال Allow/Trust في النافذة المنبثقة لـ QZ Tray.';
+    // 4. WebSocket closed unexpectedly
+    if (rawMsg.includes('closed') || rawMsg.includes('abnormal closure')) {
+      return 'برنامج QZ Tray مغلق حالياً أو تم إيقافه. يرجى إعادة تشغيل برنامج QZ Tray من قائمة Start بالويندوز.';
     }
 
-    // Case 3: Printer Not Found
+    // 5. Certificate Rejected / Untrusted
+    if (rawMsg.includes('untrusted certificate') || rawMsg.includes('certificate invalid') || rawMsg.includes('expired certificate')) {
+      return 'تم رفض الشهادة الرقمية من برنامج QZ Tray لأنها غير موثوقة أو منتهية الصلاحية. تأكد من صحة QZ_CERTIFICATE.';
+    }
+
+    // 6. Signature Rejected / Key mismatch
+    if (rawMsg.includes('signature rejected') || rawMsg.includes('invalid signature') || rawMsg.includes('signature does not match')) {
+      return 'تم رفض التوقيع الرقمي من QZ Tray: المفتاح الخاص QZ_PRIVATE_KEY لا يتطابق مع الشهادة العامة QZ_CERTIFICATE المسجلة.';
+    }
+
+    // 7. General Security Prompt / Blocked by user
+    if (rawMsg.includes('blocked') || rawMsg.includes('permission denied') || rawMsg.includes('rejected')) {
+      return 'تم رفض إذن الطباعة في نافذة QZ Tray المنبثقة. يرجى اختيار Always Allow / Trust.';
+    }
+
+    // 8. Printer Not Found
     if (
       rawMsg.includes('cannot find printer') ||
       rawMsg.includes('printer not found') ||
       rawMsg.includes('invalid printer') ||
       rawMsg.includes('no printer matched')
     ) {
-      return `الطابعة "${printerName || ''}" غير مضافة أو غير موجودة في الويندوز. اضغط زر "اكتشاف الطابعات" للتأكد من اسمها الصحيح.`;
+      return `الطابعة "${printerName || ''}" غير مضافة أو غير موجودة في نظام Windows. اضغط زر "اكتشاف الطابعات" للتأكد من اسمها الصحيح.`;
     }
 
-    // Case 4: Printer Offline or Spooler Error
+    // 9. Printer Offline or Spooler Error
     if (
       rawMsg.includes('offline') ||
       rawMsg.includes('spooler') ||
       rawMsg.includes('paper out') ||
       rawMsg.includes('not ready') ||
-      rawMsg.includes('port')
+      rawMsg.includes('out of paper')
     ) {
-      return `الطابعة "${printerName || ''}" غير متصلة بالكهرباء أو 오فلين (Offline). يرجى التأكد من تشغيل الطابعة وتوصيل الكابل ورول الورق.`;
+      return `الطابعة "${printerName || ''}" غير متصلة بالكهرباء أو غير جاهزة (Offline). تحقق من كابل USB ورول الورق.`;
     }
 
-    // Case 5: Generic Print Command Failure
+    // 10. Generic Print Command Failure
     if (context === 'print') {
       return `فشل إرسال أمر الطباعة إلى الطابعة "${printerName || ''}": ${err?.message || String(err)}`;
     }

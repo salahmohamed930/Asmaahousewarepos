@@ -106,13 +106,11 @@ export const Header: React.FC = () => {
   return (
     <>
       <header className="bg-stone-900 text-stone-100 border-b border-stone-800 sticky top-0 z-30 shadow-md w-full max-w-full">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-          <div className="flex items-center justify-between gap-2 sm:gap-4 h-16 w-full min-w-0">
+        <div className="w-full max-w-[1700px] mx-auto px-2 sm:px-4">
+          <div className="flex items-center justify-between gap-1.5 sm:gap-3 h-14 w-full min-w-0">
             
-            {/* Right Brand & Store Info (Removed logo & title to prevent horizontal overflow) */}
-
             {/* Navigation Tabs */}
-            <nav className="hidden md:flex items-center space-x-1 space-x-reverse bg-stone-950/60 p-1.5 rounded-xl border border-stone-800 overflow-x-auto no-scrollbar max-w-full min-w-0 shrink">
+            <nav className="hidden md:flex items-center gap-0.5 lg:gap-1 bg-stone-950/70 p-1 rounded-xl border border-stone-800/80 shrink-0">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -121,13 +119,13 @@ export const Header: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 space-x-reverse px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
+                    className={`flex items-center gap-1 lg:gap-1.5 px-2 lg:px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 whitespace-nowrap ${
                       isActive
                         ? 'bg-amber-600 text-white shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/60'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
                     <span>{tab.label}</span>
                     {shortcutKey && (
                       <span className={`text-[9px] font-mono px-1 py-0.2 rounded border font-black ${
@@ -144,7 +142,7 @@ export const Header: React.FC = () => {
             </nav>
 
             {/* Left Active Associate Switcher & Actions */}
-            <div className="flex items-center space-x-2 sm:space-x-3 space-x-reverse shrink-0 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
               {/* Sync Status Badge & Controls */}
               <SyncStatusIndicator />
 
@@ -152,29 +150,29 @@ export const Header: React.FC = () => {
               <div className="relative">
                 <button
                   onClick={() => setIsAssociateDropdownOpen(!isAssociateDropdownOpen)}
-                  className="flex items-center space-x-2.5 space-x-reverse bg-stone-800/80 hover:bg-stone-800 border border-stone-700/80 p-1.5 pl-3 rounded-xl transition-all"
+                  className="flex items-center gap-1.5 bg-stone-800/80 hover:bg-stone-800 border border-stone-700/80 p-1 sm:p-1.5 pl-2 sm:pl-2.5 rounded-xl transition-all"
                 >
                   {currentAssociate ? (
                     <>
                       <img
                         src={currentAssociate.avatar}
                         alt={currentAssociate.name}
-                        className="w-8 h-8 rounded-lg object-cover ring-2 ring-amber-500/40"
+                        className="w-7 h-7 rounded-lg object-cover ring-1 ring-amber-500/40 shrink-0"
                       />
-                      <div className="text-right hidden lg:block">
-                        <div className="text-xs font-extrabold text-stone-100 flex items-center space-x-1.5 space-x-reverse">
+                      <div className="text-right hidden xl:block">
+                        <div className="text-xs font-extrabold text-stone-100 flex items-center gap-1">
                           <span>{currentAssociate.name}</span>
                           <span className="text-[10px] text-amber-400 bg-amber-950/80 border border-amber-800 px-1 rounded font-mono">
                             كود: {currentAssociate.pin}
                           </span>
                         </div>
-                        <p className="text-[10px] text-stone-400">{currentAssociate.role}</p>
+                        <p className="text-[10px] text-stone-400 leading-none">{currentAssociate.role}</p>
                       </div>
                     </>
                   ) : (
-                    <div className="text-xs text-stone-400 px-2 py-1">اختر الكاشير / البائع</div>
+                    <div className="text-xs text-stone-400 px-1.5 py-0.5">اختر الكاشير</div>
                   )}
-                  <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
+                  <ChevronDown className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                 </button>
 
                 {/* Dropdown Menu */}
@@ -278,7 +276,7 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Mobile Navigation bar */}
-        <div className="md:hidden flex overflow-x-auto space-x-1 space-x-reverse bg-stone-950 px-3 py-2 border-t border-stone-800">
+        <div className="md:hidden flex overflow-x-auto gap-1 bg-stone-950 px-2 py-1.5 border-t border-stone-800 no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -286,7 +284,7 @@ export const Header: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-1.5 space-x-reverse px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors shrink-0 ${
                   isActive
                     ? 'bg-amber-600 text-white'
                     : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'

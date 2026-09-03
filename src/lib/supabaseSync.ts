@@ -1,5 +1,16 @@
 import { supabase, getSupabaseKeys } from './supabase';
-import { db, getLastSyncTimestamp, setLastSyncTimestamp, addToPendingQueue, PendingSyncItem } from './db';
+import {
+  db,
+  getLastSyncTimestamp,
+  setLastSyncTimestamp,
+  setLastPushTime,
+  setLastPullTime,
+  setLastSyncError,
+  getPendingSyncCount,
+  getFailedSyncCount,
+  addToPendingQueue,
+  PendingSyncItem,
+} from './db';
 import {
   Product,
   Customer,
@@ -98,14 +109,127 @@ export async function checkSupabaseConnection(): Promise<{
   }
 }
 
-// --- AUTO-RECOVERY MUTATION HELPER ---
+// --- SCHEMA REGISTRY & ADAPTER ENGINE ---
+
+export interface TableSchemaConfig {
+  tableName: string;
+  primaryKey: string;
+  createdTimeCol: string | null;
+  updatedTimeCol: string | null;
+  deletedFlagCol: string | null;
+}
+
+export const TABLE_SCHEMAS: Record<string, TableSchemaConfig> = {
+  products: {
+    tableName: 'products',
+    primaryKey: 'id',
+    createdTimeCol: null,
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  customers: {
+    tableName: 'customers',
+    primaryKey: 'id',
+    createdTimeCol: null,
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  suppliers: {
+    tableName: 'suppliers',
+    primaryKey: 'id',
+    createdTimeCol: null,
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  supplier_transactions: {
+    tableName: 'supplier_transactions',
+    primaryKey: 'id',
+    createdTimeCol: 'date',
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  transactions: {
+    tableName: 'transactions',
+    primaryKey: 'id',
+    createdTimeCol: 'timestamp',
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  transaction_items: {
+    tableName: 'transaction_items',
+    primaryKey: 'id',
+    createdTimeCol: null,
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  associates: {
+    tableName: 'associates',
+    primaryKey: 'id',
+    createdTimeCol: null,
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  closed_shifts: {
+    tableName: 'closed_shifts',
+    primaryKey: 'id',
+    createdTimeCol: 'start_time',
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  expenses: {
+    tableName: 'expenses',
+    primaryKey: 'id',
+    createdTimeCol: 'timestamp',
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+  discounts: {
+    tableName: 'discounts',
+    primaryKey: 'product_id',
+    createdTimeCol: null,
+    updatedTimeCol: 'updated_at',
+    deletedFlagCol: 'is_deleted',
+  },
+};
+
+const missingColumnsByTable: Record<string, Set<string>> = {};
+
+export function markColumnMissing(tableName: string, colName: string) {
+  if (!colName) return;
+  if (!missingColumnsByTable[tableName]) {
+    missingColumnsByTable[tableName] = new Set();
+  }
+  missingColumnsByTable[tableName].add(colName.toLowerCase());
+}
+
+export function isColumnMissing(tableName: string, colName: string): boolean {
+  if (!colName) return false;
+  return missingColumnsByTable[tableName]?.has(colName.toLowerCase()) ?? false;
+}
+
+export function sanitizePayloadForTable(tableName: string, payload: any): any {
+  if (!payload || typeof payload !== 'object') return payload;
+  if (Array.isArray(payload)) {
+    return payload.map((item) => sanitizePayloadForTable(tableName, item));
+  }
+  const clean = { ...payload };
+  const missing = missingColumnsByTable[tableName];
+  if (missing) {
+    for (const col of missing) {
+      delete clean[col];
+    }
+  }
+  return clean;
+}
+
 export async function safeSupabaseMutation(
+  tableName: string,
   operationFn: (cleanPayload: any) => Promise<{ data?: any; error?: any }>,
   initialPayload: any
 ): Promise<{ data?: any; error?: any }> {
-  let currentPayload = { ...initialPayload };
+  let currentPayload = sanitizePayloadForTable(tableName, initialPayload);
   let attempts = 0;
-  const maxAttempts = 5;
+  const maxAttempts = 10;
 
   while (attempts < maxAttempts) {
     attempts++;
@@ -116,20 +240,27 @@ export async function safeSupabaseMutation(
       return res;
     }
 
-    if (error && error.code === 'PGRST204' && typeof error.message === 'string') {
-      const match = error.message.match(/Could not find the '([^']+)' column/i);
-      if (match && match[1]) {
-        const missingColumn = match[1];
-        console.warn(`[SUPABASE AUTO-RECOVERY] Stripping missing column '${missingColumn}' from payload...`);
-        delete currentPayload[missingColumn];
-        continue;
-      }
+    const errMsg = typeof error.message === 'string' ? error.message : JSON.stringify(error);
+    const missingColMatch =
+      errMsg.match(/Could not find the '([^']+)' column/i) ||
+      errMsg.match(/column [^\s\.]+\.([^\s]+) does not exist/i) ||
+      errMsg.match(/column "([^"]+)" does not exist/i) ||
+      errMsg.match(/column '([^']+)' does not exist/i);
+
+    if (missingColMatch && missingColMatch[1]) {
+      const missingColumn = missingColMatch[1];
+      console.warn(
+        `[SUPABASE SCHEMA ADAPTER] Table '${tableName}': Column '${missingColumn}' does not exist in Supabase schema. Stripping from payload...`
+      );
+      markColumnMissing(tableName, missingColumn);
+      currentPayload = sanitizePayloadForTable(tableName, currentPayload);
+      continue;
     }
 
     return res;
   }
 
-  return { data: null, error: new Error('Max retry attempts reached for PGRST204 recovery') };
+  return { data: null, error: new Error(`Max retry attempts reached for ${tableName} schema adaptation`) };
 }
 
 // --- MAPPERS ---
@@ -493,17 +624,26 @@ async function fetchSelectiveFromSupabase(
   const pageSize = 1000;
   let hasMore = true;
 
+  const schemaCfg = TABLE_SCHEMAS[tableName];
+  const timeCol = schemaCfg?.updatedTimeCol || 'updated_at';
+  const timeColMissing = isColumnMissing(tableName, timeCol);
+
   while (hasMore) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
 
     let query = supabase.from(tableName).select('*').range(from, to);
 
-    if (lastSyncTimestamp) {
-      query = query.or(`updated_at.gt.${lastSyncTimestamp},created_at.gt.${lastSyncTimestamp}`);
+    // Apply Delta Sync filter if lastSyncTimestamp is present AND timeCol is not marked as missing
+    if (lastSyncTimestamp && !timeColMissing) {
+      query = query.or(`${timeCol}.gt.${lastSyncTimestamp}`);
+    } else if (lastSyncTimestamp && timeColMissing) {
+      console.log(
+        `[SUPABASE DELTA SYNC] Table '${tableName}' lacks column '${timeCol}'. Performing clean Full Sync instead.`
+      );
     }
 
-    if (orderColumn) {
+    if (orderColumn && !isColumnMissing(tableName, orderColumn)) {
       query = query.order(orderColumn, { ascending: true, nullsFirst: false });
     }
 
@@ -511,25 +651,34 @@ async function fetchSelectiveFromSupabase(
 
     console.log(
       `[SUPABASE QUERY] Table: '${tableName}' | Range: ${from}-${to} | Filter: ${
-        lastSyncTimestamp ? 'delta (' + lastSyncTimestamp + ')' : 'FULL'
+        lastSyncTimestamp && !timeColMissing ? 'DELTA (' + lastSyncTimestamp + ')' : 'FULL'
       } | Status: ${status || (error ? 'Error' : '200 OK')} | Records: ${data?.length || 0}${
         error ? ` | Error: ${error.message}` : ''
       }`
     );
 
     if (error) {
-      // Recovery Fallback: If delta filter or order failed (e.g. updated_at column missing), retry full fetch with select('*')
-      console.warn(
-        `[SUPABASE QUERY RECOVERY] Query failed on table '${tableName}' (${error.message}). Retrying with full select('*')...`
-      );
+      const errMsg = error.message || '';
+      const missingColMatch =
+        errMsg.match(/Could not find the '([^']+)' column/i) ||
+        errMsg.match(/column [^\s\.]+\.([^\s]+) does not exist/i) ||
+        errMsg.match(/column "([^"]+)" does not exist/i) ||
+        errMsg.match(/column '([^']+)' does not exist/i);
+
+      if (missingColMatch && missingColMatch[1]) {
+        const colName = missingColMatch[1];
+        markColumnMissing(tableName, colName);
+        console.warn(
+          `[SUPABASE SYNC ADAPTER] Table '${tableName}' lacks column '${colName}'. Retrying with clean Full Sync...`
+        );
+      } else {
+        console.warn(
+          `[SUPABASE QUERY RECOVERY] Query failed on table '${tableName}' (${errMsg}). Retrying with full select('*')...`
+        );
+      }
+
       const fallbackQuery = supabase.from(tableName).select('*').range(from, to);
       const fallbackRes = await fallbackQuery;
-
-      console.log(
-        `[SUPABASE QUERY RECOVERY RESULT] Table: '${tableName}' | Status: ${
-          fallbackRes.status || (fallbackRes.error ? 'Error' : '200 OK')
-        } | Records: ${fallbackRes.data?.length || 0}${fallbackRes.error ? ` | Error: ${fallbackRes.error.message}` : ''}`
-      );
 
       if (fallbackRes.error) {
         return { data: [], error: fallbackRes.error };
@@ -564,8 +713,8 @@ export function isSyncing(): boolean {
  * Prevents double triggering / concurrent execution loops.
  */
 export async function runFullSyncCycle(): Promise<{
-  outboxResult: { processedCount: number; remainingCount: number };
-  deltaSyncResult: { success: boolean; syncedCounts: Record<string, number>; error?: any };
+  outboxResult: { processedCount: number; remainingCount: number; failedCount: number };
+  deltaSyncResult: { success: boolean; syncedCounts: Record<string, number>; downloadedCount: number; error?: any };
 } | null> {
   if (isSyncingLock) {
     console.warn('[SYNC CONCURRENCY LOCK] Synchronization cycle is already in progress. Skipping duplicate execution.');
@@ -577,6 +726,17 @@ export async function runFullSyncCycle(): Promise<{
     console.log('[SYNC ENGINE] Starting thread-safe synchronization cycle...');
     const outboxResult = await processPendingSyncQueueInternal();
     const deltaSyncResult = await performDeltaSyncInternal();
+
+    if (outboxResult.processedCount > 0) {
+      await setLastPushTime(new Date().toISOString());
+    }
+    if (deltaSyncResult.success) {
+      await setLastPullTime(new Date().toISOString());
+      await setLastSyncError(null);
+    } else if (deltaSyncResult.error) {
+      await setLastSyncError(deltaSyncResult.error?.message || String(deltaSyncResult.error));
+    }
+
     return { outboxResult, deltaSyncResult };
   } finally {
     isSyncingLock = false;
@@ -591,15 +751,23 @@ export async function runFullSyncCycle(): Promise<{
 export async function performDeltaSync(): Promise<{
   success: boolean;
   syncedCounts: Record<string, number>;
+  downloadedCount: number;
   error?: any;
 }> {
   if (isSyncingLock) {
     console.warn('[SYNC CONCURRENCY LOCK] Sync cycle already running. Skipping standalone delta sync.');
-    return { success: false, syncedCounts: {} };
+    return { success: false, syncedCounts: {}, downloadedCount: 0 };
   }
   isSyncingLock = true;
   try {
-    return await performDeltaSyncInternal();
+    const res = await performDeltaSyncInternal();
+    if (res.success) {
+      await setLastPullTime(new Date().toISOString());
+      await setLastSyncError(null);
+    } else if (res.error) {
+      await setLastSyncError(res.error?.message || String(res.error));
+    }
+    return res;
   } finally {
     isSyncingLock = false;
   }
@@ -608,12 +776,14 @@ export async function performDeltaSync(): Promise<{
 async function performDeltaSyncInternal(): Promise<{
   success: boolean;
   syncedCounts: Record<string, number>;
+  downloadedCount: number;
   error?: any;
 }> {
   console.log('[SUPABASE DELTA SYNC] Starting sync cycle...');
   const lastSync = await getLastSyncTimestamp();
   const nextSyncTimestamp = new Date().toISOString();
   const syncedCounts: Record<string, number> = {};
+  let totalDownloaded = 0;
 
   try {
     // Check local counts to force full initial sync if local Dexie tables are empty
@@ -887,11 +1057,12 @@ async function performDeltaSyncInternal(): Promise<{
 
     // Update last sync timestamp
     await setLastSyncTimestamp(nextSyncTimestamp);
-    console.log('[SUPABASE DELTA SYNC] Completed successfully. Next timestamp:', nextSyncTimestamp);
-    return { success: true, syncedCounts };
+    totalDownloaded = Object.values(syncedCounts).reduce((acc, count) => acc + count, 0);
+    console.log('[SUPABASE DELTA SYNC] Completed successfully. Total downloaded records:', totalDownloaded);
+    return { success: true, syncedCounts, downloadedCount: totalDownloaded };
   } catch (err: any) {
     console.warn('[SUPABASE DELTA SYNC] Exception during sync:', err?.message || String(err));
-    return { success: false, syncedCounts, error: err };
+    return { success: false, syncedCounts, downloadedCount: 0, error: err };
   }
 }
 
@@ -906,15 +1077,20 @@ async function performDeltaSyncInternal(): Promise<{
 export async function processPendingSyncQueue(): Promise<{
   processedCount: number;
   remainingCount: number;
+  failedCount: number;
   error?: any;
 }> {
   if (isSyncingLock) {
     console.warn('[SYNC CONCURRENCY LOCK] Sync cycle already running. Skipping standalone queue processing.');
-    return { processedCount: 0, remainingCount: await db.pendingSync.count() };
+    return { processedCount: 0, remainingCount: await getPendingSyncCount(), failedCount: await getFailedSyncCount() };
   }
   isSyncingLock = true;
   try {
-    return await processPendingSyncQueueInternal();
+    const res = await processPendingSyncQueueInternal();
+    if (res.processedCount > 0) {
+      await setLastPushTime(new Date().toISOString());
+    }
+    return res;
   } finally {
     isSyncingLock = false;
   }
@@ -923,19 +1099,26 @@ export async function processPendingSyncQueue(): Promise<{
 async function processPendingSyncQueueInternal(): Promise<{
   processedCount: number;
   remainingCount: number;
+  failedCount: number;
   error?: any;
 }> {
   const pendingItems = await db.pendingSync.orderBy('id').toArray();
   if (pendingItems.length === 0) {
-    return { processedCount: 0, remainingCount: 0 };
+    return { processedCount: 0, remainingCount: 0, failedCount: 0 };
   }
 
-  console.log(`[OUTBOX WORKER] Processing ${pendingItems.length} queued mutations...`);
+  console.log(`[ONLINE-FIRST QUEUE WORKER] Processing ${pendingItems.length} queued operations...`);
   let processedCount = 0;
 
   for (const item of pendingItems) {
     if (!item.id) continue;
     const currentRetry = item.retryCount || 0;
+    const opId = item.operation_id || `op_${item.id}`;
+    const recId = item.record_id || 'N/A';
+
+    console.log(
+      `[ONLINE-FIRST SYNC START] OpID: ${opId} | Table: ${item.tableName} | RecordID: ${recId} | Type: ${item.operation} | Time: ${new Date().toISOString()}`
+    );
 
     try {
       let result: { success: boolean; error?: any } = { success: false };
@@ -1005,62 +1188,54 @@ async function processPendingSyncQueueInternal(): Promise<{
       if (result.success) {
         await db.pendingSync.delete(item.id);
         processedCount++;
+        console.log(
+          `[ONLINE-FIRST SYNC SUCCESS] OpID: ${opId} | Table: ${item.tableName} | RecordID: ${recId} | Time: ${new Date().toISOString()}`
+        );
       } else {
         const nextRetry = currentRetry + 1;
         const errReason = result.error?.message || String(result.error || 'Failed Supabase sync mutation');
 
-        if (nextRetry >= 5) {
-          console.warn(`[DEAD-LETTER QUEUE] Pending sync item #${item.id} (${item.tableName}:${item.operation}) failed 5 times (${errReason}). Moving to syncErrors table and skipping.`);
-          await db.syncErrors.add({
-            originalPendingId: item.id,
-            tableName: item.tableName,
-            operation: item.operation,
-            payload: item.payload,
-            failedAt: new Date().toISOString(),
-            errorReason: errReason,
-            retryCount: nextRetry,
-          });
-          await db.pendingSync.delete(item.id);
-        } else {
-          await db.pendingSync.update(item.id, { retryCount: nextRetry });
-          console.warn(`[OUTBOX WORKER] Item #${item.id} (${item.tableName}) attempt ${nextRetry}/5 failed: ${errReason}`);
+        console.warn(
+          `[ONLINE-FIRST SYNC FAILED] OpID: ${opId} | Table: ${item.tableName} | RecordID: ${recId} | Error: ${errReason}`
+        );
 
-          // Stop processing queue if network is strictly offline
-          if (typeof navigator !== 'undefined' && !navigator.onLine) {
-            console.warn('[OUTBOX WORKER] Device is offline. Pausing outbox queue processing.');
-            break;
-          }
+        await db.pendingSync.update(item.id, {
+          retryCount: nextRetry,
+          status: 'failed',
+          lastError: errReason,
+        });
+        await setLastSyncError(errReason);
+
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          console.warn('[ONLINE-FIRST SYNC] Device is offline. Pausing queue iteration.');
+          break;
         }
       }
     } catch (err: any) {
       const nextRetry = currentRetry + 1;
       const errReason = err?.message || String(err);
-      console.error(`[OUTBOX WORKER] Exception processing queue item #${item.id}:`, errReason);
+      console.error(`[ONLINE-FIRST SYNC EXCEPTION] OpID: ${opId}:`, errReason);
 
-      if (nextRetry >= 5) {
-        console.warn(`[DEAD-LETTER QUEUE] Item #${item.id} threw exception 5 times. Moving to syncErrors.`);
-        await db.syncErrors.add({
-          originalPendingId: item.id,
-          tableName: item.tableName,
-          operation: item.operation,
-          payload: item.payload,
-          failedAt: new Date().toISOString(),
-          errorReason: errReason,
-          retryCount: nextRetry,
-        });
-        await db.pendingSync.delete(item.id);
-      } else {
-        await db.pendingSync.update(item.id, { retryCount: nextRetry });
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
-          break;
-        }
+      await db.pendingSync.update(item.id, {
+        retryCount: nextRetry,
+        status: 'failed',
+        lastError: errReason,
+      });
+      await setLastSyncError(errReason);
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        break;
       }
     }
   }
 
-  const remaining = await db.pendingSync.count();
-  console.log(`[OUTBOX WORKER] Finished batch. Processed: ${processedCount}, Remaining in queue: ${remaining}`);
-  return { processedCount, remainingCount: remaining };
+  const totalQueue = await db.pendingSync.count();
+  const pending = await getPendingSyncCount();
+  const failed = await getFailedSyncCount();
+  console.log(
+    `[ONLINE-FIRST SYNC FINISHED] Processed: ${processedCount}, Remaining Queue Total: ${totalQueue} (Pending: ${pending}, Failed: ${failed})`
+  );
+  return { processedCount, remainingCount: totalQueue, failedCount: failed };
 }
 
 // --- DIRECT SUPABASE API IMPLEMENTATIONS (Used by Worker & Initial Fallbacks) ---
@@ -1079,7 +1254,8 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
   try {
     const payload = mapProductToDbPayload(product);
     const { data, error } = await safeSupabaseMutation(
-      async (p) => await supabase.from('products').insert([p]).select('id, name, sku').single(),
+      'products',
+      async (p) => await supabase.from('products').insert([p]).select('id, name').single(),
       payload
     );
     if (error) return { success: false, error };
@@ -1094,11 +1270,12 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
     const payload = mapProductToDbPayload(product);
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
     const { data, error } = await safeSupabaseMutation(
+      'products',
       async (p) => {
         let query = supabase.from('products').update(p);
         if (idNum !== null) query = query.eq('id', idNum);
         else query = query.eq('name', product.name);
-        return await query.select('id, name, sku').single();
+        return await query.select('id, name').single();
       },
       payload
     );
@@ -1146,7 +1323,7 @@ export async function clearAllProductsFromSupabase(): Promise<{ success: boolean
 
 export async function fetchCustomersFromSupabase(): Promise<{ data: Customer[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('customers', 'id, name, phone, email, address, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, current_debt, notes, monthly_installment_amount');
+    const res = await fetchSelectiveFromSupabase('customers', '*');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbCustomerToCustomer) };
   } catch (err: any) {
@@ -1157,13 +1334,21 @@ export async function fetchCustomersFromSupabase(): Promise<{ data: Customer[]; 
 export async function insertCustomerToSupabase(customer: Customer): Promise<{ success: boolean; data?: Customer; error?: any }> {
   try {
     const payload = mapCustomerToDbPayload(customer);
-    const { data, error } = await supabase.from('customers').insert([payload]).select('id, name').single();
+    const { data, error } = await safeSupabaseMutation(
+      'customers',
+      async (p) => await supabase.from('customers').insert([p]).select('id, name').single(),
+      payload
+    );
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select('id, name').single();
+      const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
+        'customers',
+        async (p) => await supabase.from('customers').upsert([p]).select('id, name').single(),
+        payload
+      );
       if (upsertErr) return { success: false, error: upsertErr };
-      return { success: true, data: mapDbCustomerToCustomer(upsertData) };
+      return { success: true, data: upsertData ? mapDbCustomerToCustomer(upsertData) : customer };
     }
-    return { success: true, data: mapDbCustomerToCustomer(data) };
+    return { success: true, data: data ? mapDbCustomerToCustomer(data) : customer };
   } catch (err) {
     return { success: false, error: err };
   }
@@ -1173,13 +1358,21 @@ export async function updateCustomerInSupabase(customer: Customer): Promise<{ su
   try {
     const payload = mapCustomerToDbPayload(customer);
     const targetId = payload.id || toSafeDbId(customer.id) || customer.id;
-    const { data, error } = await supabase.from('customers').update(payload).eq('id', targetId).select('id, name').single();
+    const { data, error } = await safeSupabaseMutation(
+      'customers',
+      async (p) => await supabase.from('customers').update(p).eq('id', targetId).select('id, name').single(),
+      payload
+    );
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('customers').upsert([payload]).select('id, name').single();
+      const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
+        'customers',
+        async (p) => await supabase.from('customers').upsert([p]).select('id, name').single(),
+        payload
+      );
       if (upsertErr) return { success: false, error: upsertErr };
-      return { success: true, data: mapDbCustomerToCustomer(upsertData) };
+      return { success: true, data: upsertData ? mapDbCustomerToCustomer(upsertData) : customer };
     }
-    return { success: true, data: mapDbCustomerToCustomer(data) };
+    return { success: true, data: data ? mapDbCustomerToCustomer(data) : customer };
   } catch (err) {
     return { success: false, error: err };
   }
@@ -1198,7 +1391,7 @@ export async function deleteCustomerFromSupabase(customerId: string): Promise<{ 
 
 export async function fetchSuppliersFromSupabase(): Promise<{ data: Supplier[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('suppliers', 'id, name, company_name, phone, email, address, category, current_balance, notes, tax_number');
+    const res = await fetchSelectiveFromSupabase('suppliers', '*');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbSupplierToSupplier) };
   } catch (err: any) {
@@ -1209,13 +1402,21 @@ export async function fetchSuppliersFromSupabase(): Promise<{ data: Supplier[]; 
 export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
   try {
     const payload = mapSupplierToDbPayload(supplier);
-    const { data, error } = await supabase.from('suppliers').insert([payload]).select('id, name').single();
+    const { data, error } = await safeSupabaseMutation(
+      'suppliers',
+      async (p) => await supabase.from('suppliers').insert([p]).select('id, name').single(),
+      payload
+    );
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select('id, name').single();
+      const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
+        'suppliers',
+        async (p) => await supabase.from('suppliers').upsert([p]).select('id, name').single(),
+        payload
+      );
       if (upsertErr) return { success: false, error: upsertErr };
-      return { success: true, data: mapDbSupplierToSupplier(upsertData) };
+      return { success: true, data: upsertData ? mapDbSupplierToSupplier(upsertData) : supplier };
     }
-    return { success: true, data: mapDbSupplierToSupplier(data) };
+    return { success: true, data: data ? mapDbSupplierToSupplier(data) : supplier };
   } catch (err) {
     return { success: false, error: err };
   }
@@ -1224,13 +1425,21 @@ export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ su
 export async function updateSupplierInSupabase(supplier: Supplier): Promise<{ success: boolean; data?: Supplier; error?: any }> {
   try {
     const payload = mapSupplierToDbPayload(supplier);
-    const { data, error } = await supabase.from('suppliers').update(payload).eq('id', supplier.id).select('id, name').single();
+    const { data, error } = await safeSupabaseMutation(
+      'suppliers',
+      async (p) => await supabase.from('suppliers').update(p).eq('id', supplier.id).select('id, name').single(),
+      payload
+    );
     if (error) {
-      const { data: upsertData, error: upsertErr } = await supabase.from('suppliers').upsert([payload]).select('id, name').single();
+      const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
+        'suppliers',
+        async (p) => await supabase.from('suppliers').upsert([p]).select('id, name').single(),
+        payload
+      );
       if (upsertErr) return { success: false, error: upsertErr };
-      return { success: true, data: mapDbSupplierToSupplier(upsertData) };
+      return { success: true, data: upsertData ? mapDbSupplierToSupplier(upsertData) : supplier };
     }
-    return { success: true, data: mapDbSupplierToSupplier(data) };
+    return { success: true, data: data ? mapDbSupplierToSupplier(data) : supplier };
   } catch (err) {
     return { success: false, error: err };
   }
@@ -1248,7 +1457,7 @@ export async function deleteSupplierFromSupabase(supplierId: string): Promise<{ 
 
 export async function fetchSupplierTransactionsFromSupabase(): Promise<{ data: SupplierTransaction[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('supplier_transactions', 'id, supplier_id, supplier_name, type, amount, date, reference_number, payment_method, notes, associate_name');
+    const res = await fetchSelectiveFromSupabase('supplier_transactions', '*');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbSupplierTxToSupplierTx) };
   } catch (err: any) {
@@ -1259,7 +1468,11 @@ export async function fetchSupplierTransactionsFromSupabase(): Promise<{ data: S
 export async function insertSupplierTransactionToSupabase(tx: SupplierTransaction): Promise<{ success: boolean; error?: any }> {
   try {
     const payload = mapSupplierTxToDbPayload(tx);
-    const { error } = await supabase.from('supplier_transactions').upsert([payload]);
+    const { error } = await safeSupabaseMutation(
+      'supplier_transactions',
+      async (p) => await supabase.from('supplier_transactions').upsert([p]),
+      payload
+    );
     if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
@@ -1269,10 +1482,10 @@ export async function insertSupplierTransactionToSupabase(tx: SupplierTransactio
 
 export async function fetchTransactionsFromSupabase(): Promise<{ data: Transaction[]; error?: any }> {
   try {
-    const txRes = await fetchSelectiveFromSupabase('transactions', 'id, receipt_number, timestamp, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, commissions, notes, status, amount_paid, amount_deferred, split_payments, original_cart');
+    const txRes = await fetchSelectiveFromSupabase('transactions', '*');
     if (txRes.error) return { data: [], error: txRes.error };
 
-    const itemsRes = await fetchSelectiveFromSupabase('transaction_items', 'transaction_id, product_id, product_name, sku, quantity, price_tier, unit_price, total_price, assigned_associate_id');
+    const itemsRes = await fetchSelectiveFromSupabase('transaction_items', '*');
     const itemsByTx: Record<string, any[]> = {};
     if (itemsRes.data) {
       itemsRes.data.forEach((item: any) => {
@@ -1296,7 +1509,7 @@ export async function fetchTransactionsFromSupabase(): Promise<{ data: Transacti
       return {
         id,
         receiptNumber: t.receipt_number || `RCP-${id}`,
-        timestamp: t.timestamp || new Date().toISOString(),
+        timestamp: t.timestamp || t.created_at || t.date || new Date().toISOString(),
         items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
         subtotal: Number(t.subtotal || 0),
         discountTotal: Number(t.discount_total || 0),
@@ -1328,10 +1541,11 @@ export async function fetchTransactionsFromSupabase(): Promise<{ data: Transacti
 
 export async function insertTransactionToSupabase(transaction: Transaction): Promise<{ success: boolean; error?: any }> {
   try {
-    const payload = {
+    const isoTime = new Date(transaction.timestamp || Date.now()).toISOString();
+    const payload: any = {
       id: transaction.id,
       receipt_number: transaction.receiptNumber,
-      timestamp: new Date(transaction.timestamp).toISOString(),
+      timestamp: isoTime,
       subtotal: transaction.subtotal,
       discount_total: transaction.discountTotal,
       tax_total: transaction.taxTotal,
@@ -1353,23 +1567,38 @@ export async function insertTransactionToSupabase(transaction: Transaction): Pro
       updated_at: new Date().toISOString(),
     };
 
-    const { error: txError } = await supabase.from('transactions').upsert([payload]);
+    const { error: txError } = await safeSupabaseMutation(
+      'transactions',
+      async (p) => await supabase.from('transactions').upsert([p]),
+      payload
+    );
+
     if (txError) return { success: false, error: txError };
 
     if (transaction.items && transaction.items.length > 0) {
       await supabase.from('transaction_items').delete().eq('transaction_id', transaction.id);
-      const itemsPayload = transaction.items.map((item) => ({
-        transaction_id: transaction.id,
-        product_id: item.productId,
-        product_name: item.productName,
-        sku: item.sku,
-        quantity: item.quantity,
-        price_tier: item.priceTier || 'cash',
-        unit_price: item.unitPrice,
-        total_price: item.totalPrice,
-        assigned_associate_id: item.assignedAssociateId || null,
-      }));
-      await supabase.from('transaction_items').insert(itemsPayload);
+      const itemsPayload = transaction.items.map((item) => {
+        const itemP: any = {
+          transaction_id: transaction.id,
+          product_id: item.productId,
+          product_name: item.productName,
+          quantity: item.quantity,
+          price_tier: item.priceTier || 'cash',
+          unit_price: item.unitPrice,
+          total_price: item.totalPrice,
+          assigned_associate_id: item.assignedAssociateId || null,
+        };
+        if (!isColumnMissing('transaction_items', 'sku') && item.sku) {
+          itemP.sku = item.sku;
+        }
+        return itemP;
+      });
+
+      await safeSupabaseMutation(
+        'transaction_items',
+        async (pArr) => await supabase.from('transaction_items').insert(pArr),
+        itemsPayload
+      );
     }
 
     return { success: true };
@@ -1391,7 +1620,7 @@ export async function deleteTransactionFromSupabase(transactionId: string): Prom
 
 export async function fetchAssociatesFromSupabase(): Promise<{ data: Associate[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('associates', 'id, name, username, password, pin, role, email, phone, commission_rate, daily_goal, hourly_rate, avatar, advances_balance, is_clocked_in, permissions');
+    const res = await fetchSelectiveFromSupabase('associates', '*');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbAssociateToAssociate) };
   } catch (err: any) {
@@ -1403,6 +1632,7 @@ export async function insertAssociateToSupabase(associate: Associate): Promise<{
   try {
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
+      'associates',
       async (p) => await supabase.from('associates').upsert([p]).select('id, name').single(),
       payload
     );
@@ -1417,11 +1647,13 @@ export async function updateAssociateInSupabase(associate: Associate): Promise<{
   try {
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
+      'associates',
       async (p) => await supabase.from('associates').update(p).eq('id', associate.id).select('id, name').single(),
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
+        'associates',
         async (p) => await supabase.from('associates').upsert([p]).select('id, name').single(),
         payload
       );
@@ -1446,7 +1678,7 @@ export async function deleteAssociateFromSupabase(associateId: string): Promise<
 
 export async function fetchClosedShiftsFromSupabase(): Promise<{ data: ClosedShift[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('closed_shifts', 'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance');
+    const res = await fetchSelectiveFromSupabase('closed_shifts', '*');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbShiftToClosedShift) };
   } catch (err: any) {
@@ -1457,7 +1689,11 @@ export async function fetchClosedShiftsFromSupabase(): Promise<{ data: ClosedShi
 export async function insertClosedShiftToSupabase(shift: ClosedShift): Promise<{ success: boolean; error?: any }> {
   try {
     const payload = mapClosedShiftToDbPayload(shift);
-    const { error } = await supabase.from('closed_shifts').upsert([payload]);
+    const { error } = await safeSupabaseMutation(
+      'closed_shifts',
+      async (p) => await supabase.from('closed_shifts').upsert([p]),
+      payload
+    );
     if (error) return { success: false, error };
     return { success: true };
   } catch (err: any) {
@@ -1467,7 +1703,7 @@ export async function insertClosedShiftToSupabase(shift: ClosedShift): Promise<{
 
 export async function fetchExpensesFromSupabase(): Promise<{ data: POSExpense[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('expenses', 'id, amount, category, description, timestamp, associate_id, associate_name, linked_supplier_id, linked_supplier_name, linked_associate_id, linked_associate_name');
+    const res = await fetchSelectiveFromSupabase('expenses', '*');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbExpenseToExpense) };
   } catch (err: any) {
@@ -1478,7 +1714,11 @@ export async function fetchExpensesFromSupabase(): Promise<{ data: POSExpense[];
 export async function insertExpenseToSupabase(expense: POSExpense): Promise<{ success: boolean; error?: any }> {
   try {
     const payload = mapExpenseToDbPayload(expense);
-    const { error } = await supabase.from('expenses').upsert([payload]);
+    const { error } = await safeSupabaseMutation(
+      'expenses',
+      async (p) => await supabase.from('expenses').upsert([p]),
+      payload
+    );
     if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
@@ -1498,7 +1738,7 @@ export async function deleteExpenseFromSupabase(expenseId: string): Promise<{ su
 
 export async function fetchDiscountsFromSupabase(): Promise<{ data: ProductDiscount[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('discounts', 'product_id, type, value, is_active, apply_to');
+    const res = await fetchSelectiveFromSupabase('discounts', '*');
     if (res.error) return { data: [] };
     const discounts: ProductDiscount[] = (res.data || []).map((d: any) => ({
       productId: String(d.product_id || d.productId),
@@ -1523,7 +1763,12 @@ export async function insertDiscountToSupabase(discount: ProductDiscount): Promi
       apply_to: discount.applyTo,
       updated_at: new Date().toISOString(),
     };
-    await supabase.from('discounts').upsert([payload]);
+    const { error } = await safeSupabaseMutation(
+      'discounts',
+      async (p) => await supabase.from('discounts').upsert([p]),
+      payload
+    );
+    if (error) return { success: false, error };
     return { success: true };
   } catch (err) {
     return { success: false, error: err };

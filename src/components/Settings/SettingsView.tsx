@@ -38,6 +38,13 @@ export const SettingsView: React.FC = () => {
     syncUnsyncedItems,
     refreshDataFromSupabase,
     clearAllProducts,
+    syncStatus,
+    pendingSyncCount,
+    failedSyncCount,
+    lastPushTime,
+    lastPullTime,
+    setIsSyncDetailsOpen,
+    syncNow,
   } = usePOS();
   const [newCategory, setNewCategory] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -592,14 +599,23 @@ export const SettingsView: React.FC = () => {
               <div className="mt-3 pt-3 border-t border-stone-850 space-y-2">
                 <button
                   type="button"
+                  onClick={() => setIsSyncDetailsOpen(true)}
+                  className="w-full py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse shadow-sm"
+                >
+                  <Database className="w-3.5 h-3.5 text-amber-400" />
+                  <span>فتح نافذة تفاصيل المزامنة وسجل الأخطاء</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={async () => {
-                    await refreshDataFromSupabase();
-                    triggerSuccess(`تمت المزامنة بنجاح! تم تحميل البيانات الفعلية من قاعدة البيانات.`);
+                    await syncNow();
+                    triggerSuccess(`تم بدء عملية المزامنة اليدوية الشاملة.`);
                   }}
                   className="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 space-x-reverse"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
-                  <span>تحديث وجلب البيانات مباشرة من Supabase</span>
+                  <span>بدء مزامنة يدوية فورية (Push & Pull)</span>
                 </button>
 
                 {products.length > 0 && (

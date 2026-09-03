@@ -24,6 +24,12 @@ import {
   db,
   addToPendingQueue,
   getPendingSyncCount,
+  getFailedSyncCount,
+  getLastPushTime,
+  getLastPullTime,
+  getLastSyncError,
+  retryPendingItem,
+  retryAllFailedItems as dbRetryAllFailedItems,
 } from '../lib/db';
 import {
   checkSupabaseConnection,
@@ -50,7 +56,6 @@ interface POSContextType {
   taxRate: number;
   settings: AppSettings;
   discounts: ProductDiscount[];
-  pendingSyncCount: number;
   hasPermission: (perm: Permission) => boolean;
 
   setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts') => void;
@@ -141,6 +146,21 @@ interface POSContextType {
   deleteExpense: (id: string) => Promise<void>;
   returnTransaction: (transactionId: string) => Promise<void>;
 
+  // Sync Engine State & Controls
+  syncStatus: 'synced' | 'syncing' | 'pending' | 'failed' | 'offline';
+  lastPushTime: string | null;
+  lastPullTime: string | null;
+  pendingSyncCount: number;
+  failedSyncCount: number;
+  lastSyncError: string | null;
+  isSyncDetailsOpen: boolean;
+  setIsSyncDetailsOpen: (open: boolean) => void;
+  syncSummaryResult: { uploadedCount: number; downloadedCount: number; failedCount: number; completedAt: string } | null;
+  setSyncSummaryResult: (res: any) => void;
+  syncNow: () => Promise<void>;
+  retryFailedItem: (id: number) => Promise<void>;
+  retryAllFailedItems: () => Promise<void>;
+
   refreshDataFromSupabase: () => Promise<void>;
   syncUnsyncedItems: () => Promise<void>;
   resetDemoData: () => Promise<void>;
@@ -164,6 +184,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [expenses, setExpenses] = useState<POSExpense[]>([]);
   const [discounts, setDiscounts] = useState<ProductDiscount[]>([]);
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+
+  // Sync Engine State
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending' | 'failed' | 'offline'>('synced');
+  const [lastPushTime, setLastPushTimeState] = useState<string | null>(null);
+  const [lastPullTime, setLastPullTimeState] = useState<string | null>(null);
+  const [failedSyncCount, setFailedSyncCount] = useState<number>(0);
+  const [lastSyncError, setLastSyncErrorState] = useState<string | null>(null);
+  const [isSyncDetailsOpen, setIsSyncDetailsOpen] = useState<boolean>(false);
+  const [syncSummaryResult, setSyncSummaryResult] = useState<{
+    uploadedCount: number;
+    downloadedCount: number;
+    failedCount: number;
+    completedAt: string;
+  } | null>(null);
 
   // Local UI State
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
@@ -304,6 +338,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localExps,
         localDiscs,
         queueCount,
+        failedCount,
+        pTime,
+        pullTime,
+        syncErr,
       ] = await Promise.all([
         db.products.toArray(),
         db.customers.toArray(),
@@ -315,6 +353,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         db.expenses.toArray(),
         db.discounts.toArray(),
         getPendingSyncCount(),
+        getFailedSyncCount(),
+        getLastPushTime(),
+        getLastPullTime(),
+        getLastSyncError(),
       ]);
 
       setProducts(localProds);
@@ -326,6 +368,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setExpenses(localExps);
       setDiscounts(localDiscs);
       setPendingSyncCount(queueCount);
+      setFailedSyncCount(failedCount);
+      setLastPushTimeState(pTime);
+      setLastPullTimeState(pullTime);
+      setLastSyncErrorState(syncErr);
+
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setSyncStatus('offline');
+      } else if (failedCount > 0) {
+        setSyncStatus('failed');
+      } else if (queueCount > 0) {
+        setSyncStatus('pending');
+      } else {
+        setSyncStatus('synced');
+      }
 
       if (localAssocs.length === 0) {
         await db.associates.put(DEFAULT_ADMIN_ASSOCIATE);
@@ -341,16 +397,52 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // --- BACKGROUND SYNC TRIGGER ---
   const triggerBackgroundSync = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSyncStatus('offline');
+      return;
+    }
+    setSyncStatus('syncing');
     try {
       const syncResult = await runFullSyncCycle();
-      if (syncResult !== null) {
-        // Sync completed, refresh local state from Dexie.js
-        await loadFromLocal();
-      }
+      await loadFromLocal();
     } catch (err: any) {
       console.warn('[POSContext] Background sync warning:', err);
+      await loadFromLocal();
     }
   }, [loadFromLocal]);
+
+  const syncNow = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSyncStatus('offline');
+      return;
+    }
+    setSyncStatus('syncing');
+    try {
+      const syncResult = await runFullSyncCycle();
+      await loadFromLocal();
+      if (syncResult) {
+        setSyncSummaryResult({
+          uploadedCount: syncResult.outboxResult.processedCount,
+          downloadedCount: syncResult.deltaSyncResult.downloadedCount,
+          failedCount: syncResult.outboxResult.failedCount + (syncResult.deltaSyncResult.success ? 0 : 1),
+          completedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        });
+      }
+    } catch (error: any) {
+      console.error('[POSContext] Manual sync error:', error);
+      await loadFromLocal();
+    }
+  }, [loadFromLocal]);
+
+  const retryFailedItem = useCallback(async (id: number) => {
+    await retryPendingItem(id);
+    await triggerBackgroundSync();
+  }, [triggerBackgroundSync]);
+
+  const retryAllFailedItems = useCallback(async () => {
+    await dbRetryAllFailedItems();
+    await triggerBackgroundSync();
+  }, [triggerBackgroundSync]);
 
   // Initial load from Dexie + trigger background sync
   useEffect(() => {
@@ -1381,7 +1473,6 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         taxRate,
         settings,
         discounts,
-        pendingSyncCount,
         hasPermission,
         updateSettings,
         setActiveTab,
@@ -1433,6 +1524,19 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExpense,
         deleteExpense,
         returnTransaction,
+        syncStatus,
+        lastPushTime,
+        lastPullTime,
+        pendingSyncCount,
+        failedSyncCount,
+        lastSyncError,
+        isSyncDetailsOpen,
+        setIsSyncDetailsOpen,
+        syncSummaryResult,
+        setSyncSummaryResult,
+        syncNow,
+        retryFailedItem,
+        retryAllFailedItems,
         refreshDataFromSupabase: triggerBackgroundSync,
         syncUnsyncedItems: triggerBackgroundSync,
         resetDemoData,

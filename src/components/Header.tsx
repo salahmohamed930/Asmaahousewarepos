@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { usePOS } from '../context/POSContext';
 import { DEFAULT_SHORTCUT_KEYS } from '../data/initialData';
 import { QuickPinModal } from './QuickPinModal';
+import { SyncStatusIndicator } from './Common/SyncStatusIndicator';
+import { SyncDetailsModal } from './Common/SyncDetailsModal';
 import {
   FileText,
   Users,
@@ -155,8 +157,8 @@ export const Header: React.FC = () => {
 
             {/* Left Active Associate Switcher & Actions */}
             <div className="flex items-center space-x-3 space-x-reverse">
-
-
+              {/* Sync Status Badge & Controls */}
+              <SyncStatusIndicator />
 
               {/* Active Associate Selector Pill */}
               <div className="relative">
@@ -311,6 +313,7 @@ export const Header: React.FC = () => {
       </header>
 
       <QuickPinModal isOpen={isQuickPinModalOpen} onClose={() => setIsQuickPinModalOpen(false)} />
+      <SyncDetailsModal />
     </>
   );
 };

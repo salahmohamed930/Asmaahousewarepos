@@ -13,6 +13,7 @@ import {
 
 export interface PendingSyncItem {
   id?: number;
+  operation_id: string;
   tableName:
     | 'products'
     | 'customers'
@@ -23,10 +24,13 @@ export interface PendingSyncItem {
     | 'closed_shifts'
     | 'expenses'
     | 'discounts';
+  record_id: string;
   operation: 'INSERT' | 'UPDATE' | 'DELETE';
   payload: any;
   createdAt: string;
   retryCount: number;
+  status: 'pending' | 'failed' | 'processing';
+  lastError?: string;
 }
 
 export interface SyncErrorItem {
@@ -72,7 +76,7 @@ export class POSDatabase extends Dexie {
       expenses: 'id, amount, category, timestamp, updated_at',
       discounts: 'productId, isActive, updated_at',
       syncMeta: 'key',
-      pendingSync: '++id, tableName, operation, createdAt',
+      pendingSync: '++id, operation_id, tableName, record_id, operation, createdAt, status',
       syncErrors: '++id, tableName, failedAt, retryCount',
     });
   }
@@ -91,20 +95,78 @@ export async function setLastSyncTimestamp(timestamp: string): Promise<void> {
   await db.syncMeta.put({ key: 'last_sync_timestamp', value: timestamp });
 }
 
+export async function getLastPushTime(): Promise<string | null> {
+  const meta = await db.syncMeta.get('last_push_time');
+  return meta ? meta.value : null;
+}
+
+export async function setLastPushTime(timestamp: string): Promise<void> {
+  await db.syncMeta.put({ key: 'last_push_time', value: timestamp });
+}
+
+export async function getLastPullTime(): Promise<string | null> {
+  const meta = await db.syncMeta.get('last_pull_time');
+  return meta ? meta.value : null;
+}
+
+export async function setLastPullTime(timestamp: string): Promise<void> {
+  await db.syncMeta.put({ key: 'last_pull_time', value: timestamp });
+}
+
+export async function getLastSyncError(): Promise<string | null> {
+  const meta = await db.syncMeta.get('last_sync_error');
+  return meta ? meta.value : null;
+}
+
+export async function setLastSyncError(errorMsg: string | null): Promise<void> {
+  if (!errorMsg) {
+    await db.syncMeta.delete('last_sync_error');
+  } else {
+    await db.syncMeta.put({ key: 'last_sync_error', value: errorMsg });
+  }
+}
+
 export async function addToPendingQueue(
   tableName: PendingSyncItem['tableName'],
   operation: PendingSyncItem['operation'],
   payload: any
 ): Promise<number> {
+  const recId = payload?.id || payload?.productId || payload?.supplierId || payload?.receiptNumber || payload?.record_id || 'N/A';
+  const opId = `op_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   return await db.pendingSync.add({
+    operation_id: opId,
     tableName,
+    record_id: String(recId),
     operation,
     payload,
     createdAt: new Date().toISOString(),
     retryCount: 0,
+    status: 'pending',
+    lastError: '',
   });
 }
 
 export async function getPendingSyncCount(): Promise<number> {
-  return await db.pendingSync.count();
+  return await db.pendingSync.filter((item) => item.status === 'pending' || !item.status).count();
+}
+
+export async function getFailedSyncCount(): Promise<number> {
+  return await db.pendingSync.filter((item) => item.status === 'failed').count();
+}
+
+export async function getAllPendingSyncItems(): Promise<PendingSyncItem[]> {
+  return await db.pendingSync.orderBy('id').toArray();
+}
+
+export async function retryPendingItem(id: number): Promise<void> {
+  await db.pendingSync.update(id, { status: 'pending', retryCount: 0, lastError: '' });
+}
+
+export async function retryAllFailedItems(): Promise<void> {
+  const failed = await db.pendingSync.filter((item) => item.status === 'failed').toArray();
+  for (const item of failed) {
+    if (item.id) {
+      await db.pendingSync.update(item.id, { status: 'pending', retryCount: 0, lastError: '' });
+    }
+  }
 }

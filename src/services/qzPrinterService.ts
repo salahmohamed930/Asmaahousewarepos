@@ -35,6 +35,7 @@ class QzPrinterService {
     try {
       if (qz && qz.security) {
         qz.security.setCertificatePromise((resolve: any) => {
+          // Provide self-signed or empty resolver for local QZ Tray unsigned connections
           resolve();
         });
         qz.security.setSignatureAlgorithm('SHA512');
@@ -45,7 +46,7 @@ class QzPrinterService {
         });
       }
     } catch (err) {
-      // Ignored - QZ Security default
+      console.warn('QZ Security setup notice:', err);
     }
   }
 
@@ -54,7 +55,6 @@ class QzPrinterService {
    */
   public subscribeStatus(listener: (status: PrinterServiceStatus) => void): () => void {
     this.statusListeners.push(listener);
-    // Notify immediately
     listener(this.getStatus());
     return () => {
       this.statusListeners = this.statusListeners.filter((l) => l !== listener);
@@ -71,9 +71,9 @@ class QzPrinterService {
       isConnected: this.isConnected,
       isConnecting: this.isConnecting,
       statusText: this.isConnected
-        ? 'خدمة الطباعة المباشرة متصلة جاهزة (QZ Tray Active)'
+        ? 'خدمة الطباعة المباشرة متصلة وجاهزة (QZ Tray Active)'
         : this.isConnecting
-        ? 'جاري الاتصال بخدمة الطباعة المباشرة...'
+        ? 'جاري الاتصال بخدمة الطباعة المباشرة QZ Tray...'
         : 'خدمة الطباعة المباشرة غير متصلة (QZ Tray Offline)',
       lastError: msg?.error || this.lastError,
       lastSuccessMessage: msg?.success,
@@ -81,7 +81,7 @@ class QzPrinterService {
   }
 
   /**
-   * Check if QZ Tray active
+   * Check if QZ Tray WebSocket connection is currently active
    */
   public isQzActive(): boolean {
     try {
@@ -92,7 +92,7 @@ class QzPrinterService {
   }
 
   /**
-   * Connect to QZ Tray WebSocket
+   * Connect to local QZ Tray WebSocket bridge on Windows
    */
   public async connect(): Promise<{ success: boolean; error?: string }> {
     if (this.isQzActive()) {
@@ -106,7 +106,7 @@ class QzPrinterService {
     this.notifyListeners();
 
     try {
-      // Connect to local QZ Tray websocket on ports 8182/8181
+      // Connect to QZ Tray daemon on localhost (ports 8182/8181)
       await qz.websocket.connect({
         retries: 2,
         delay: 1,
@@ -122,18 +122,10 @@ class QzPrinterService {
     } catch (err: any) {
       this.isConnected = false;
       this.isConnecting = false;
-      const cleanErr = err?.message || String(err);
-      
-      let userFriendlyError = 'تعذر الاتصال ببرنامج QZ Tray على الجهاز.';
-      if (cleanErr.includes('WebSocket') || cleanErr.includes('Connection refused') || cleanErr.includes('close')) {
-        userFriendlyError = 'برنامج QZ Tray غير مشغل أو غير مثبت على الويندوز. يرجى تشغيل QZ Tray والتحقق من فتح المنفذ 8182.';
-      } else {
-        userFriendlyError = `فشل الاتصال بـ QZ Tray: ${cleanErr}`;
-      }
-
-      this.lastError = userFriendlyError;
-      this.notifyListeners({ error: userFriendlyError });
-      return { success: false, error: userFriendlyError };
+      const parsedErr = this.categorizeError(err, 'connect');
+      this.lastError = parsedErr;
+      this.notifyListeners({ error: parsedErr });
+      return { success: false, error: parsedErr };
     }
   }
 
@@ -155,7 +147,7 @@ class QzPrinterService {
   }
 
   /**
-   * Discover installed printers on Windows
+   * Discover installed Windows printers via QZ Tray
    */
   public async findPrinters(): Promise<{ success: boolean; printers: string[]; error?: string }> {
     const conn = await this.connect();
@@ -167,14 +159,14 @@ class QzPrinterService {
       const printersList: string[] = await qz.printers.find();
       return { success: true, printers: printersList || [] };
     } catch (err: any) {
-      const errStr = err?.message || 'فشل البحث عن الطابعات في الويندوز.';
-      this.notifyListeners({ error: errStr });
-      return { success: false, printers: [], error: errStr };
+      const parsedErr = this.categorizeError(err, 'findPrinters');
+      this.notifyListeners({ error: parsedErr });
+      return { success: false, printers: [], error: parsedErr };
     }
   }
 
   /**
-   * Check if a specific printer exists by name
+   * Check if a specific printer exists by name on Windows
    */
   public async findPrinter(printerName: string): Promise<boolean> {
     if (!printerName) return false;
@@ -190,7 +182,7 @@ class QzPrinterService {
   }
 
   /**
-   * Direct Print HTML Content to Specified Printer
+   * Direct Print HTML Payload to Specified Printer
    */
   public async printHtmlDirect(
     htmlContent: string,
@@ -199,9 +191,9 @@ class QzPrinterService {
     const printerName = opts.printerName?.trim();
 
     if (!printerName) {
-      const err = `لم يتم تحديد طابعة ${
+      const err = `لم يتم اختيار طابعة ${
         opts.docType === 'invoice' ? 'الفواتير' : 'الباركود'
-      } في إعدادات النظام. يرجى اختيار الطابعة المحفوظة أولاً.`;
+      } في إعدادات النظام. يرجى تحديد اسم الطابعة من شاشة الإعدادات.`;
       this.notifyListeners({ error: err });
       return { success: false, error: err };
     }
@@ -215,7 +207,7 @@ class QzPrinterService {
       // Verify target printer exists on Windows
       const printerExists = await this.findPrinter(printerName);
       if (!printerExists) {
-        const notFoundErr = `الطابعة "${printerName}" غير موجودة أو غير متصلة بالويندوز (Printer Not Found). يرجى التأكد من اسم الطابعة وتوصيل الكابل.`;
+        const notFoundErr = `الطابعة "${printerName}" غير موجودة في نظام Windows. تحقق من اسم الطابعة وتوصيل كابل USB/الشبكة.`;
         this.notifyListeners({ error: notFoundErr });
         return { success: false, error: notFoundErr };
       }
@@ -240,7 +232,7 @@ class QzPrinterService {
         }
       }
 
-      // Create QZ config
+      // Create QZ Config
       const configOpts: any = {
         copies,
         colorType: 'color',
@@ -251,7 +243,7 @@ class QzPrinterService {
 
       const qzConfig = qz.configs.create(printerName, configOpts);
 
-      // Package HTML print job for QZ Pixel engine
+      // Package HTML print job
       const printData = [
         {
           type: 'pixel',
@@ -294,10 +286,9 @@ class QzPrinterService {
       this.notifyListeners({ success: successMsg });
       return { success: true };
     } catch (err: any) {
-      const cleanErr = err?.message || String(err);
-      const printFailErr = `فشلت عملية الطباعة على الطابعة "${printerName}": ${cleanErr}`;
-      this.notifyListeners({ error: printFailErr });
-      return { success: false, error: printFailErr };
+      const parsedErr = this.categorizeError(err, 'print', printerName);
+      this.notifyListeners({ error: parsedErr });
+      return { success: false, error: parsedErr };
     }
   }
 
@@ -351,6 +342,64 @@ class QzPrinterService {
       docType: 'barcode',
       pageTitle: 'اختبار-طابعة-الباركود',
     });
+  }
+
+  /**
+   * Precise Arabic Error Diagnostic Resolver
+   */
+  private categorizeError(err: any, context: 'connect' | 'findPrinters' | 'print', printerName?: string): string {
+    const rawMsg = (err?.message || String(err)).toLowerCase();
+
+    // Case 1: QZ Tray Not Installed / Not Running / Port Closed
+    if (
+      rawMsg.includes('websocket') ||
+      rawMsg.includes('connection refused') ||
+      rawMsg.includes('econnrefused') ||
+      rawMsg.includes('unable to establish connection') ||
+      rawMsg.includes('closed') ||
+      rawMsg.includes('networkerror')
+    ) {
+      return 'برنامج QZ Tray غير مشغل أو غير مثبت على الويندوز. يرجى فتح برنامج QZ Tray على الجهاز والتأكد من ظهور أيقونته بجوار الساعة.';
+    }
+
+    // Case 2: Certificate or Security signing rejection
+    if (
+      rawMsg.includes('certificate') ||
+      rawMsg.includes('signature') ||
+      rawMsg.includes('untrusted') ||
+      rawMsg.includes('security') ||
+      rawMsg.includes('blocked')
+    ) {
+      return 'تم رفض الشهادة الأمنية من برنامج QZ Tray. يرجى الموافقة على طلب الاتصال Allow/Trust في النافذة المنبثقة لـ QZ Tray.';
+    }
+
+    // Case 3: Printer Not Found
+    if (
+      rawMsg.includes('cannot find printer') ||
+      rawMsg.includes('printer not found') ||
+      rawMsg.includes('invalid printer') ||
+      rawMsg.includes('no printer matched')
+    ) {
+      return `الطابعة "${printerName || ''}" غير مضافة أو غير موجودة في الويندوز. اضغط زر "اكتشاف الطابعات" للتأكد من اسمها الصحيح.`;
+    }
+
+    // Case 4: Printer Offline or Spooler Error
+    if (
+      rawMsg.includes('offline') ||
+      rawMsg.includes('spooler') ||
+      rawMsg.includes('paper out') ||
+      rawMsg.includes('not ready') ||
+      rawMsg.includes('port')
+    ) {
+      return `الطابعة "${printerName || ''}" غير متصلة بالكهرباء أو 오فلين (Offline). يرجى التأكد من تشغيل الطابعة وتوصيل الكابل ورول الورق.`;
+    }
+
+    // Case 5: Generic Print Command Failure
+    if (context === 'print') {
+      return `فشل إرسال أمر الطباعة إلى الطابعة "${printerName || ''}": ${err?.message || String(err)}`;
+    }
+
+    return `خطأ في خدمة الطباعة: ${err?.message || String(err)}`;
   }
 }
 

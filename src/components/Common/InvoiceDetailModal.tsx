@@ -9,6 +9,7 @@ import {
   Save,
   Plus,
   Trash2,
+  Check,
   AlertCircle,
   CheckCircle2,
   ShieldCheck,
@@ -35,6 +36,8 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     hasPermission,
     updateTransaction,
     voidTransaction,
+    deleteTransaction,
+    restoreHeldTransaction,
     products,
     customers,
     startEditingTransaction,
@@ -638,7 +641,38 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                 </>
               ) : (
                 <>
-                  {canEditInvoice ? (
+                  {editedTx?.status === 'معلقة' ? (
+                    <div className="flex items-center space-x-2 space-x-reverse">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editedTx) {
+                            restoreHeldTransaction(editedTx.id);
+                            onClose();
+                          }
+                        }}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs transition-all flex items-center space-x-1.5 space-x-reverse shadow-md"
+                        title="استكمال الفاتورة المعلقة ونقلها للسلة"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>استكمال الفاتورة في السلة</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (editedTx) {
+                            await deleteTransaction(editedTx.id);
+                            onClose();
+                          }
+                        }}
+                        className="px-3 py-2 bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 font-bold rounded-xl text-xs transition-all flex items-center space-x-1.5 space-x-reverse"
+                        title="حذف هذه الفاتورة المعلقة نهائياً"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>حذف المعلقة نهائياً</span>
+                      </button>
+                    </div>
+                  ) : canEditInvoice ? (
                     <div className="flex items-center space-x-2 space-x-reverse">
                       <button
                         type="button"

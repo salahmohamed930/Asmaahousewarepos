@@ -43,8 +43,10 @@ export const RegisterView: React.FC = () => {
     restoreHeldTransaction,
     activeHeldTransactionId,
     deleteTransaction,
+    clearAllHeldTransactions,
     associates,
     currentAssociate,
+    customers,
     quickSwitchByPin,
     cart,
     expenses,
@@ -92,6 +94,11 @@ export const RegisterView: React.FC = () => {
   const [expenseFilter, setExpenseFilter] = useState('all');
   const [linkedSupplierId, setLinkedSupplierId] = useState('');
   const [linkedAssociateId, setLinkedAssociateId] = useState('');
+
+  // Held invoices management states
+  const [confirmDeleteTxId, setConfirmDeleteTxId] = useState<string | null>(null);
+  const [confirmClearAllHeld, setConfirmClearAllHeld] = useState<boolean>(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'held' | 'completed' | 'voided' | 'refunded'>('all');
 
   const handleLocalAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,6 +158,8 @@ export const RegisterView: React.FC = () => {
   const [historySearch, setHistorySearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [sellerFilter, setSellerFilter] = useState<string>('all');
 
   // Register / Creation State
@@ -312,58 +321,272 @@ export const RegisterView: React.FC = () => {
     }, 500);
   };
 
+  const isAnyInvoiceFilterActive =
+    historySearch.trim() !== '' ||
+    statusFilter !== 'all' ||
+    paymentFilter !== 'all' ||
+    dateFilter !== 'all' ||
+    sellerFilter !== 'all' ||
+    customStartDate !== '' ||
+    customEndDate !== '';
+
+  const resetInvoiceFilters = () => {
+    setHistorySearch('');
+    setStatusFilter('all');
+    setPaymentFilter('all');
+    setDateFilter('all');
+    setSellerFilter('all');
+    setCustomStartDate('');
+    setCustomEndDate('');
+  };
+
   // Filtered Past Invoices History Logic
   const filteredTransactions = transactions.filter((tx) => {
-    // 1. Search Query (Invoice ID, Customer Name/Phone, Seller PIN, Product Name)
-    const q = historySearch.trim().toLowerCase();
-    let matchesSearch = true;
-    if (q) {
-      const matchId = tx.id.toLowerCase().includes(q) || tx.receiptNumber.toLowerCase().includes(q);
-      const matchCust = tx.customerName?.toLowerCase().includes(q) || tx.customerPhone?.includes(q);
-      const matchAssociatePin = associates.some(
-        (a) => a.id === tx.associateId && a.pin.includes(q)
+    if (!tx) return false;
+
+    // 1. Search Query (Invoice ID, Receipt #, Customer Name/Phone, Seller Name/PIN, Product Name/Barcode/SKU, Amount, Notes)
+    const rawQ = (historySearch || '').trim();
+    if (rawQ) {
+      const q = rawQ.toLowerCase();
+      const cleanQ = q.replace(/^(#|inv-|inv)/i, '').trim();
+
+      const txId = String(tx.id || '').toLowerCase();
+      const receiptNo = String(tx.receiptNumber || '').toLowerCase();
+      const cleanReceiptNo = receiptNo.replace(/^(#|inv-|inv)/i, '').trim();
+
+      const matchId = txId.includes(q) || receiptNo.includes(q) || (Boolean(cleanQ) && cleanReceiptNo.includes(cleanQ));
+      const matchCustName = Boolean(tx.customerName && String(tx.customerName).toLowerCase().includes(q));
+
+      // Customer Phone match
+      let matchCustPhone = false;
+      if ((tx as any).customerPhone && String((tx as any).customerPhone).includes(rawQ)) {
+        matchCustPhone = true;
+      } else if (tx.customerId && customers) {
+        const custObj = customers.find((c) => c.id === tx.customerId);
+        if (custObj && custObj.phone && custObj.phone.includes(rawQ)) {
+          matchCustPhone = true;
+        }
+      }
+
+      // Associate match (PIN or Name)
+      const primaryAssoc = associates.find(
+        (a) => a.id === tx.primaryAssociateId || a.id === (tx as any).associateId
       );
-      const matchItems = tx.items.some((item) => item.productName.toLowerCase().includes(q));
+      const matchAssociatePin =
+        associates.some(
+          (a) => (a.id === tx.primaryAssociateId || a.id === (tx as any).associateId) && a.pin && a.pin.includes(rawQ)
+        ) || Boolean(primaryAssoc && primaryAssoc.pin && primaryAssoc.pin.includes(rawQ));
 
-      matchesSearch = matchId || Boolean(matchCust) || matchAssociatePin || matchItems;
+      const matchAssociateName = Boolean(
+        (tx.primaryAssociateName && tx.primaryAssociateName.toLowerCase().includes(q)) ||
+        (primaryAssoc && primaryAssoc.name.toLowerCase().includes(q))
+      );
+
+      // Items match (Name, Barcode, SKU)
+      const matchItems =
+        Array.isArray(tx.items) &&
+        tx.items.some((item) => {
+          if (!item) return false;
+          const pName = String(item.productName || '').toLowerCase();
+          const pBarcode = String(item.barcode || '').toLowerCase();
+          const pSku = String((item as any).sku || '').toLowerCase();
+          return pName.includes(q) || pBarcode.includes(q) || pSku.includes(q);
+        });
+
+      // Amount match
+      const grandTotalStr = String(tx.grandTotal ?? tx.subtotal ?? '');
+      const matchAmount = grandTotalStr === rawQ || grandTotalStr.startsWith(rawQ);
+
+      // Notes match
+      const matchNotes = Boolean(
+        (tx.notes && tx.notes.toLowerCase().includes(q)) ||
+        (tx.paymentDetails && tx.paymentDetails.toLowerCase().includes(q))
+      );
+
+      if (
+        !matchId &&
+        !matchCustName &&
+        !matchCustPhone &&
+        !matchAssociatePin &&
+        !matchAssociateName &&
+        !matchItems &&
+        !matchAmount &&
+        !matchNotes
+      ) {
+        return false;
+      }
     }
 
-    // 2. Payment Method Filter
-    let matchesPayment = true;
+    // 2. Status Filter
+    if (statusFilter !== 'all') {
+      const s = String(tx.status || '').toLowerCase();
+      if (statusFilter === 'held') {
+        if (s !== 'معلقة' && s !== 'held') return false;
+      } else if (statusFilter === 'completed') {
+        if (s !== 'مكتملة' && s !== 'completed') return false;
+      } else if (statusFilter === 'voided') {
+        if (s !== 'ملغاة' && s !== 'voided') return false;
+      } else if (statusFilter === 'refunded') {
+        if (s !== 'مسترجعة' && s !== 'refunded') return false;
+      }
+    }
+
+    // 3. Payment Method Filter (Robust multi-language & split payment support)
     if (paymentFilter !== 'all') {
-      matchesPayment = tx.paymentMethod === paymentFilter;
+      const pm = String(tx.paymentMethod || '').trim();
+      const pmLower = pm.toLowerCase();
+      const isSplit =
+        pm === 'دفع متعدد' ||
+        pmLower === 'split' ||
+        (Array.isArray(tx.splitPayments) && tx.splitPayments.length > 1);
+
+      if (paymentFilter === 'cash') {
+        const hasCash =
+          pm === 'كاش' ||
+          pmLower === 'cash' ||
+          (Array.isArray(tx.splitPayments) &&
+            tx.splitPayments.some((sp) => sp.method === 'كاش' || (sp.method as any) === 'cash'));
+        if (!hasCash) return false;
+      } else if (paymentFilter === 'card') {
+        const hasCard =
+          pm === 'فيزا / كارت' ||
+          pmLower === 'card' ||
+          pmLower === 'visa' ||
+          pm.includes('فيزا') ||
+          pm.includes('كارت') ||
+          (Array.isArray(tx.splitPayments) &&
+            tx.splitPayments.some(
+              (sp) =>
+                sp.method === 'فيزا / كارت' ||
+                (sp.method as any) === 'card' ||
+                (sp.method as any) === 'visa' ||
+                String(sp.method).includes('فيزا')
+            ));
+        if (!hasCard) return false;
+      } else if (paymentFilter === 'installment') {
+        const hasInst =
+          pm === 'تقسيط شهري' ||
+          pm === 'تقسيط' ||
+          pmLower === 'installment' ||
+          pm.includes('تقسيط') ||
+          (Array.isArray(tx.splitPayments) &&
+            tx.splitPayments.some(
+              (sp) =>
+                sp.method === 'تقسيط شهري' ||
+                (sp.method as any) === 'installment' ||
+                String(sp.method).includes('تقسيط')
+            ));
+        if (!hasInst) return false;
+      } else if (paymentFilter === 'credit') {
+        const hasCredit =
+          pm === 'آجل / حساب جملة' ||
+          pm === 'آجل' ||
+          pmLower === 'credit' ||
+          pmLower === 'deferred' ||
+          pm.includes('آجل') ||
+          (tx.amountDeferred !== undefined && tx.amountDeferred > 0) ||
+          (Array.isArray(tx.splitPayments) &&
+            tx.splitPayments.some(
+              (sp) =>
+                sp.method === 'آجل / حساب جملة' ||
+                (sp.method as any) === 'deferred' ||
+                String(sp.method).includes('آجل')
+            ));
+        if (!hasCredit) return false;
+      } else if (paymentFilter === 'wallet') {
+        const hasWallet =
+          pm === 'محفظة إلكترونية' ||
+          pmLower === 'wallet' ||
+          pm.includes('محفظة') ||
+          (Array.isArray(tx.splitPayments) &&
+            tx.splitPayments.some(
+              (sp) =>
+                sp.method === 'محفظة إلكترونية' ||
+                (sp.method as any) === 'wallet' ||
+                String(sp.method).includes('محفظة')
+            ));
+        if (!hasWallet) return false;
+      } else if (paymentFilter === 'split') {
+        if (!isSplit) return false;
+      } else if (paymentFilter === 'loyalty') {
+        const hasLoyalty = pm === 'نقاط ولاء' || pmLower === 'loyalty' || pm.includes('ولاء');
+        if (!hasLoyalty) return false;
+      } else {
+        if (pm !== paymentFilter) return false;
+      }
     }
 
-    // 3. Date Filter
-    let matchesDate = true;
+    // 4. Date Filter
     if (dateFilter !== 'all') {
       const txDate = new Date(tx.timestamp);
-      const now = new Date();
-      if (dateFilter === 'today') {
-        matchesDate = txDate.toDateString() === now.toDateString();
-      } else if (dateFilter === 'week') {
-        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        matchesDate = txDate >= oneWeekAgo;
-      } else if (dateFilter === 'month') {
-        matchesDate =
-          txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+      if (!isNaN(txDate.getTime())) {
+        const now = new Date();
+
+        if (dateFilter === 'today') {
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+          const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+          if (txDate < startOfToday || txDate > endOfToday) return false;
+        } else if (dateFilter === 'yesterday') {
+          const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+          const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+          if (txDate < startOfYesterday || txDate > endOfYesterday) return false;
+        } else if (dateFilter === 'week') {
+          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          sevenDaysAgo.setHours(0, 0, 0, 0);
+          if (txDate < sevenDaysAgo) return false;
+        } else if (dateFilter === 'month') {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+          if (txDate < startOfMonth) return false;
+        } else if (dateFilter === 'last_month') {
+          const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+          const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+          if (txDate < startOfLastMonth || txDate > endOfLastMonth) return false;
+        } else if (dateFilter === 'custom') {
+          if (customStartDate) {
+            const start = new Date(`${customStartDate}T00:00:00`);
+            if (!isNaN(start.getTime()) && txDate < start) return false;
+          }
+          if (customEndDate) {
+            const end = new Date(`${customEndDate}T23:59:59.999`);
+            if (!isNaN(end.getTime()) && txDate > end) return false;
+          }
+        }
       }
     }
 
-    // 4. Seller Filter (By Seller PIN or ID)
-    let matchesSeller = true;
+    // 5. Seller Filter (By ID, PIN, or Name)
     if (sellerFilter !== 'all') {
-      const assoc = associates.find((a) => a.pin === sellerFilter || a.id === sellerFilter);
-      if (assoc) {
-        matchesSeller = 
-          tx.primaryAssociateId === assoc.id || 
-          (tx as any).associateId === assoc.id ||
-          (tx.splitAssociates && tx.splitAssociates.some((sa: any) => sa.associateId === assoc.id)) ||
-          (tx.items && tx.items.some((item: any) => item.assignedAssociateId === assoc.id));
+      const targetAssoc = associates.find(
+        (a) => a.id === sellerFilter || a.pin === sellerFilter || a.name === sellerFilter
+      );
+      const targetId = targetAssoc ? targetAssoc.id : sellerFilter;
+      const targetPin = targetAssoc ? targetAssoc.pin : sellerFilter;
+      const targetName = targetAssoc ? targetAssoc.name : '';
+
+      const assocId = tx.primaryAssociateId || (tx as any).associateId;
+      const txAssocObj = associates.find((a) => a.id === assocId);
+
+      const matchesId = assocId === targetId;
+      const matchesPin =
+        (txAssocObj && txAssocObj.pin === targetPin) || Boolean(targetAssoc && txAssocObj?.pin === targetAssoc.pin);
+      const matchesName = Boolean(
+        (targetName && tx.primaryAssociateName === targetName) ||
+        (targetName && txAssocObj && txAssocObj.name === targetName)
+      );
+
+      const matchesSplit =
+        Array.isArray(tx.splitAssociates) &&
+        tx.splitAssociates.some((sa: any) => sa.associateId === targetId || (targetName && sa.associateName === targetName));
+      const matchesItems =
+        Array.isArray(tx.items) &&
+        tx.items.some((item: any) => item.assignedAssociateId === targetId);
+
+      if (!matchesId && !matchesPin && !matchesName && !matchesSplit && !matchesItems) {
+        return false;
       }
     }
 
-    return matchesSearch && matchesPayment && matchesDate && matchesSeller;
+    return true;
   });
 
   // Sort: held ('معلقة') always comes first, followed by newest transactions
@@ -379,6 +602,7 @@ export const RegisterView: React.FC = () => {
   // Calculate quick summary metrics for past invoices
   const totalInvoicesCount = filteredTransactions.filter((tx) => tx.status !== 'معلقة').length;
   const totalHeldCount = filteredTransactions.filter((tx) => tx.status === 'معلقة').length;
+  const allHeldCount = transactions.filter((tx) => tx.status === 'معلقة').length;
   const totalSalesSum = filteredTransactions
     .filter((tx) => tx.status === 'completed' || tx.status === 'مكتملة')
     .reduce((acc, tx) => acc + (tx.grandTotal || tx.subtotal || 0), 0);
@@ -400,11 +624,56 @@ export const RegisterView: React.FC = () => {
                 <span className="text-xs font-mono bg-stone-950 border border-stone-850 px-2 py-0.5 rounded-full text-stone-400 font-bold">
                   {totalInvoicesCount} مكتملة
                 </span>
-                {totalHeldCount > 0 && (
-                  <span className="text-xs font-mono bg-amber-950 border border-amber-800 px-2.5 py-0.5 rounded-full text-amber-300 font-extrabold animate-pulse flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{totalHeldCount} معلقة</span>
-                  </span>
+                {allHeldCount > 0 && (
+                  <div className="flex items-center gap-1.5 mr-1">
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter(statusFilter === 'held' ? 'all' : 'held')}
+                      className={`text-xs font-mono px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 transition-all ${
+                        statusFilter === 'held'
+                          ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-500/20'
+                          : 'bg-amber-950 border border-amber-800 text-amber-300 hover:bg-amber-900/60 animate-pulse'
+                      }`}
+                      title="انقر لتصفية الفواتير المعلقة فقط"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{allHeldCount} معلقة</span>
+                    </button>
+
+                    {confirmClearAllHeld ? (
+                      <div className="flex items-center space-x-1 space-x-reverse bg-rose-950 border border-rose-800 px-2 py-0.5 rounded-xl animate-in fade-in">
+                        <span className="text-[10px] text-rose-200 font-bold">تأكيد مسح كافة المعلقات؟</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await clearAllHeldTransactions();
+                            setConfirmClearAllHeld(false);
+                            setStatusFilter('all');
+                          }}
+                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white rounded text-[9px] font-black"
+                        >
+                          نعم، مسح الكل
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmClearAllHeld(false)}
+                          className="px-1.5 py-0.5 text-stone-400 hover:text-stone-200 text-[9px]"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClearAllHeld(true)}
+                        className="text-[10px] font-bold text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-950 border border-rose-900/60 px-2 py-0.5 rounded-xl transition-all flex items-center gap-1"
+                        title="حذف وتفريغ جميع الفواتير المعلقة من النظام نهائياً"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>مسح جميع المعلقات</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </h1>
               <p className="text-xs text-stone-400 mt-1">تابع فواتير المبيعات والمصروفات اليومية من شاشة واحدة موحدة</p>
@@ -450,15 +719,44 @@ export const RegisterView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
               
               {/* Search Bar */}
-              <div className="md:col-span-5 relative">
+              <div className="md:col-span-4 relative">
                 <Search className="w-3.5 h-3.5 text-stone-400 absolute right-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="ابحث برقم الفاتورة (INV-#)، اسم العميل، رقم التليفون، كود البائع..."
+                  placeholder="ابحث برقم الفاتورة، العميل، التليفون، البائع، الصنف..."
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-9 pl-4 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
+                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-9 pl-7 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
                 />
+                {historySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setHistorySearch('')}
+                    className="absolute left-2.5 top-2 text-stone-500 hover:text-stone-300 transition-colors"
+                    title="مسح البحث"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter */}
+              <div className="md:col-span-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                    statusFilter !== 'all'
+                      ? 'border-amber-500 text-amber-300'
+                      : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                  }`}
+                >
+                  <option value="all">الحالة: الكل</option>
+                  <option value="completed">✅ مكتملة</option>
+                  <option value="held">⏳ معلقة ({allHeldCount})</option>
+                  <option value="voided">❌ ملغاة</option>
+                  <option value="refunded">↩️ مسترجعة</option>
+                </select>
               </div>
 
               {/* Payment Filter */}
@@ -466,12 +764,20 @@ export const RegisterView: React.FC = () => {
                 <select
                   value={paymentFilter}
                   onChange={(e) => setPaymentFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-stone-200 focus:outline-none"
+                  className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                    paymentFilter !== 'all'
+                      ? 'border-amber-500 text-amber-300'
+                      : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                  }`}
                 >
                   <option value="all">طريقة الدفع: الكل</option>
                   <option value="cash">كاش 💵</option>
-                  <option value="installment">تقسيط 📅</option>
-                  <option value="card">بطاقة/فيزا 💳</option>
+                  <option value="card">فيزا / كارت 💳</option>
+                  <option value="installment">تقسيط شهري 📅</option>
+                  <option value="credit">آجل / جملة ⏳</option>
+                  <option value="wallet">محفظة إلكترونية 📱</option>
+                  <option value="split">دفع متعدد 🔀</option>
+                  <option value="loyalty">نقاط ولاء ⭐</option>
                 </select>
               </div>
 
@@ -480,32 +786,161 @@ export const RegisterView: React.FC = () => {
                 <select
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-stone-200 focus:outline-none"
+                  className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                    dateFilter !== 'all'
+                      ? 'border-amber-500 text-amber-300'
+                      : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                  }`}
                 >
-                  <option value="all">التاريخ: جميع الأوقات</option>
+                  <option value="all">التاريخ: الكل</option>
                   <option value="today">فواتير اليوم 📅</option>
-                  <option value="week">هذا الأسبوع 🗓️</option>
+                  <option value="yesterday">فواتير الأمس ⏪</option>
+                  <option value="week">آخر 7 أيام 🗓️</option>
                   <option value="month">هذا الشهر 📊</option>
+                  <option value="last_month">الشهر السابق 📉</option>
+                  <option value="custom">فترة مخصصة... 📆</option>
                 </select>
               </div>
 
-              {/* Seller PIN Filter */}
-              <div className="md:col-span-3">
+              {/* Seller PIN / Name Filter */}
+              <div className="md:col-span-2">
                 <select
                   value={sellerFilter}
                   onChange={(e) => setSellerFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-2.5 py-1.5 text-xs font-bold text-amber-300 focus:outline-none"
+                  className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                    sellerFilter !== 'all'
+                      ? 'border-amber-500 text-amber-300'
+                      : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                  }`}
                 >
-                  <option value="all">تصفية بكود البائع: الكل</option>
+                  <option value="all">البائع: الكل</option>
                   {associates.map((a, idx) => (
-                    <option key={a.id ? `assoc_flt_${a.id}_${idx}` : `assoc_flt_${idx}`} value={a.pin}>
-                      كود البائع: {a.pin}
+                    <option key={a.id ? `assoc_flt_${a.id}_${idx}` : `assoc_flt_${idx}`} value={a.id}>
+                      {a.name} ({a.pin})
                     </option>
                   ))}
                 </select>
               </div>
 
             </div>
+
+            {/* Custom Date Range Row */}
+            {dateFilter === 'custom' && (
+              <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-stone-800/80 text-xs text-stone-300 bg-stone-950/40 p-2 rounded-xl">
+                <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>الفترة المحددة:</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-stone-500 text-[11px]">من:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="bg-stone-900 border border-stone-800 focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs text-stone-200 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-stone-500 text-[11px]">إلى:</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="bg-stone-900 border border-stone-800 focus:border-amber-500 rounded-lg px-2.5 py-1 text-xs text-stone-200 focus:outline-none"
+                  />
+                </div>
+                {(customStartDate || customEndDate) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomStartDate('');
+                      setCustomEndDate('');
+                    }}
+                    className="text-[11px] text-stone-400 hover:text-rose-400 underline font-bold transition-colors"
+                  >
+                    مسح التواريخ
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Active Filters Summary & Quick Reset Bar */}
+            {isAnyInvoiceFilterActive && (
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-amber-400">الفلاتر النشطة:</span>
+                  {historySearch && (
+                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
+                      بحث: "{historySearch}"
+                      <button onClick={() => setHistorySearch('')} className="hover:text-rose-400" title="إزالة">
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  )}
+                  {statusFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
+                      الحالة: {statusFilter === 'held' ? 'معلقة' : statusFilter === 'completed' ? 'مكتملة' : statusFilter === 'voided' ? 'ملغاة' : 'مسترجعة'}
+                      <button onClick={() => setStatusFilter('all')} className="hover:text-rose-400" title="إزالة">
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  )}
+                  {paymentFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
+                      الدفع: {
+                        paymentFilter === 'cash' ? 'كاش' :
+                        paymentFilter === 'card' ? 'فيزا/كارت' :
+                        paymentFilter === 'installment' ? 'تقسيط' :
+                        paymentFilter === 'credit' ? 'آجل' :
+                        paymentFilter === 'wallet' ? 'محفظة' :
+                        paymentFilter === 'split' ? 'دفع متعدد' :
+                        paymentFilter === 'loyalty' ? 'نقاط ولاء' : paymentFilter
+                      }
+                      <button onClick={() => setPaymentFilter('all')} className="hover:text-rose-400" title="إزالة">
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  )}
+                  {dateFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
+                      التاريخ: {
+                        dateFilter === 'today' ? 'اليوم' :
+                        dateFilter === 'yesterday' ? 'الأمس' :
+                        dateFilter === 'week' ? 'آخر 7 أيام' :
+                        dateFilter === 'month' ? 'هذا الشهر' :
+                        dateFilter === 'last_month' ? 'الشهر السابق' : 'فترة مخصصة'
+                      }
+                      <button onClick={() => { setDateFilter('all'); setCustomStartDate(''); setCustomEndDate(''); }} className="hover:text-rose-400" title="إزالة">
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  )}
+                  {sellerFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
+                      البائع: {associates.find((a) => a.id === sellerFilter || a.pin === sellerFilter)?.name || sellerFilter}
+                      <button onClick={() => setSellerFilter('all')} className="hover:text-rose-400" title="إزالة">
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-stone-400 font-bold">
+                    عرض {filteredTransactions.length} من أصل {transactions.length} فاتورة
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetInvoiceFilters}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[10px] font-bold transition-all"
+                    title="مسح جميع الفلاتر الحالية وإظهار كافة الفواتير"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>إلغاء جميع الفلاتر</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
 
@@ -514,17 +949,30 @@ export const RegisterView: React.FC = () => {
             {filteredTransactions.length === 0 ? (
               <div className="p-8 text-center text-stone-500">
                 <FileText className="w-10 h-10 stroke-[1.25] text-stone-600 mx-auto mb-2" />
-                <p className="text-xs font-bold text-stone-300">لم يتم العثور على فواتير سابقة مطابقة</p>
+                <p className="text-xs font-bold text-stone-300">لم يتم العثور على فواتير سابقة مطابقة للفلاتر الحالية</p>
                 <p className="text-[11px] text-stone-500 mt-1">
-                  جرب تغيير كلمات البحث أو الفلاتر أعلاه، أو اضغط على زر إضافة فاتورة جديدة
+                  جرب تغيير كلمات البحث أو إعادة ضبط الفلاتر لإظهار الفواتير
                 </p>
-                <button
-                  onClick={() => setViewMode('create')}
-                  className="mt-3 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>إضافة فاتورة جديدة الآن</span>
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-3.5">
+                  {isAnyInvoiceFilterActive && (
+                    <button
+                      type="button"
+                      onClick={resetInvoiceFilters}
+                      className="px-3.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-sm"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                      <span>إعادة ضبط كافة الفلاتر</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('create')}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-md shadow-amber-950/50"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة فاتورة جديدة الآن</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -604,23 +1052,72 @@ export const RegisterView: React.FC = () => {
                               <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800/60">
                                 معلقة ⏳
                               </span>
-                            ) : (
-                              <span
-                                className={`px-1.5 py-0.2 rounded-lg text-[9px] font-bold ${
-                                  tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
-                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                    : tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'
-                                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                    : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-                                }`}
-                              >
-                                {tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش'
-                                  ? 'كاش 💵'
-                                  : tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري'
-                                  ? 'تقسيط 📅'
-                                  : 'بطاقة / جملة 💳'}
-                              </span>
-                            )}
+                            ) : (() => {
+                              const pm = String(tx.paymentMethod || '');
+                              const pmLower = pm.toLowerCase();
+                              const isCash = pm === 'كاش' || pmLower === 'cash';
+                              const isCard = pm === 'فيزا / كارت' || pmLower === 'card' || pmLower === 'visa' || pm.includes('فيزا');
+                              const isInstallment = pm === 'تقسيط شهري' || pm === 'تقسيط' || pmLower === 'installment' || pm.includes('تقسيط');
+                              const isCredit = pm === 'آجل / حساب جملة' || pm === 'آجل' || pmLower === 'credit' || pmLower === 'deferred';
+                              const isWallet = pm === 'محفظة إلكترونية' || pmLower === 'wallet' || pm.includes('محفظة');
+                              const isSplit = pm === 'دفع متعدد' || pmLower === 'split' || (Array.isArray(tx.splitPayments) && tx.splitPayments.length > 1);
+                              const isLoyalty = pm === 'نقاط ولاء' || pmLower === 'loyalty' || pm.includes('ولاء');
+
+                              if (isCash) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                                    كاش 💵
+                                  </span>
+                                );
+                              }
+                              if (isCard) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-blue-950 text-blue-300 border border-blue-800">
+                                    فيزا / كارت 💳
+                                  </span>
+                                );
+                              }
+                              if (isInstallment) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                                    تقسيط 📅
+                                  </span>
+                                );
+                              }
+                              if (isCredit) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-purple-950 text-purple-300 border border-purple-800">
+                                    آجل / جملة ⏳
+                                  </span>
+                                );
+                              }
+                              if (isWallet) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                                    محفظة 📱
+                                  </span>
+                                );
+                              }
+                              if (isSplit) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
+                                    دفع متعدد 🔀
+                                  </span>
+                                );
+                              }
+                              if (isLoyalty) {
+                                return (
+                                  <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-yellow-950 text-yellow-300 border border-yellow-800">
+                                    نقاط ولاء ⭐
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="px-1.5 py-0.2 rounded-lg text-[9px] font-bold bg-stone-950 text-stone-300 border border-stone-800">
+                                  {pm || 'غير محدد'}
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           {/* الإجمالي */}
@@ -662,28 +1159,43 @@ export const RegisterView: React.FC = () => {
                                 <>
                                   <button
                                     onClick={() => {
-                                      if (confirm(`هل تريد استكمال الفاتورة المعلقة رقم ${tx.receiptNumber} للعميل ${tx.customerName || ''}؟`)) {
-                                        restoreHeldTransaction(tx.id);
-                                        setViewMode('create');
-                                      }
+                                      restoreHeldTransaction(tx.id);
+                                      setViewMode('create');
                                     }}
-                                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-lg text-[9px] flex items-center space-x-1 space-x-reverse transition-all active:scale-95 animate-pulse"
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-lg text-[10px] flex items-center space-x-1 space-x-reverse transition-all active:scale-95 animate-pulse"
                                     title="استكمال الفاتورة وتفريغها في السلة"
                                   >
                                     <Check className="w-3 h-3" />
                                     <span>استكمال</span>
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      if (confirm('هل تريد حذف وإلغاء هذه الفاتورة المعلقة نهائياً؟')) {
-                                        deleteTransaction(tx.id);
-                                      }
-                                    }}
-                                    className="p-1.5 text-stone-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-xl transition-colors border border-stone-800"
-                                    title="حذف وتعليق نهائي"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+
+                                  {confirmDeleteTxId === tx.id ? (
+                                    <div className="flex items-center space-x-1 space-x-reverse bg-rose-950 border border-rose-700 px-1 py-0.5 rounded-lg animate-in fade-in">
+                                      <button
+                                        onClick={async () => {
+                                          await deleteTransaction(tx.id);
+                                          setConfirmDeleteTxId(null);
+                                        }}
+                                        className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-black rounded"
+                                      >
+                                        تأكيد
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmDeleteTxId(null)}
+                                        className="px-1 py-0.5 text-stone-400 hover:text-white text-[9px]"
+                                      >
+                                        إلغاء
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setConfirmDeleteTxId(tx.id)}
+                                      className="p-1.5 text-stone-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors border border-stone-800"
+                                      title="حذف وإلغاء الفاتورة المعلقة نهائياً"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </>
                               ) : (
                                 <>

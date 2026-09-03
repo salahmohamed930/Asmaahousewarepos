@@ -110,6 +110,8 @@ interface POSContextType {
   startNewInvoice: (notes?: string) => Promise<void>;
   restoreHeldTransaction: (transactionId: string) => void;
   deleteTransaction: (transactionId: string) => Promise<void>;
+  discardHeldCart: () => Promise<void>;
+  clearAllHeldTransactions: () => Promise<void>;
 
   // Staff & Shift Management
   clockInAssociate: (associateId: string) => Promise<void>;
@@ -301,7 +303,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       e.stopPropagation();
 
       if (actionId === 'open_new_invoice') {
-        startNewInvoice('فتح فاتورة جديدة عبر اختصار لوحة المفاتيح').then(() => {
+        startNewInvoice().then(() => {
           window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
         });
       } else if (actionId === 'open_register') setActiveTab('register');
@@ -901,6 +903,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    // If this transaction is currently held ('معلقة'), restore it to the cart directly
+    if (tx.status === 'معلقة') {
+      restoreHeldTransaction(tx.id);
+      return true;
+    }
+
     setEditingTransaction(tx);
 
     const reconstructedCart: CartItem[] = tx.items.map((item) => {
@@ -1165,7 +1173,24 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await db.transactions.put(newTransaction);
     await addToPendingQueue('transactions', 'INSERT', newTransaction);
 
-    setTransactions((prev) => [newTransaction, ...prev.filter((t) => t.id !== newTransaction.id)]);
+    // 4. Remove any active held transaction so it never persists after completion
+    const toDeleteIds: string[] = [];
+    if (activeHeldTransactionId && activeHeldTransactionId !== newTransaction.id) {
+      toDeleteIds.push(activeHeldTransactionId);
+    }
+    if (editingTransaction && editingTransaction.status === 'معلقة' && editingTransaction.id !== newTransaction.id && !toDeleteIds.includes(editingTransaction.id)) {
+      toDeleteIds.push(editingTransaction.id);
+    }
+
+    for (const delId of toDeleteIds) {
+      await db.transactions.delete(delId);
+      await addToPendingQueue('transactions', 'DELETE', { id: delId });
+    }
+
+    setTransactions((prev) => [
+      newTransaction,
+      ...prev.filter((t) => t.id !== newTransaction.id && !toDeleteIds.includes(t.id)),
+    ]);
     clearCart();
     processPendingSyncQueue();
 
@@ -1224,12 +1249,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return heldTx;
   };
 
-  const startNewInvoice = async (notes?: string): Promise<void> => {
-    if (cart.length > 0) {
-      await holdCart(notes || 'تعليق تلقائي عند فتح فاتورة جديدة');
-    } else {
-      clearCart();
-    }
+  const startNewInvoice = async (): Promise<void> => {
+    clearCart();
   };
 
   const restoreHeldTransaction = (transactionId: string) => {
@@ -1272,7 +1293,33 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSplitAssociates(foundTx.splitAssociates || []);
     setActiveHeldTransactionId(transactionId);
+    setEditingTransaction(null);
     setActiveTab('register');
+  };
+
+  const discardHeldCart = async (): Promise<void> => {
+    if (activeHeldTransactionId) {
+      const idToDelete = activeHeldTransactionId;
+      await db.transactions.delete(idToDelete);
+      await addToPendingQueue('transactions', 'DELETE', { id: idToDelete });
+      setTransactions((prev) => prev.filter((t) => t.id !== idToDelete));
+      processPendingSyncQueue();
+    }
+    clearCart();
+  };
+
+  const clearAllHeldTransactions = async (): Promise<void> => {
+    const heldTxs = transactions.filter((t) => t.status === 'معلقة');
+    for (const tx of heldTxs) {
+      await db.transactions.delete(tx.id);
+      await addToPendingQueue('transactions', 'DELETE', { id: tx.id });
+    }
+    setTransactions((prev) => prev.filter((t) => t.status !== 'معلقة'));
+    if (activeHeldTransactionId) {
+      setActiveHeldTransactionId(null);
+      clearCart();
+    }
+    processPendingSyncQueue();
   };
 
   const deleteTransaction = async (transactionId: string) => {
@@ -1509,6 +1556,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startNewInvoice,
         restoreHeldTransaction,
         deleteTransaction,
+        discardHeldCart,
+        clearAllHeldTransactions,
         clockInAssociate,
         clockOutAssociate,
         addAssociate,

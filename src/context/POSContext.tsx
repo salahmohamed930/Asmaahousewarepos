@@ -36,6 +36,7 @@ import {
   performDeltaSync,
   processPendingSyncQueue,
   runFullSyncCycle,
+  resolveTransactionTimestamp,
 } from '../lib/supabaseSync';
 import { getSupabaseKeys } from '../lib/supabase';
 
@@ -372,7 +373,21 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCustomers(localCusts);
       setSuppliers(localSupps);
       setSupplierTransactions(localStxs);
-      setTransactions(localTxs);
+
+      // Self-heal any locally cached transactions where timestamps were previously overwritten
+      let txsNeedRepair = false;
+      const verifiedTxs = localTxs.map((tx) => {
+        const correctTime = resolveTransactionTimestamp(tx);
+        if (tx.timestamp !== correctTime) {
+          txsNeedRepair = true;
+          return { ...tx, timestamp: correctTime };
+        }
+        return tx;
+      });
+      if (txsNeedRepair) {
+        db.transactions.bulkPut(verifiedTxs).catch((e) => console.warn('[POSContext] bulkPut repair error:', e));
+      }
+      setTransactions(verifiedTxs);
       setClosedShifts(localShifts);
       setExpenses(localExps);
       setDiscounts(localDiscs);

@@ -994,13 +994,17 @@ export const RegisterView: React.FC = () => {
                       const assocId = tx.primaryAssociateId || (tx as any).associateId;
                       const assoc = associates.find((a) => a.id === assocId);
                       const sellerPinCode = assoc ? assoc.pin : '101';
-                      const formattedDate = new Date(tx.timestamp).toLocaleString('ar-EG', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
+                      const txDate = new Date(tx.timestamp);
+                      const formattedDate = !isNaN(txDate.getTime())
+                        ? txDate.toLocaleString('ar-EG', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                          })
+                        : '—';
 
                       const isVoided = tx.status === 'voided' || tx.status === 'ملغاة';
                       const isHeld = tx.status === 'معلقة';

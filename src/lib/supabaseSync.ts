@@ -151,7 +151,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchemaConfig> = {
   transactions: {
     tableName: 'transactions',
     primaryKey: 'id',
-    createdTimeCol: 'timestamp',
+    createdTimeCol: 'updated_at',
     updatedTimeCol: 'updated_at',
     deletedFlagCol: 'is_deleted',
   },
@@ -560,6 +560,53 @@ export function mapExpenseToDbPayload(expense: POSExpense): any {
   return payload;
 }
 
+export function resolveTransactionTimestamp(t: any): string {
+  if (!t) return new Date().toISOString();
+
+  // 1. If t.id encodes the exact epoch timestamp (e.g. tx_1785536131663 created via Date.now())
+  if (typeof t.id === 'string') {
+    const match = t.id.match(/\d{10,13}/);
+    if (match) {
+      const num = Number(match[0]);
+      const epochMs = match[0].length === 10 ? num * 1000 : num;
+      const d = new Date(epochMs);
+      if (!isNaN(d.getTime()) && d.getFullYear() >= 2020 && d.getFullYear() <= 2035) {
+        return d.toISOString();
+      }
+    }
+  }
+
+  // 2. Check updated_at (which is the actual column in Supabase transactions table)
+  if (t.updated_at) {
+    const d = new Date(t.updated_at);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 3. Check created_at (standard Supabase column)
+  if (t.created_at) {
+    const d = new Date(t.created_at);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 4. Check explicit timestamp
+  if (t.timestamp) {
+    const d = new Date(t.timestamp);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 5. Check date or transaction_date
+  if (t.date) {
+    const d = new Date(t.date);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  if (t.transaction_date) {
+    const d = new Date(t.transaction_date);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  return new Date().toISOString();
+}
+
 export function mapDbAssociateToAssociate(a: any): Associate {
   const safeId = (a.id !== null && a.id !== undefined && String(a.id) !== 'null' && String(a.id) !== 'undefined')
     ? String(a.id)
@@ -951,10 +998,11 @@ async function performDeltaSyncInternal(): Promise<{
     }
 
     // 5. Sync Transactions
+    const hasFixedTxTimestamps = await db.syncMeta.get('tx_timestamp_repaired_v3');
     const txRes = await fetchSelectiveFromSupabase(
       'transactions',
       '*',
-      localTxCount === 0 ? null : lastSync
+      (!hasFixedTxTimestamps || localTxCount === 0) ? null : lastSync
     );
     if (txRes.data && txRes.data.length > 0) {
       const itemsRes = await fetchSelectiveFromSupabase('transaction_items', '*');
@@ -984,10 +1032,11 @@ async function performDeltaSyncInternal(): Promise<{
         if (t.is_deleted === true || t.is_deleted === 1 || String(t.is_deleted) === 'true') {
           deletedTxIds.push(id);
         } else {
+          const resolvedTime = resolveTransactionTimestamp(t);
           activeTxs.push({
             id,
             receiptNumber: t.receipt_number || `RCP-${id}`,
-            timestamp: t.timestamp || new Date().toISOString(),
+            timestamp: resolvedTime,
             items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
             subtotal: Number(t.subtotal || 0),
             discountTotal: Number(t.discount_total || 0),
@@ -1008,6 +1057,7 @@ async function performDeltaSyncInternal(): Promise<{
             splitPayments: t.split_payments,
             originalCart: t.original_cart,
             isSynced: true,
+            updated_at: t.updated_at || resolvedTime,
           });
         }
       }
@@ -1018,6 +1068,7 @@ async function performDeltaSyncInternal(): Promise<{
         console.log(`[SOFT-DELETE SYNC] Deleted ${deletedTxIds.length} soft-deleted transactions from Dexie.js`);
       }
       await cleanupOrphanLocalRecords('transactions', activeTxs, 'transactions');
+      await db.syncMeta.put({ key: 'tx_timestamp_repaired_v3', value: 'true' });
       syncedCounts.transactions = activeTxs.length;
     }
 
@@ -1559,10 +1610,11 @@ export async function fetchTransactionsFromSupabase(): Promise<{ data: Transacti
 
     const txs: Transaction[] = (txRes.data || []).map((t: any) => {
       const id = String(t.id);
+      const resolvedTime = resolveTransactionTimestamp(t);
       return {
         id,
         receiptNumber: t.receipt_number || `RCP-${id}`,
-        timestamp: t.timestamp || t.created_at || t.date || new Date().toISOString(),
+        timestamp: resolvedTime,
         items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
         subtotal: Number(t.subtotal || 0),
         discountTotal: Number(t.discount_total || 0),
@@ -1583,6 +1635,7 @@ export async function fetchTransactionsFromSupabase(): Promise<{ data: Transacti
         splitPayments: t.split_payments,
         originalCart: t.original_cart,
         isSynced: true,
+        updated_at: t.updated_at || resolvedTime,
       };
     });
 
@@ -1617,7 +1670,7 @@ export async function insertTransactionToSupabase(transaction: Transaction): Pro
       amount_paid: transaction.amountPaid || 0,
       amount_deferred: transaction.amountDeferred || 0,
       split_payments: transaction.splitPayments || null,
-      updated_at: new Date().toISOString(),
+      updated_at: isoTime,
     };
 
     const { error: txError } = await safeSupabaseMutation(

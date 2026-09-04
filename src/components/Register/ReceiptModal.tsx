@@ -86,12 +86,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
     }
   };
 
-  // Time formatting: Hour:Minute (e.g. 18:3)
+  // Time formatting: Hour:Minute (e.g. 18:03)
   const formatReceiptTime = (isoString: string): string => {
     try {
       const d = new Date(isoString);
       if (isNaN(d.getTime())) return '';
-      return `${d.getHours()}:${d.getMinutes()}`;
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
     } catch {
       return '';
     }

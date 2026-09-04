@@ -177,6 +177,8 @@ export interface Transaction {
   originalCart?: CartItem[];  // سلة المشتريات الأصلية المستعادة
   splitPayments?: SplitPaymentItem[]; // تفاصيل طرق الدفع المجزأة
   isSynced?: boolean;         // تم المزامنة مع قاعدة البيانات السحابية أم لا
+  updated_at?: string;        // توقيت التحديث / الإنشاء الأصلي من قاعدة البيانات السحابية
+  date?: string;
 }
 
 export interface ShiftRecord {

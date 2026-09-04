@@ -285,7 +285,16 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-stone-400 mt-0.5">
-                  تاريخ العملية: {new Date(editedTx.timestamp).toLocaleString('ar-EG')}
+                  تاريخ العملية: {!isNaN(new Date(editedTx.timestamp).getTime())
+                    ? new Date(editedTx.timestamp).toLocaleString('ar-EG', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })
+                    : '—'}
                 </p>
               </div>
             </div>

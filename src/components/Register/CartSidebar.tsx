@@ -117,13 +117,13 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     );
   });
 
-  const handleCreateCustomer = (e: React.FormEvent) => {
+  const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName.trim() || !newCustPhone.trim()) {
       alert('يرجى إدخال اسم العميل ورقم التليفون');
       return;
     }
-    const created = addCustomer({
+    const created = await addCustomer({
       name: newCustName.trim(),
       phone: newCustPhone.trim(),
       email: `${newCustPhone.trim()}@asmaa.eg`,
@@ -440,7 +440,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                     return (
                       <tr
-                        key={item.product?.id && item.product.id !== 'null' ? `${item.product.id}_${item.priceTier || 'cash'}_${idx}` : `cart_${idx}`}
+                        key={item.product?.id && item.product.id !== 'null' ? `${item.product.id}_${(item as any).priceTier || 'cash'}_${idx}` : `cart_${idx}`}
                         className="hover:bg-stone-950/80 transition-colors text-xs text-stone-200"
                       >
                         {/* 1. اسم الصنف */}

@@ -134,7 +134,16 @@ async function startServer() {
   });
 }
 
+process.on('unhandledRejection', (reason: any) => {
+  console.warn('[SERVER] Caught unhandled promise rejection:', reason?.message || reason);
+});
+
+process.on('uncaughtException', (err: any) => {
+  console.error('[SERVER] Caught uncaught exception:', err?.message || err);
+});
+
 startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+

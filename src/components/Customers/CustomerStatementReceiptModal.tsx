@@ -46,48 +46,77 @@ export const CustomerStatementReceiptModal: React.FC<CustomerStatementReceiptMod
     .filter((t) => new Date(t.timestamp) >= threeMonthsAgo)
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+  // Helper to determine debt effect
+  const getDebtEffect = (tx: Transaction) => {
+    const isPayment = tx.items.some(
+      (item) => item.productId === 'debt_payment' || (item as any).product?.id === 'debt_payment' || tx.id.startsWith('pay_')
+    );
+    if (isPayment) {
+      const amount = Math.abs(tx.grandTotal || tx.amountPaid || 0);
+      return { isPayment: true, debtDelta: -amount, amount, isCreditSale: false };
+    }
+    let deferred = 0;
+    if (tx.amountDeferred !== undefined) {
+      deferred = tx.amountDeferred;
+    } else if ((tx as any).paymentMethod === 'آجل' || (tx as any).status === 'آجل') {
+      deferred = tx.grandTotal || 0;
+    }
+    return {
+      isPayment: false,
+      debtDelta: deferred,
+      amount: tx.grandTotal || 0,
+      deferredAmount: deferred,
+      isCreditSale: deferred > 0,
+    };
+  };
+
   // Calculate prior opening debt balance
-  const priorSalesTotal = priorTx
-    .filter((t) => !t.items.some((i) => i.productId === 'debt_payment' || (i as any).product?.id === 'debt_payment' || t.id.startsWith('pay_')))
-    .reduce((sum, t) => sum + (t.grandTotal || 0), 0);
+  let calculatedPriorDebt = 0;
+  priorTx.forEach((t) => {
+    const effect = getDebtEffect(t);
+    calculatedPriorDebt = Math.max(0, calculatedPriorDebt + effect.debtDelta);
+  });
 
-  const priorPaymentsTotal = priorTx
-    .filter((t) => t.items.some((i) => i.productId === 'debt_payment' || (i as any).product?.id === 'debt_payment' || t.id.startsWith('pay_')))
-    .reduce((sum, t) => sum + Math.abs(t.grandTotal || 0), 0);
-
-  // Opening balance before 3 months
-  const openingBalance = Math.max(0, priorSalesTotal - priorPaymentsTotal);
+  const openingBalance = calculatedPriorDebt;
 
   // Totals for last 3 months
   let periodSalesTotal = 0;
   let periodPaymentsTotal = 0;
+  let periodDeferredTotal = 0;
 
   // Build statement entries with running balance
   let runningBalance = openingBalance;
 
   const statementEntries = periodTx.map((tx) => {
-    const isPayment = tx.items.some(
-      (item) => item.productId === 'debt_payment' || (item as any).product?.id === 'debt_payment' || tx.id.startsWith('pay_')
-    );
+    const effect = getDebtEffect(tx);
 
-    const amount = Math.abs(tx.grandTotal || 0);
-
-    if (isPayment) {
-      periodPaymentsTotal += amount;
-      runningBalance = Math.max(0, runningBalance - amount);
+    if (effect.isPayment) {
+      periodPaymentsTotal += effect.amount;
+      runningBalance = Math.max(0, runningBalance - effect.amount);
     } else {
-      periodSalesTotal += amount;
-      runningBalance += amount;
+      periodSalesTotal += effect.amount;
+      periodDeferredTotal += (effect.deferredAmount || 0);
+      runningBalance = Math.max(0, runningBalance + (effect.deferredAmount || 0));
+    }
+
+    let defaultDesc = effect.isPayment ? 'سداد دفعة / قسط' : 'فاتورة مبيعات';
+    if (!effect.isPayment && effect.deferredAmount && effect.deferredAmount > 0) {
+      if (effect.deferredAmount < effect.amount) {
+        defaultDesc = `فاتورة مبيعات (آجل جزئي ${formatPrice(effect.deferredAmount)})`;
+      } else {
+        defaultDesc = 'فاتورة مبيعات (آجل بالكامل)';
+      }
     }
 
     return {
       id: tx.id,
       receiptNumber: tx.receiptNumber,
       timestamp: tx.timestamp,
-      isPayment,
-      amount,
+      isPayment: effect.isPayment,
+      amount: effect.amount,
+      debtDelta: effect.debtDelta,
       balanceAfter: runningBalance,
-      notes: tx.notes || (isPayment ? 'سداد دفعة / قسط' : 'فاتورة مبيعات'),
+      notes: tx.notes || defaultDesc,
       paymentMethod: tx.paymentMethod || 'كاش',
     };
   });

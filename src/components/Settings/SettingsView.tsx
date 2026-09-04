@@ -637,7 +637,7 @@ export const SettingsView: React.FC = () => {
 
                   {/* Item 2: Certificate Loaded */}
                   <div className={`p-2.5 rounded-lg border flex items-center justify-between ${
-                    backendSecurity?.hasCertificate || printerStatus.certLoaded
+                    backendSecurity?.hasCertificate || printerStatus.isCertificateLoaded
                       ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
                       : 'bg-stone-900 border-stone-800 text-stone-400'
                   }`}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { Customer } from '../../types';
 import {
@@ -21,6 +21,10 @@ import {
   Users,
   Award,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { CustomerAccountModal } from './CustomerAccountModal';
 import { CustomerPaymentModal } from './CustomerPaymentModal';
@@ -41,6 +45,10 @@ export const CustomersView: React.FC = () => {
   const [sortBy, setSortBy] = useState<
     'debt_desc' | 'spent_desc' | 'points_desc' | 'points_asc' | 'last_payment_desc' | 'last_payment_asc' | 'name_asc'
   >('debt_desc');
+
+  // Pagination states
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(24);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAccountCust, setSelectedAccountCust] = useState<Customer | null>(null);
@@ -104,101 +112,124 @@ export const CustomersView: React.FC = () => {
     setIsAddModalOpen(false);
   };
 
-  // Helper to determine customer's last payment date timestamp & string
-  const getLastPaymentDate = (customerId: string): { timestamp: number; formattedDate?: string } => {
-    const custTx = (transactions || []).filter(
-      (t) =>
-        t.customerId === customerId &&
-        (t.id?.startsWith('pay_') ||
-          t.items?.some((i: any) => i.productId === 'debt_payment') ||
-          (t.paidAmount && t.paidAmount > 0))
-    );
-    if (custTx.length === 0) return { timestamp: 0 };
+  // High-performance single-pass O(T) memoized index of each customer's last payment date
+  const lastPaymentMap = useMemo(() => {
+    const map = new Map<string, { timestamp: number; formattedDate?: string }>();
+    if (!transactions || transactions.length === 0) return map;
 
-    let latestTime = 0;
-    for (const tx of custTx) {
-      const dStr = tx.createdAt || tx.date;
-      if (!dStr) continue;
-      const tMs = new Date(dStr).getTime();
-      if (!isNaN(tMs) && tMs > latestTime) {
-        latestTime = tMs;
+    for (const tx of transactions) {
+      if (!tx.customerId) continue;
+      const isPayment =
+        tx.id?.startsWith('pay_') ||
+        tx.items?.some((i: any) => i.productId === 'debt_payment' || i.product?.id === 'debt_payment') ||
+        ((tx.amountPaid || 0) > 0 && tx.status === 'مكتملة');
+
+      if (isPayment) {
+        const dStr = tx.timestamp || (tx as any).createdAt || (tx as any).date;
+        if (!dStr) continue;
+        const tMs = new Date(dStr).getTime();
+        if (!isNaN(tMs)) {
+          const prev = map.get(tx.customerId);
+          if (!prev || tMs > prev.timestamp) {
+            map.set(tx.customerId, {
+              timestamp: tMs,
+              formattedDate: new Date(tMs).toLocaleDateString('ar-EG', {
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+              }),
+            });
+          }
+        }
       }
     }
-
-    if (latestTime === 0) return { timestamp: 0 };
-
-    const formattedDate = new Date(latestTime).toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-    });
-
-    return { timestamp: latestTime, formattedDate };
-  };
+    return map;
+  }, [transactions]);
 
   // Stats Calculations
   const totalCustomersCount = customers.length;
-  const indebtedCustomers = customers.filter((c) => (c.currentDebt || 0) > 0);
-  const totalDebtSum = indebtedCustomers.reduce((acc, c) => acc + (c.currentDebt || 0), 0);
-  const creditEligibleCount = customers.filter((c) => c.isCreditEligible).length;
-  const totalSpentSum = customers.reduce((acc, c) => acc + (c.totalSpent || 0), 0);
+  const indebtedCustomers = useMemo(() => customers.filter((c) => (c.currentDebt || 0) > 0), [customers]);
+  const totalDebtSum = useMemo(() => indebtedCustomers.reduce((acc, c) => acc + (c.currentDebt || 0), 0), [indebtedCustomers]);
+  const creditEligibleCount = useMemo(() => customers.filter((c) => c.isCreditEligible).length, [customers]);
+  const totalSpentSum = useMemo(() => customers.reduce((acc, c) => acc + (c.totalSpent || 0), 0), [customers]);
 
-  // Filtering Logic
-  const filteredCustomers = customers.filter((c) => {
-    // 1. Text Search
+  // Filtering & Sorting Logic
+  const filteredAndSortedCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const matchSearch =
-      !q ||
-      (c.name || '').toLowerCase().includes(q) ||
-      (c.email || '').toLowerCase().includes(q) ||
-      (c.phone || '').includes(q) ||
-      (c.address || '').toLowerCase().includes(q) ||
-      (c.notes || '').toLowerCase().includes(q);
 
-    if (!matchSearch) return false;
+    const result = customers.filter((c) => {
+      // 1. Text Search (Name, Phone, Email, Address, Notes)
+      if (q) {
+        const matchSearch =
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.phone || '').includes(q) ||
+          (c.email || '').toLowerCase().includes(q) ||
+          (c.address || '').toLowerCase().includes(q) ||
+          (c.notes || '').toLowerCase().includes(q);
 
-    // 2. Debt Filter
-    if (debtFilter === 'indebted' && (c.currentDebt || 0) <= 0) return false;
-    if (debtFilter === 'clear' && (c.currentDebt || 0) > 0) return false;
-    if (debtFilter === 'credit_eligible' && !c.isCreditEligible) return false;
+        if (!matchSearch) return false;
+      }
 
-    // 3. Preferred Associate Filter
-    if (assocFilter !== 'all' && c.preferredAssociateId !== assocFilter) return false;
+      // 2. Debt Filter
+      if (debtFilter === 'indebted' && (c.currentDebt || 0) <= 0) return false;
+      if (debtFilter === 'clear' && (c.currentDebt || 0) > 0) return false;
+      if (debtFilter === 'credit_eligible' && !c.isCreditEligible) return false;
 
-    return true;
-  });
+      // 3. Preferred Associate Filter
+      if (assocFilter !== 'all' && c.preferredAssociateId !== assocFilter) return false;
 
-  // Sorting Logic
-  filteredCustomers.sort((a, b) => {
-    if (sortBy === 'debt_desc') {
-      return (b.currentDebt || 0) - (a.currentDebt || 0);
-    }
-    if (sortBy === 'last_payment_desc') {
-      const tA = getLastPaymentDate(a.id).timestamp;
-      const tB = getLastPaymentDate(b.id).timestamp;
-      return tB - tA;
-    }
-    if (sortBy === 'last_payment_asc') {
-      const tA = getLastPaymentDate(a.id).timestamp;
-      const tB = getLastPaymentDate(b.id).timestamp;
-      if (tA === 0 && tB > 0) return 1;
-      if (tB === 0 && tA > 0) return -1;
-      return tA - tB;
-    }
-    if (sortBy === 'points_desc') {
-      return (b.loyaltyPoints || 0) - (a.loyaltyPoints || 0);
-    }
-    if (sortBy === 'points_asc') {
-      return (a.loyaltyPoints || 0) - (b.loyaltyPoints || 0);
-    }
-    if (sortBy === 'spent_desc') {
-      return (b.totalSpent || 0) - (a.totalSpent || 0);
-    }
-    if (sortBy === 'name_asc') {
-      return a.name.localeCompare(b.name, 'ar');
-    }
-    return 0;
-  });
+      return true;
+    });
+
+    // Fast O(1) sort using precomputed map
+    return result.sort((a, b) => {
+      if (sortBy === 'debt_desc') {
+        return (b.currentDebt || 0) - (a.currentDebt || 0);
+      }
+      if (sortBy === 'last_payment_desc') {
+        const tA = lastPaymentMap.get(a.id)?.timestamp || 0;
+        const tB = lastPaymentMap.get(b.id)?.timestamp || 0;
+        return tB - tA;
+      }
+      if (sortBy === 'last_payment_asc') {
+        const tA = lastPaymentMap.get(a.id)?.timestamp || 0;
+        const tB = lastPaymentMap.get(b.id)?.timestamp || 0;
+        if (tA === 0 && tB > 0) return 1;
+        if (tB === 0 && tA > 0) return -1;
+        return tA - tB;
+      }
+      if (sortBy === 'points_desc') {
+        return (b.loyaltyPoints || 0) - (a.loyaltyPoints || 0);
+      }
+      if (sortBy === 'points_asc') {
+        return (a.loyaltyPoints || 0) - (b.loyaltyPoints || 0);
+      }
+      if (sortBy === 'spent_desc') {
+        return (b.totalSpent || 0) - (a.totalSpent || 0);
+      }
+      if (sortBy === 'name_asc') {
+        return (a.name || '').localeCompare(b.name || '', 'ar');
+      }
+      return 0;
+    });
+  }, [customers, search, debtFilter, assocFilter, sortBy, lastPaymentMap]);
+
+  // Reset to page 1 whenever search, filters, sorting or page size changes
+  useEffect(() => {
+    setPage(1);
+  }, [search, debtFilter, assocFilter, sortBy, pageSize]);
+
+  const totalFilteredCount = filteredAndSortedCustomers.length;
+  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+
+  // Current slice for pagination
+  const paginatedCustomers = useMemo(() => {
+    const startIndex = (page - 1) * pageSize;
+    return filteredAndSortedCustomers.slice(startIndex, startIndex + pageSize);
+  }, [filteredAndSortedCustomers, page, pageSize]);
+
+  const startRecord = totalFilteredCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endRecord = Math.min(page * pageSize, totalFilteredCount);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 dir-rtl">
@@ -225,7 +256,7 @@ export const CustomersView: React.FC = () => {
             className="py-3 px-4 bg-stone-800 hover:bg-stone-700 text-amber-300 border border-amber-500/30 rounded-2xl text-xs font-bold shadow flex items-center justify-center space-x-2 space-x-reverse transition-all"
           >
             <DollarSign className="w-4 h-4 text-amber-400" />
-            <span>تحصيل / سداد مديونية</span>
+            <span>سداد الأقساط والمديونيات</span>
           </button>
 
           <button
@@ -408,9 +439,78 @@ export const CustomersView: React.FC = () => {
 
       </div>
 
+      {/* Pagination & Count Header Bar */}
+      <div className="bg-stone-900/90 border border-stone-800 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-300 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-bold text-stone-200">
+            {totalFilteredCount === 0 ? (
+              <span className="text-stone-400">لا توجد نتائج مطابقة</span>
+            ) : (
+              <span>
+                عرض <strong className="text-amber-400 font-mono">{startRecord}</strong> - <strong className="text-amber-400 font-mono">{endRecord}</strong> من إجمالي <strong className="text-stone-100 font-mono">{totalFilteredCount}</strong> عميل
+              </span>
+            )}
+          </span>
+          <div className="flex items-center space-x-1.5 space-x-reverse bg-stone-950 px-2.5 py-1 rounded-xl border border-stone-800">
+            <span className="text-[11px] text-stone-400 font-medium">عدد الحسابات بالصفحة:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="bg-stone-900 text-amber-400 font-bold text-xs border border-stone-800 rounded px-2 py-0.5 focus:outline-none cursor-pointer"
+            >
+              <option value={12}>12 عميل</option>
+              <option value={24}>24 عميل</option>
+              <option value={48}>48 عميل</option>
+              <option value={96}>96 عميل</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Top Pagination Navigation */}
+        {totalPages > 1 && (
+          <div className="flex items-center space-x-1 space-x-reverse">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+              title="الصفحة الأولى"
+            >
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span>السابقة</span>
+            </button>
+            <span className="px-3 py-1 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-lg font-extrabold font-mono text-xs">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+            >
+              <span>التالية</span>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+              title="الصفحة الأخيرة"
+            >
+              <ChevronsLeft className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Customers Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCustomers.length === 0 ? (
+        {paginatedCustomers.length === 0 ? (
           <div className="col-span-full bg-stone-900 border border-stone-800 rounded-3xl p-8 text-center text-stone-400 space-y-2">
             <UserCheck className="w-8 h-8 text-stone-600 mx-auto" />
             <p className="text-sm font-bold text-stone-300">لم يتم العثور على عملاء يطابقون خيارات الفلترة المحددة.</p>
@@ -422,13 +522,13 @@ export const CustomersView: React.FC = () => {
             </button>
           </div>
         ) : (
-          filteredCustomers.map((cust, idx) => {
+          paginatedCustomers.map((cust, idx) => {
             const prefAssoc = cust.preferredAssociateId
               ? associates.find((a) => a.id === cust.preferredAssociateId)
               : null;
 
             const currentDebt = cust.currentDebt || 0;
-            const lastPayment = getLastPaymentDate(cust.id);
+            const lastPayment = lastPaymentMap.get(cust.id) || { timestamp: 0 };
 
             return (
               <div
@@ -480,7 +580,7 @@ export const CustomersView: React.FC = () => {
                         نقاط الولاء
                       </span>
                       <span className="font-mono font-extrabold text-amber-400">
-                        {cust.loyaltyPoints} ن
+                        {cust.loyaltyPoints || 0} ن
                       </span>
                     </div>
 
@@ -576,6 +676,55 @@ export const CustomersView: React.FC = () => {
           })
         )}
       </div>
+
+      {/* Pagination Bar (BOTTOM) */}
+      {totalPages > 1 && (
+        <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-300 shadow-xl">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-stone-300">
+              عرض {startRecord} - {endRecord} من إجمالي {totalFilteredCount} عميل
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1 space-x-reverse">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+              title="الصفحة الأولى"
+            >
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span>السابقة</span>
+            </button>
+            <span className="px-3 py-1 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-lg font-extrabold font-mono">
+              صفحة {page} من {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+            >
+              <span>التالية</span>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+              title="الصفحة الأخيرة"
+            >
+              <ChevronsLeft className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add Customer Modal */}
       {isAddModalOpen && (

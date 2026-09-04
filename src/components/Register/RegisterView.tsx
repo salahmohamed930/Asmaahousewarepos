@@ -426,7 +426,7 @@ export const RegisterView: React.FC = () => {
         tx.items.some((item) => {
           if (!item) return false;
           const pName = String(item.productName || '').toLowerCase();
-          const pBarcode = String(item.barcode || '').toLowerCase();
+          const pBarcode = String((item as any).barcode || '').toLowerCase();
           const pSku = String((item as any).sku || '').toLowerCase();
           return pName.includes(q) || pBarcode.includes(q) || pSku.includes(q);
         });
@@ -642,7 +642,7 @@ export const RegisterView: React.FC = () => {
   const totalHeldCount = filteredTransactions.filter((tx) => tx.status === 'معلقة').length;
   const allHeldCount = transactions.filter((tx) => tx.status === 'معلقة').length;
   const totalSalesSum = filteredTransactions
-    .filter((tx) => tx.status === 'completed' || tx.status === 'مكتملة')
+    .filter((tx) => tx.status === 'مكتملة')
     .reduce((acc, tx) => acc + (tx.grandTotal || tx.subtotal || 0), 0);
 
   return (
@@ -1056,7 +1056,7 @@ export const RegisterView: React.FC = () => {
                           })
                         : '—';
 
-                      const isVoided = tx.status === 'voided' || tx.status === 'ملغاة';
+                      const isVoided = tx.status === 'ملغاة';
                       const isHeld = tx.status === 'معلقة';
                       const txTotal = tx.grandTotal ?? tx.subtotal ?? 0;
 

@@ -2037,6 +2037,7 @@ export const CatalogView: React.FC = () => {
       {/* Price Label Print Modal */}
       {(labelProduct || labelProducts) && (
         <ProductLabelModal
+          isOpen={true}
           product={labelProduct}
           products={labelProducts}
           onClose={() => {

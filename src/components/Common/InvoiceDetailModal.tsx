@@ -276,7 +276,7 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                     className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
                       editedTx.status === 'معلقة'
                         ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                        : editedTx.status === 'مكتملة' || editedTx.status === 'completed'
+                        : editedTx.status === 'مكتملة'
                         ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                         : 'bg-rose-950 text-rose-300 border border-rose-800'
                     }`}

@@ -172,7 +172,7 @@ export const AnalyticsView: React.FC = () => {
   // -------------------------------------------------------------
   const filteredInflows = transactions.filter((tx) => {
     // 1. Status: only completed sales or payments
-    if (tx.status !== 'مكتملة' && tx.status !== 'completed') return false;
+    if (tx.status !== 'مكتملة') return false;
 
     // 2. Date filtering
     const txTime = new Date(tx.timestamp);
@@ -215,13 +215,13 @@ export const AnalyticsView: React.FC = () => {
       if (!isDebtPayment) return false;
     } else if (revTypeFilter === 'cash') {
       if (isDebtPayment) return false;
-      if (tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش') return false;
+      if (tx.paymentMethod !== 'كاش') return false;
     } else if (revTypeFilter === 'card') {
       if (isDebtPayment) return false;
-      if (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش' || tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري') return false;
+      if (tx.paymentMethod === 'كاش' || tx.paymentMethod === 'تقسيط شهري') return false;
     } else if (revTypeFilter === 'installment') {
       if (isDebtPayment) return false;
-      if (tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري') return false;
+      if (tx.paymentMethod !== 'تقسيط شهري') return false;
     }
 
     // 5. Customer search
@@ -247,10 +247,10 @@ export const AnalyticsView: React.FC = () => {
       return acc + Math.abs(tx.grandTotal);
     }
     if (tx.splitPayments && tx.splitPayments.length > 0) {
-      const cashItem = tx.splitPayments.find(p => p.method === 'كاش' || p.method === 'cash');
+      const cashItem = tx.splitPayments.find(p => p.method === 'كاش');
       return acc + (cashItem ? cashItem.amount : 0);
     }
-    if (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش') {
+    if (tx.paymentMethod === 'كاش') {
       return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
     }
     return acc;
@@ -264,7 +264,7 @@ export const AnalyticsView: React.FC = () => {
       const walletAmt = tx.splitPayments.find(p => p.method === 'محفظة إلكترونية')?.amount || 0;
       return acc + visaAmt + walletAmt;
     }
-    if (tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري' && tx.paymentMethod !== 'آجل / حساب جملة') {
+    if (tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'تقسيط شهري' && tx.paymentMethod !== 'آجل / حساب جملة') {
       return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
     }
     return acc;
@@ -285,7 +285,7 @@ export const AnalyticsView: React.FC = () => {
 
   // Filter transactions within the shift time range for the selected employee (or all)
   const shiftInscopeTransactions = transactions.filter((tx) => {
-    if (tx.status !== 'مكتملة' && tx.status !== 'completed') return false;
+    if (tx.status !== 'مكتملة') return false;
     
     // Time check
     const txTime = new Date(tx.timestamp).getTime();
@@ -305,10 +305,10 @@ export const AnalyticsView: React.FC = () => {
     .filter((tx) => !tx.id.startsWith('pay_'))
     .reduce((acc, tx) => {
       if (tx.splitPayments && tx.splitPayments.length > 0) {
-        const cashItem = tx.splitPayments.find(p => p.method === 'كاش' || p.method === 'cash');
+        const cashItem = tx.splitPayments.find(p => p.method === 'كاش');
         return acc + (cashItem ? cashItem.amount : 0);
       }
-      if (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش') {
+      if (tx.paymentMethod === 'كاش') {
         return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
       }
       return acc;
@@ -328,7 +328,7 @@ export const AnalyticsView: React.FC = () => {
         const walletAmt = tx.splitPayments.find(p => p.method === 'محفظة إلكترونية')?.amount || 0;
         return acc + visaAmt + walletAmt;
       }
-      if (tx.paymentMethod !== 'cash' && tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'installment' && tx.paymentMethod !== 'تقسيط شهري' && tx.paymentMethod !== 'آجل / حساب جملة') {
+      if (tx.paymentMethod !== 'كاش' && tx.paymentMethod !== 'تقسيط شهري' && tx.paymentMethod !== 'آجل / حساب جملة') {
         return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
       }
       return acc;
@@ -338,10 +338,10 @@ export const AnalyticsView: React.FC = () => {
     .filter((tx) => !tx.id.startsWith('pay_'))
     .reduce((acc, tx) => {
       if (tx.splitPayments && tx.splitPayments.length > 0) {
-        const instItem = tx.splitPayments.find(p => p.method === 'تقسيط شهري' || p.method === 'installment');
+        const instItem = tx.splitPayments.find(p => p.method === 'تقسيط شهري');
         return acc + (instItem ? instItem.amount : 0);
       }
-      if (tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري') {
+      if (tx.paymentMethod === 'تقسيط شهري') {
         return acc + (tx.amountPaid !== undefined ? tx.amountPaid : (tx.grandTotal || 0));
       }
       return acc;
@@ -671,7 +671,7 @@ export const AnalyticsView: React.FC = () => {
                           className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
                             tx.status === 'معلقة'
                               ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                              : tx.status === 'مكتملة' || tx.status === 'completed'
+                              : tx.status === 'مكتملة'
                               ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                               : 'bg-rose-950 text-rose-300 border border-rose-800'
                           }`}
@@ -928,10 +928,10 @@ export const AnalyticsView: React.FC = () => {
                           <td className="p-3">
                             <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-stone-950 text-stone-400 border border-stone-800">
                               {isDebtPayment 
-                                ? (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش' ? 'كاش 💵' : 'فيزا / بطاقة 💳') 
-                                : (tx.paymentMethod === 'cash' || tx.paymentMethod === 'كاش' 
+                                ? (tx.paymentMethod === 'كاش' ? 'كاش 💵' : 'فيزا / بطاقة 💳') 
+                                : (tx.paymentMethod === 'كاش' 
                                     ? 'كاش 💵' 
-                                    : (tx.paymentMethod === 'installment' || tx.paymentMethod === 'تقسيط شهري' ? 'تقسيط 📅' : 'بطاقة 💳'))}
+                                    : (tx.paymentMethod === 'تقسيط شهري' ? 'تقسيط 📅' : 'بطاقة 💳'))}
                             </span>
                           </td>
                           <td className="p-3 font-mono font-extrabold text-white text-sm">

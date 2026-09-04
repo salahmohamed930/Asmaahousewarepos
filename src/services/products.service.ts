@@ -743,25 +743,24 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
   duplicateMap: Map<string, { code: string; type: 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>;
 }> {
   try {
-    let allDbRows: any[] = [];
-    let from = 0;
-    while (true) {
-      const { data, error } = await supabase
-        .from('products')
-        .select(PRODUCT_SELECT_COLUMNS)
-        .order('id')
-        .range(from, from + 999);
-      if (error || !data || data.length === 0) break;
-      allDbRows.push(...data);
-      from += 1000;
-      if (data.length < 1000) break;
-    }
-
-    let products: Product[] = [];
-    if (allDbRows.length > 0) {
-      products = allDbRows.map(mapDbProductToProduct);
-    } else {
-      products = await db.products.toArray();
+    let products: Product[] = await db.products.toArray();
+    if (products.length === 0) {
+      let allDbRows: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('products')
+          .select(PRODUCT_SELECT_COLUMNS)
+          .order('id')
+          .range(from, from + 999);
+        if (error || !data || data.length === 0) break;
+        allDbRows.push(...data);
+        from += 1000;
+        if (data.length < 1000) break;
+      }
+      if (allDbRows.length > 0) {
+        products = allDbRows.map(mapDbProductToProduct);
+      }
     }
 
     const codeToProducts = new Map<string, Product[]>();

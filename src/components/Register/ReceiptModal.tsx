@@ -395,7 +395,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                       : Math.max(0, (item.unitPrice * item.quantity) - item.totalPrice);
 
                     return (
-                      <tr key={idx} className="leading-tight">
+                      <tr key={item.productId ? `rcp_item_${item.productId}_${idx}` : `rcp_item_${idx}`} className="leading-tight">
                         <td className="py-1 px-1 text-right align-top font-black text-[10px] text-black">
                           {item.productName}
                         </td>

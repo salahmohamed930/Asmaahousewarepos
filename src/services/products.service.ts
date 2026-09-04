@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { db } from '../lib/db';
 import { Product } from '../types';
 import {
   mapDbProductToProduct,
@@ -54,7 +55,7 @@ export async function getProducts(options: GetProductsOptions = {}): Promise<Get
   try {
     const trimmedSearch = search.trim();
     // Clean special control characters for PostgREST
-    const cleanSearch = trimmedSearch.replace(/[,()%\\]/g, '').replace(/"/g, '');
+    const cleanSearch = trimmedSearch.replace(/[,(){}%\\"[\]]/g, '').trim();
 
     const buildQuery = (searchFilter?: string) => {
       let q = supabase.from('products').select('*', { count: 'exact' });
@@ -110,21 +111,25 @@ export async function getProducts(options: GetProductsOptions = {}): Promise<Get
 
     let searchFilterString: string | undefined = undefined;
     if (cleanSearch.length > 0) {
-      const terms = [
+      const terms: string[] = [
         `name.ilike."%${cleanSearch}%"`,
-        `barcode.ilike."%${cleanSearch}%"`,
-        `sku.ilike."%${cleanSearch}%"`,
         `description.ilike."%${cleanSearch}%"`,
+        `barcodes.cs.{"${cleanSearch}"}`,
+        `alternative_barcodes.cs.{"${cleanSearch}"}`,
       ];
-      if (!isNaN(Number(cleanSearch))) {
-        terms.push(`id.eq.${Number(cleanSearch)}`);
+      if (/^\d+$/.test(cleanSearch)) {
+        const num = Number(cleanSearch);
+        if (!isNaN(num) && num <= 2147483647) {
+          terms.push(`id.eq.${num}`);
+          terms.push(`p_k.eq.${num}`);
+        }
       }
       searchFilterString = terms.join(',');
     }
 
     let { data, error, count } = await buildQuery(searchFilterString);
 
-    // If multi-column .or() filter threw a PostgREST error (e.g. column missing or type mismatch), fallback to name-only search
+    // If multi-column .or() filter threw a PostgREST error, fallback to name-only search
     if (error && searchFilterString && !error.message?.includes('aborted') && error.name !== 'AbortError') {
       console.warn('[products.service] Multi-column search error, falling back to name search:', error.message);
       const fallbackFilter = `name.ilike."%${cleanSearch}%"`;
@@ -132,6 +137,37 @@ export async function getProducts(options: GetProductsOptions = {}): Promise<Get
       data = fallbackRes.data;
       error = fallbackRes.error;
       count = fallbackRes.count;
+    }
+
+    // If Supabase returned 0 products and there's a search term, search local Dexie database
+    if ((!data || data.length === 0) && cleanSearch.length > 0) {
+      try {
+        const qLower = cleanSearch.toLowerCase();
+        const localMatches = await db.products
+          .filter((p) => {
+            return Boolean(
+              (p.name && p.name.toLowerCase().includes(qLower)) ||
+              (p.sku && p.sku.toLowerCase().includes(qLower)) ||
+              (p.barcode && p.barcode.toLowerCase().includes(qLower)) ||
+              (p.id && String(p.id).toLowerCase().includes(qLower)) ||
+              (Array.isArray(p.barcodes) && p.barcodes.some((b) => b.toLowerCase().includes(qLower))) ||
+              (p.description && p.description.toLowerCase().includes(qLower))
+            );
+          })
+          .toArray();
+
+        if (localMatches.length > 0) {
+          return {
+            products: localMatches.slice(from, to + 1),
+            totalCount: localMatches.length,
+            page: validPage,
+            pageSize,
+            totalPages: Math.ceil(localMatches.length / pageSize) || 1,
+          };
+        }
+      } catch (localErr) {
+        console.warn('[products.service] Dexie search fallback error:', localErr);
+      }
     }
 
     if (error) {
@@ -173,7 +209,7 @@ export async function searchProductsForPOS(options: POSSearchOptions = {}): Prom
 
   try {
     const trimmedSearch = search.trim();
-    const cleanSearch = trimmedSearch.replace(/[,()%\\]/g, '').replace(/"/g, '');
+    const cleanSearch = trimmedSearch.replace(/[,(){}%\\"[\]]/g, '').trim();
 
     const buildQuery = (searchFilter?: string) => {
       let q = supabase.from('products').select('*');
@@ -197,14 +233,18 @@ export async function searchProductsForPOS(options: POSSearchOptions = {}): Prom
 
     let searchFilterString: string | undefined = undefined;
     if (cleanSearch.length > 0) {
-      const terms = [
+      const terms: string[] = [
         `name.ilike."%${cleanSearch}%"`,
-        `barcode.ilike."%${cleanSearch}%"`,
-        `sku.ilike."%${cleanSearch}%"`,
         `description.ilike."%${cleanSearch}%"`,
+        `barcodes.cs.{"${cleanSearch}"}`,
+        `alternative_barcodes.cs.{"${cleanSearch}"}`,
       ];
-      if (!isNaN(Number(cleanSearch))) {
-        terms.push(`id.eq.${Number(cleanSearch)}`);
+      if (/^\d+$/.test(cleanSearch)) {
+        const num = Number(cleanSearch);
+        if (!isNaN(num) && num <= 2147483647) {
+          terms.push(`id.eq.${num}`);
+          terms.push(`p_k.eq.${num}`);
+        }
       }
       searchFilterString = terms.join(',');
     }
@@ -217,6 +257,31 @@ export async function searchProductsForPOS(options: POSSearchOptions = {}): Prom
       const fallbackRes = await buildQuery(fallbackFilter);
       data = fallbackRes.data;
       error = fallbackRes.error;
+    }
+
+    // If Supabase returned 0 products and there's a search term, search local Dexie database
+    if ((!data || data.length === 0) && cleanSearch.length > 0) {
+      try {
+        const qLower = cleanSearch.toLowerCase();
+        const localMatches = await db.products
+          .filter((p) => {
+            return Boolean(
+              (p.name && p.name.toLowerCase().includes(qLower)) ||
+              (p.sku && p.sku.toLowerCase().includes(qLower)) ||
+              (p.barcode && p.barcode.toLowerCase().includes(qLower)) ||
+              (p.id && String(p.id).toLowerCase().includes(qLower)) ||
+              (Array.isArray(p.barcodes) && p.barcodes.some((b) => b.toLowerCase().includes(qLower)))
+            );
+          })
+          .limit(limit)
+          .toArray();
+
+        if (localMatches.length > 0) {
+          return { products: localMatches };
+        }
+      } catch (localErr) {
+        console.warn('[products.service] searchProductsForPOS Dexie fallback error:', localErr);
+      }
     }
 
     if (error) {
@@ -246,13 +311,25 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   if (!cleanBarcode) return null;
 
   try {
-    const cleanSearch = cleanBarcode.replace(/[,()%\\]/g, '').replace(/"/g, '');
+    const cleanSearch = cleanBarcode.replace(/[,(){}%\\"[\]]/g, '').trim();
 
-    // 1. Direct query on barcode or sku column
+    // 1. Direct query on barcodes arrays and p_k / id
+    const terms: string[] = [
+      `barcodes.cs.{"${cleanSearch}"}`,
+      `alternative_barcodes.cs.{"${cleanSearch}"}`,
+    ];
+    if (/^\d+$/.test(cleanSearch)) {
+      const num = Number(cleanSearch);
+      if (!isNaN(num) && num <= 2147483647) {
+        terms.push(`id.eq.${num}`);
+        terms.push(`p_k.eq.${num}`);
+      }
+    }
+
     const { data: directData } = await supabase
       .from('products')
       .select('*')
-      .or(`barcode.eq."${cleanSearch}",sku.eq."${cleanSearch}"`)
+      .or(terms.join(','))
       .limit(10);
 
     if (directData && directData.length > 0) {
@@ -261,6 +338,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
         if (
           mapped.barcode.toLowerCase() === cleanBarcode.toLowerCase() ||
           mapped.sku.toLowerCase() === cleanBarcode.toLowerCase() ||
+          mapped.id.toLowerCase() === cleanBarcode.toLowerCase() ||
           (mapped.barcodes && mapped.barcodes.some((b) => b.toLowerCase() === cleanBarcode.toLowerCase()))
         ) {
           return mapped;
@@ -269,11 +347,11 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
       return mapDbProductToProduct(directData[0]);
     }
 
-    // 2. Search by string match for JSON/array barcodes or names
+    // 2. Search by string match for names/description
     const { data: searchData } = await supabase
       .from('products')
       .select('*')
-      .or(`name.ilike."%${cleanSearch}%",description.ilike."%${cleanSearch}%",barcodes.cs.{"${cleanSearch}"}`)
+      .or(`name.ilike."%${cleanSearch}%",description.ilike."%${cleanSearch}%"`)
       .limit(20);
 
     if (searchData && searchData.length > 0) {
@@ -282,6 +360,7 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
         if (
           mapped.barcode.toLowerCase() === cleanBarcode.toLowerCase() ||
           mapped.sku.toLowerCase() === cleanBarcode.toLowerCase() ||
+          mapped.id.toLowerCase() === cleanBarcode.toLowerCase() ||
           (mapped.barcodes && mapped.barcodes.some((b) => b.toLowerCase() === cleanBarcode.toLowerCase()))
         ) {
           return mapped;
@@ -289,14 +368,22 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
       }
     }
 
-    // 3. Check by ID if numeric
-    if (!isNaN(Number(cleanBarcode))) {
-      const { data: idData } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', Number(cleanBarcode))
-        .maybeSingle();
-      if (idData) return mapDbProductToProduct(idData);
+    // 3. Check local Dexie database for fast offline lookup
+    try {
+      const qLower = cleanBarcode.toLowerCase();
+      const localProduct = await db.products
+        .filter((p) => {
+          return (
+            p.barcode?.toLowerCase() === qLower ||
+            p.sku?.toLowerCase() === qLower ||
+            p.id?.toLowerCase() === qLower ||
+            (Array.isArray(p.barcodes) && p.barcodes.some((b) => b.toLowerCase() === qLower))
+          );
+        })
+        .first();
+      if (localProduct) return localProduct;
+    } catch (e) {
+      console.warn('[getProductByBarcode] Dexie lookup error:', e);
     }
 
     return null;

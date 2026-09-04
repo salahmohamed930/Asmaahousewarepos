@@ -157,7 +157,7 @@ export const RegisterView: React.FC = () => {
   // History search & filters state
   const [historySearch, setHistorySearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('today');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [sellerFilter, setSellerFilter] = useState<string>('all');

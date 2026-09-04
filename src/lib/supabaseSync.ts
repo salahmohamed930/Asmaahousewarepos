@@ -316,11 +316,38 @@ export function mapDbProductToProduct(p: any): Product {
     ? String(p.id)
     : (p.sku ? String(p.sku) : (p.barcode ? String(p.barcode) : `prod_${Math.random().toString(36).substring(2, 9)}`));
 
+  const allBarcodes: string[] = Array.isArray(p.barcodes)
+    ? p.barcodes.map(String).filter(Boolean)
+    : typeof p.barcodes === 'string'
+      ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : [];
+
+  if (Array.isArray(p.alternative_barcodes)) {
+    for (const b of p.alternative_barcodes) {
+      const s = String(b).trim();
+      if (s && !allBarcodes.includes(s)) {
+        allBarcodes.push(s);
+      }
+    }
+  }
+
+  // Primary barcode: direct barcode column -> first item in barcodes array -> p.sku -> p.p_k -> safeId
+  const primaryBarcode = (p.barcode ? String(p.barcode) : null)
+    || (allBarcodes.length > 0 ? allBarcodes[0] : null)
+    || (p.sku ? String(p.sku) : null)
+    || (p.p_k ? String(p.p_k) : null)
+    || safeId
+    || '000000';
+
+  // SKU / Item Code ("كود الصنف"):
+  // Check p.sku -> p.p_k (the standard item code in database) -> safeId
+  const resolvedSku = String(p.sku ?? p.p_k ?? safeId ?? 'SKU-000');
+
   return {
     id: safeId,
     name: p.name || 'منتج',
-    sku: String(p.sku ?? safeId ?? 'SKU-000'),
-    barcode: String(p.barcode || p.sku || safeId || '000000'),
+    sku: resolvedSku,
+    barcode: primaryBarcode,
     category: p.category || 'عام',
     priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
     priceInstallment: Number(p.priceInstallment ?? p.installment_price ?? p.price_installment ?? p.installmentPrice ?? 0),
@@ -329,11 +356,7 @@ export function mapDbProductToProduct(p: any): Product {
     stock: Number(p.stock_quantity ?? p.quantity ?? p.stock ?? 0),
     image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
     description: p.description || '',
-    barcodes: Array.isArray(p.barcodes)
-      ? p.barcodes.map(String)
-      : typeof p.barcodes === 'string'
-        ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : [],
+    barcodes: allBarcodes.length > 0 ? allBarcodes : (primaryBarcode ? [primaryBarcode] : []),
   };
 }
 
@@ -351,6 +374,10 @@ export function mapProductToDbPayload(product: Product): any {
     barcodes: product.barcodes || (product.barcode ? [product.barcode] : []),
     updated_at: new Date().toISOString(),
   };
+
+  if (product.sku && !isNaN(Number(product.sku))) {
+    payload.p_k = Number(product.sku);
+  }
 
   if (product.id && !isNaN(Number(product.id))) {
     payload.id = Number(product.id);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { Product, Transaction, PriceTier } from '../../types';
+import { Product, Transaction, PriceTier, InvoiceDaysAccess } from '../../types';
 import { searchProductsForPOS, getProductByBarcode, getCategories } from '../../services/products.service';
 import {
   Search,
@@ -154,13 +154,26 @@ export const RegisterView: React.FC = () => {
   // Mobile Sub Tab state inside creation view
   const [mobileSubTab, setMobileSubTab] = useState<'catalog' | 'cart'>('catalog');
 
+  // User invoice days access permission
+  const userInvoiceAccess: InvoiceDaysAccess =
+    currentAssociate?.invoiceDaysAccess || (currentAssociate?.role === 'مدير الفرع' ? 'all' : 'today');
+  const userInvoiceCustomDays = currentAssociate?.invoiceCustomDaysLimit || 1;
+
   // History search & filters state
   const [historySearch, setHistorySearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<string>('today');
+  const [dateFilter, setDateFilter] = useState<string>(() => {
+    return userInvoiceAccess === 'today' ? 'today' : 'all';
+  });
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [sellerFilter, setSellerFilter] = useState<string>('all');
+
+  useEffect(() => {
+    if (userInvoiceAccess === 'today') {
+      setDateFilter('today');
+    }
+  }, [userInvoiceAccess]);
 
   // Register / Creation State
   const [searchQuery, setSearchQuery] = useState('');
@@ -325,7 +338,7 @@ export const RegisterView: React.FC = () => {
     historySearch.trim() !== '' ||
     statusFilter !== 'all' ||
     paymentFilter !== 'all' ||
-    dateFilter !== 'all' ||
+    (userInvoiceAccess === 'today' ? false : dateFilter !== 'all') ||
     sellerFilter !== 'all' ||
     customStartDate !== '' ||
     customEndDate !== '';
@@ -334,7 +347,7 @@ export const RegisterView: React.FC = () => {
     setHistorySearch('');
     setStatusFilter('all');
     setPaymentFilter('all');
-    setDateFilter('all');
+    setDateFilter(userInvoiceAccess === 'today' ? 'today' : 'all');
     setSellerFilter('all');
     setCustomStartDate('');
     setCustomEndDate('');
@@ -343,6 +356,31 @@ export const RegisterView: React.FC = () => {
   // Filtered Past Invoices History Logic
   const filteredTransactions = transactions.filter((tx) => {
     if (!tx) return false;
+
+    // 0. Enforce user's allowed invoice days permission (صلاحية نطاق الأيام للمستخدم)
+    if (userInvoiceAccess !== 'all') {
+      const txTime = new Date(tx.timestamp).getTime();
+      if (!isNaN(txTime)) {
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+        let minAllowedTime = 0;
+        if (userInvoiceAccess === 'today') {
+          minAllowedTime = startOfToday;
+        } else if (userInvoiceAccess === 'last_2_days') {
+          minAllowedTime = startOfToday - (1 * 24 * 60 * 60 * 1000);
+        } else if (userInvoiceAccess === 'last_7_days') {
+          minAllowedTime = startOfToday - (6 * 24 * 60 * 60 * 1000);
+        } else if (userInvoiceAccess === 'last_30_days') {
+          minAllowedTime = startOfToday - (29 * 24 * 60 * 60 * 1000);
+        } else if (userInvoiceAccess === 'custom') {
+          minAllowedTime = startOfToday - (Math.max(1, userInvoiceCustomDays - 1) * 24 * 60 * 60 * 1000);
+        }
+
+        if (txTime < minAllowedTime) {
+          return false;
+        }
+      }
+    }
 
     // 1. Search Query (Invoice ID, Receipt #, Customer Name/Phone, Seller Name/PIN, Product Name/Barcode/SKU, Amount, Notes)
     const rawQ = (historySearch || '').trim();
@@ -621,8 +659,18 @@ export const RegisterView: React.FC = () => {
             <div>
               <h1 className="text-lg font-black text-stone-100 flex items-center gap-2">
                 <span>إدارة الحسابات والعمليات اليومية</span>
-                <span className="text-xs font-mono bg-stone-950 border border-stone-850 px-2 py-0.5 rounded-full text-stone-400 font-bold">
-                  {totalInvoicesCount} مكتملة
+                <span className="text-xs font-mono bg-stone-950 border border-stone-800 px-2.5 py-0.5 rounded-full text-stone-300 font-bold flex items-center gap-1.5">
+                  <span className="text-amber-400 font-black">{filteredTransactions.length}</span>
+                  <span>فاتورة معروضة</span>
+                  {userInvoiceAccess !== 'all' && (
+                    <span className="text-[10px] text-amber-400/90 font-sans border-r border-stone-800 pr-1.5 mr-0.5">
+                      ({userInvoiceAccess === 'today' ? 'اليوم فقط' :
+                        userInvoiceAccess === 'last_2_days' ? 'اليوم وأمس' :
+                        userInvoiceAccess === 'last_7_days' ? 'آخر 7 أيام' :
+                        userInvoiceAccess === 'last_30_days' ? 'آخر 30 يوماً' :
+                        `آخر ${userInvoiceCustomDays} أيام`})
+                    </span>
+                  )}
                 </span>
                 {allHeldCount > 0 && (
                   <div className="flex items-center gap-1.5 mr-1">
@@ -714,12 +762,12 @@ export const RegisterView: React.FC = () => {
             <div className="xl:col-span-8 space-y-3.5">
 
           {/* Controls & Search Filters Bar */}
-          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-md space-y-2.5">
+          <div className="bg-stone-900 border border-stone-800 rounded-xl p-2 shadow-sm space-y-2">
             
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
               
               {/* Search Bar */}
-              <div className="md:col-span-4 relative">
+              <div className="md:col-span-4 relative flex items-center">
                 <Search className="w-3.5 h-3.5 text-stone-400 absolute right-3 top-2.5" />
                 <input
                   type="text"
@@ -728,7 +776,7 @@ export const RegisterView: React.FC = () => {
                   onChange={(e) => setHistorySearch(e.target.value)}
                   className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl pr-9 pl-7 py-1.5 text-xs text-stone-100 placeholder-stone-500 focus:outline-none"
                 />
-                {historySearch && (
+                {historySearch ? (
                   <button
                     type="button"
                     onClick={() => setHistorySearch('')}
@@ -737,7 +785,16 @@ export const RegisterView: React.FC = () => {
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
-                )}
+                ) : isAnyInvoiceFilterActive ? (
+                  <button
+                    type="button"
+                    onClick={resetInvoiceFilters}
+                    className="absolute left-2 top-1.5 text-stone-400 hover:text-amber-400 p-1 transition-colors"
+                    title="إعادة ضبط كافة الفلاتر والبحث"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                ) : null}
               </div>
 
               {/* Status Filter */}
@@ -783,23 +840,94 @@ export const RegisterView: React.FC = () => {
 
               {/* Date Filter */}
               <div className="md:col-span-2">
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value)}
-                  className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
-                    dateFilter !== 'all'
-                      ? 'border-amber-500 text-amber-300'
-                      : 'border-stone-800 text-stone-200 focus:border-amber-500'
-                  }`}
-                >
-                  <option value="all">التاريخ: الكل</option>
-                  <option value="today">فواتير اليوم 📅</option>
-                  <option value="yesterday">فواتير الأمس ⏪</option>
-                  <option value="week">آخر 7 أيام 🗓️</option>
-                  <option value="month">هذا الشهر 📊</option>
-                  <option value="last_month">الشهر السابق 📉</option>
-                  <option value="custom">فترة مخصصة... 📆</option>
-                </select>
+                {userInvoiceAccess === 'today' ? (
+                  <select
+                    value="today"
+                    disabled
+                    className="w-full bg-stone-950 border border-stone-800 text-amber-400 font-bold rounded-xl px-2.5 py-1.5 text-xs focus:outline-none cursor-not-allowed opacity-90"
+                    title="صلاحية حسابك مقيدة بعرض فواتير اليوم فقط"
+                  >
+                    <option value="today">فواتير اليوم 📅 (مقيد بالصلاحية)</option>
+                  </select>
+                ) : userInvoiceAccess === 'last_2_days' ? (
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                      dateFilter !== 'all'
+                        ? 'border-amber-500 text-amber-300'
+                        : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                    }`}
+                  >
+                    <option value="all">اليوم والأمس (الكل المتاح)</option>
+                    <option value="today">فواتير اليوم 📅</option>
+                    <option value="yesterday">فواتير الأمس ⏪</option>
+                  </select>
+                ) : userInvoiceAccess === 'last_7_days' ? (
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                      dateFilter !== 'all'
+                        ? 'border-amber-500 text-amber-300'
+                        : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                    }`}
+                  >
+                    <option value="all">آخر 7 أيام (الكل المتاح)</option>
+                    <option value="today">فواتير اليوم 📅</option>
+                    <option value="yesterday">فواتير الأمس ⏪</option>
+                    <option value="week">آخر 7 أيام 🗓️</option>
+                  </select>
+                ) : userInvoiceAccess === 'last_30_days' ? (
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                      dateFilter !== 'all'
+                        ? 'border-amber-500 text-amber-300'
+                        : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                    }`}
+                  >
+                    <option value="all">آخر 30 يوماً (الكل المتاح)</option>
+                    <option value="today">فواتير اليوم 📅</option>
+                    <option value="yesterday">فواتير الأمس ⏪</option>
+                    <option value="week">آخر 7 أيام 🗓️</option>
+                    <option value="month">هذا الشهر 📊</option>
+                  </select>
+                ) : userInvoiceAccess === 'custom' ? (
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                      dateFilter !== 'all'
+                        ? 'border-amber-500 text-amber-300'
+                        : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                    }`}
+                  >
+                    <option value="all">آخر {userInvoiceCustomDays} أيام (الكل المتاح)</option>
+                    <option value="today">فواتير اليوم 📅</option>
+                    <option value="yesterday">فواتير الأمس ⏪</option>
+                    <option value="custom">فترة مخصصة... 📆</option>
+                  </select>
+                ) : (
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className={`w-full bg-stone-950 border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none transition-colors ${
+                      dateFilter !== 'all'
+                        ? 'border-amber-500 text-amber-300'
+                        : 'border-stone-800 text-stone-200 focus:border-amber-500'
+                    }`}
+                  >
+                    <option value="all">التاريخ: الكل</option>
+                    <option value="today">فواتير اليوم 📅</option>
+                    <option value="yesterday">فواتير الأمس ⏪</option>
+                    <option value="week">آخر 7 أيام 🗓️</option>
+                    <option value="month">هذا الشهر 📊</option>
+                    <option value="last_month">الشهر السابق 📉</option>
+                    <option value="custom">فترة مخصصة... 📆</option>
+                  </select>
+                )}
               </div>
 
               {/* Seller PIN / Name Filter */}
@@ -861,84 +989,6 @@ export const RegisterView: React.FC = () => {
                     مسح التواريخ
                   </button>
                 )}
-              </div>
-            )}
-
-            {/* Active Filters Summary & Quick Reset Bar */}
-            {isAnyInvoiceFilterActive && (
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800 text-xs">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-amber-400">الفلاتر النشطة:</span>
-                  {historySearch && (
-                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
-                      بحث: "{historySearch}"
-                      <button onClick={() => setHistorySearch('')} className="hover:text-rose-400" title="إزالة">
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  )}
-                  {statusFilter !== 'all' && (
-                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
-                      الحالة: {statusFilter === 'held' ? 'معلقة' : statusFilter === 'completed' ? 'مكتملة' : statusFilter === 'voided' ? 'ملغاة' : 'مسترجعة'}
-                      <button onClick={() => setStatusFilter('all')} className="hover:text-rose-400" title="إزالة">
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  )}
-                  {paymentFilter !== 'all' && (
-                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
-                      الدفع: {
-                        paymentFilter === 'cash' ? 'كاش' :
-                        paymentFilter === 'card' ? 'فيزا/كارت' :
-                        paymentFilter === 'installment' ? 'تقسيط' :
-                        paymentFilter === 'credit' ? 'آجل' :
-                        paymentFilter === 'wallet' ? 'محفظة' :
-                        paymentFilter === 'split' ? 'دفع متعدد' :
-                        paymentFilter === 'loyalty' ? 'نقاط ولاء' : paymentFilter
-                      }
-                      <button onClick={() => setPaymentFilter('all')} className="hover:text-rose-400" title="إزالة">
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  )}
-                  {dateFilter !== 'all' && (
-                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
-                      التاريخ: {
-                        dateFilter === 'today' ? 'اليوم' :
-                        dateFilter === 'yesterday' ? 'الأمس' :
-                        dateFilter === 'week' ? 'آخر 7 أيام' :
-                        dateFilter === 'month' ? 'هذا الشهر' :
-                        dateFilter === 'last_month' ? 'الشهر السابق' : 'فترة مخصصة'
-                      }
-                      <button onClick={() => { setDateFilter('all'); setCustomStartDate(''); setCustomEndDate(''); }} className="hover:text-rose-400" title="إزالة">
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  )}
-                  {sellerFilter !== 'all' && (
-                    <span className="inline-flex items-center gap-1 bg-stone-950 border border-stone-800 text-stone-300 px-2 py-0.5 rounded-lg text-[10px]">
-                      البائع: {associates.find((a) => a.id === sellerFilter || a.pin === sellerFilter)?.name || sellerFilter}
-                      <button onClick={() => setSellerFilter('all')} className="hover:text-rose-400" title="إزالة">
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-stone-400 font-bold">
-                    عرض {filteredTransactions.length} من أصل {transactions.length} فاتورة
-                  </span>
-                  <button
-                    type="button"
-                    onClick={resetInvoiceFilters}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[10px] font-bold transition-all"
-                    title="مسح جميع الفلاتر الحالية وإظهار كافة الفواتير"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>إلغاء جميع الفلاتر</span>
-                  </button>
-                </div>
               </div>
             )}
 

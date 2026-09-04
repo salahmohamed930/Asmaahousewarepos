@@ -83,7 +83,9 @@ export const LoginScreen: React.FC = () => {
       // 2. Query Supabase directly if still no match
       if (!matched) {
         try {
-          const { data: dbData } = await supabase.from('associates').select('*');
+          const { data: dbData } = await supabase
+            .from('associates')
+            .select('id, name, username, password, pin, role, email, phone, permissions, allowed_invoice_days, custom_invoice_days');
           if (dbData && dbData.length > 0) {
             const foundDb = dbData.find((a: any) => {
               const u = String(a.username || a.user_name || '').toLowerCase();
@@ -100,16 +102,17 @@ export const LoginScreen: React.FC = () => {
             });
 
             if (foundDb) {
+              const f: any = foundDb;
               matched = {
-                id: String(foundDb.id),
-                name: String(foundDb.name || 'موظف'),
-                username: String(foundDb.username || foundDb.user_name || foundDb.name),
-                password: String(foundDb.password || foundDb.pin || '1001'),
-                pin: String(foundDb.pin || foundDb.password || '1001'),
-                role: foundDb.role || 'مسؤول مبيعات',
-                avatar: foundDb.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-                email: String(foundDb.email || ''),
-                phone: String(foundDb.phone || ''),
+                id: String(f.id),
+                name: String(f.name || 'موظف'),
+                username: String(f.username || f.user_name || f.name),
+                password: String(f.password || f.pin || '1001'),
+                pin: String(f.pin || f.password || '1001'),
+                role: f.role || 'مسؤول مبيعات',
+                avatar: f.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+                email: String(f.email || ''),
+                phone: String(f.phone || ''),
                 commissionRate: 0.05,
                 dailyGoal: 5000,
                 hourlyRate: 25,

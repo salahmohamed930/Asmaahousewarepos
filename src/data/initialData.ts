@@ -28,6 +28,7 @@ export const DEFAULT_ADMIN_ASSOCIATE: Associate = {
     'manage_suppliers',
     'manage_associates',
   ],
+  invoiceDaysAccess: 'all',
   avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=250&q=80',
   email: 'admin@asmaa.com',
   phone: '01000000000',

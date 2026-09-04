@@ -192,6 +192,19 @@ export const TABLE_SCHEMAS: Record<string, TableSchemaConfig> = {
   },
 };
 
+export const TABLE_SELECT_COLUMNS: Record<string, string> = {
+  products: 'id, name, p_k, barcode, barcodes, alternative_barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, updated_at, is_deleted',
+  customers: 'id, name, phone, email, address, notes, current_debt, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, monthly_installment_amount, updated_at, is_deleted',
+  suppliers: 'id, name, company_name, phone, email, address, notes, category, tax_number, current_balance, updated_at, is_deleted',
+  supplier_transactions: 'id, supplier_id, type, amount, date, notes, invoice_number, payment_method, updated_at, is_deleted',
+  transactions: 'id, receipt_number, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, split_payments, commissions, notes, status, amount_paid, amount_deferred, timestamp, updated_at, is_deleted',
+  transaction_items: 'id, transaction_id, product_id, product_name, sku, quantity, price_tier, unit_price, total_price, assigned_associate_id, updated_at, is_deleted',
+  associates: 'id, name, username, password, pin, role, phone, email, commission_rate, daily_goal, hourly_rate, advances_balance, is_clocked_in, permissions, allowed_invoice_days, custom_invoice_days, updated_at, is_deleted',
+  closed_shifts: 'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance, updated_at, is_deleted',
+  expenses: 'id, amount, category, notes, associate_id, associate_name, timestamp, updated_at, is_deleted',
+  discounts: 'product_id, discount_percent, discount_amount, start_date, end_date, is_active, updated_at, is_deleted',
+};
+
 const missingColumnsByTable: Record<string, Set<string>> = {};
 
 export function markColumnMissing(tableName: string, colName: string) {
@@ -205,6 +218,18 @@ export function markColumnMissing(tableName: string, colName: string) {
 export function isColumnMissing(tableName: string, colName: string): boolean {
   if (!colName) return false;
   return missingColumnsByTable[tableName]?.has(colName.toLowerCase()) ?? false;
+}
+
+export function getCleanSelectColumns(tableName: string, defaultCols?: string): string {
+  const base = defaultCols && defaultCols !== '*' ? defaultCols : (TABLE_SELECT_COLUMNS[tableName] || '*');
+  if (base === '*') return '*';
+  const missing = missingColumnsByTable[tableName];
+  if (!missing || missing.size === 0) return base;
+  return base
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => !missing.has(c.toLowerCase()))
+    .join(', ');
 }
 
 export function extractIdFromPayload(payload: any): string {
@@ -370,7 +395,6 @@ export function mapProductToDbPayload(product: Product): any {
     cost: Number(product.cost || 0),
     stock_quantity: Number(product.stock || 0),
     description: product.description || '',
-    image: product.image || '',
     barcodes: product.barcodes || (product.barcode ? [product.barcode] : []),
     updated_at: new Date().toISOString(),
   };
@@ -639,6 +663,27 @@ export function mapDbAssociateToAssociate(a: any): Associate {
     ? String(a.id)
     : `assoc_${Math.random().toString(36).substring(2, 9)}`;
 
+  let invoiceDaysAccess: any = a.invoice_days_access || a.invoiceDaysAccess;
+  let invoiceCustomDaysLimit = Number(a.invoice_custom_days_limit ?? a.invoiceCustomDaysLimit ?? 0) || undefined;
+
+  if (!invoiceDaysAccess && Array.isArray(a.permissions)) {
+    const permDays = a.permissions.find((p: string) => typeof p === 'string' && p.startsWith('invoice_days:'));
+    if (permDays) {
+      const parts = permDays.replace('invoice_days:', '').split(':');
+      invoiceDaysAccess = parts[0];
+      if (parts[1]) invoiceCustomDaysLimit = parseInt(parts[1], 10) || undefined;
+    }
+  }
+
+  if (!invoiceDaysAccess) {
+    invoiceDaysAccess = (a.role === 'مدير الفرع') ? 'all' : 'today';
+  }
+
+  // Filter out system tags like invoice_days:* from user-facing permissions array
+  const cleanPermissions = Array.isArray(a.permissions)
+    ? a.permissions.filter((p: string) => typeof p === 'string' && !p.startsWith('invoice_days:'))
+    : undefined;
+
   return {
     id: safeId,
     name: String(a.name || 'موظف'),
@@ -654,11 +699,20 @@ export function mapDbAssociateToAssociate(a: any): Associate {
     hourlyRate: Number(a.hourly_rate ?? a.hourlyRate ?? 25),
     advancesBalance: Number(a.advances_balance ?? a.advancesBalance ?? 0),
     isClockedIn: Boolean(a.is_clocked_in ?? a.isClockedIn ?? false),
-    permissions: Array.isArray(a.permissions) ? a.permissions : undefined,
+    permissions: cleanPermissions,
+    invoiceDaysAccess: invoiceDaysAccess as any,
+    invoiceCustomDaysLimit,
   };
 }
 
 export function mapAssociateToDbPayload(associate: Associate): any {
+  const perms = Array.isArray(associate.permissions) ? [...associate.permissions] : [];
+  const filteredPerms = perms.filter((p: any) => typeof p !== 'string' || !p.startsWith('invoice_days:'));
+  const daysTag = `invoice_days:${associate.invoiceDaysAccess || (associate.role === 'مدير الفرع' ? 'all' : 'today')}${
+    associate.invoiceDaysAccess === 'custom' && associate.invoiceCustomDaysLimit ? `:${associate.invoiceCustomDaysLimit}` : ''
+  }`;
+  filteredPerms.push(daysTag as any);
+
   return {
     id: associate.id,
     name: associate.name,
@@ -671,10 +725,9 @@ export function mapAssociateToDbPayload(associate: Associate): any {
     commission_rate: associate.commissionRate || 0.05,
     daily_goal: associate.dailyGoal || 5000,
     hourly_rate: associate.hourlyRate || 25,
-    avatar: associate.avatar || '',
     advances_balance: associate.advancesBalance || 0,
     is_clocked_in: Boolean(associate.isClockedIn),
-    permissions: associate.permissions || [],
+    permissions: filteredPerms,
     updated_at: new Date().toISOString(),
   };
 }
@@ -747,16 +800,17 @@ async function fetchSelectiveFromSupabase(
   const schemaCfg = TABLE_SCHEMAS[tableName];
   const timeCol = schemaCfg?.updatedTimeCol || 'updated_at';
   const timeColMissing = isColumnMissing(tableName, timeCol);
+  const selectCols = getCleanSelectColumns(tableName, columns);
 
   while (hasMore) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase.from(tableName).select('*').range(from, to);
+    let query = supabase.from(tableName).select(selectCols).range(from, to);
 
     // Apply Delta Sync filter if lastSyncTimestamp is present AND timeCol is not marked as missing
     if (lastSyncTimestamp && !timeColMissing) {
-      query = query.or(`${timeCol}.gt.${lastSyncTimestamp}`);
+      query = query.gt(timeCol, lastSyncTimestamp);
     } else if (lastSyncTimestamp && timeColMissing) {
       console.log(
         `[SUPABASE DELTA SYNC] Table '${tableName}' lacks column '${timeCol}'. Performing clean Full Sync instead.`
@@ -770,8 +824,8 @@ async function fetchSelectiveFromSupabase(
     let { data, error, status } = await query;
 
     console.log(
-      `[SUPABASE QUERY] Table: '${tableName}' | Range: ${from}-${to} | Filter: ${
-        lastSyncTimestamp && !timeColMissing ? 'DELTA (' + lastSyncTimestamp + ')' : 'FULL'
+      `[SUPABASE QUERY] Table: '${tableName}' | Range: ${from}-${to} | Cols: ${selectCols.length > 30 ? selectCols.substring(0, 30) + '...' : selectCols} | Filter: ${
+        lastSyncTimestamp && !timeColMissing ? 'DELTA (> ' + lastSyncTimestamp + ')' : 'FULL'
       } | Status: ${status || (error ? 'Error' : '200 OK')} | Records: ${data?.length || 0}${
         error ? ` | Error: ${error.message}` : ''
       }`
@@ -788,23 +842,36 @@ async function fetchSelectiveFromSupabase(
       if (missingColMatch && missingColMatch[1]) {
         const colName = missingColMatch[1];
         markColumnMissing(tableName, colName);
+        const retryCols = getCleanSelectColumns(tableName, columns);
         console.warn(
-          `[SUPABASE SYNC ADAPTER] Table '${tableName}' lacks column '${colName}'. Retrying with clean Full Sync...`
+          `[SUPABASE SYNC ADAPTER] Table '${tableName}' lacks column '${colName}'. Retrying with clean columns '${retryCols}'...`
         );
+        let retryQuery = supabase.from(tableName).select(retryCols).range(from, to);
+        if (lastSyncTimestamp && !isColumnMissing(tableName, timeCol)) {
+          retryQuery = retryQuery.gt(timeCol, lastSyncTimestamp);
+        }
+        const retryRes = await retryQuery;
+        if (retryRes.error) {
+          return { data: [], error: retryRes.error };
+        }
+        data = retryRes.data || [];
+        hasMore = false;
       } else {
         console.warn(
-          `[SUPABASE QUERY RECOVERY] Query failed on table '${tableName}' (${errMsg}). Retrying with full select('*')...`
+          `[SUPABASE QUERY RECOVERY] Query failed on table '${tableName}' (${errMsg}). Retrying with fallback select...`
         );
-      }
+        let fallbackQuery = supabase.from(tableName).select(selectCols).range(from, to);
+        if (lastSyncTimestamp && !timeColMissing) {
+          fallbackQuery = fallbackQuery.gt(timeCol, lastSyncTimestamp);
+        }
+        const fallbackRes = await fallbackQuery;
 
-      const fallbackQuery = supabase.from(tableName).select('*').range(from, to);
-      const fallbackRes = await fallbackQuery;
-
-      if (fallbackRes.error) {
-        return { data: [], error: fallbackRes.error };
+        if (fallbackRes.error) {
+          return { data: [], error: fallbackRes.error };
+        }
+        data = fallbackRes.data || [];
+        hasMore = false;
       }
-      data = fallbackRes.data || [];
-      hasMore = false;
     }
 
     if (data && data.length > 0) {
@@ -916,10 +983,10 @@ async function performDeltaSyncInternal(): Promise<{
     const localShiftCount = await db.closedShifts.count();
     const localExpCount = await db.expenses.count();
 
-    // 1. Sync Products (including soft-delete check)
+    // 1. Sync Products (including soft-delete check) - Clean columns without heavy images
     const prodRes = await fetchSelectiveFromSupabase(
       'products',
-      '*',
+      TABLE_SELECT_COLUMNS.products,
       localProdCount === 0 ? null : lastSync
     );
     if (prodRes.data && prodRes.data.length > 0) {
@@ -946,7 +1013,7 @@ async function performDeltaSyncInternal(): Promise<{
     // 2. Sync Customers
     const custRes = await fetchSelectiveFromSupabase(
       'customers',
-      '*',
+      TABLE_SELECT_COLUMNS.customers,
       localCustCount === 0 ? null : lastSync
     );
     if (custRes.data && custRes.data.length > 0) {
@@ -973,7 +1040,7 @@ async function performDeltaSyncInternal(): Promise<{
     // 3. Sync Suppliers
     const suppRes = await fetchSelectiveFromSupabase(
       'suppliers',
-      '*',
+      TABLE_SELECT_COLUMNS.suppliers,
       localSuppCount === 0 ? null : lastSync
     );
     if (suppRes.data && suppRes.data.length > 0) {
@@ -1000,7 +1067,7 @@ async function performDeltaSyncInternal(): Promise<{
     // 4. Sync Supplier Transactions
     const stxRes = await fetchSelectiveFromSupabase(
       'supplier_transactions',
-      '*',
+      TABLE_SELECT_COLUMNS.supplier_transactions,
       localStxCount === 0 ? null : lastSync
     );
     if (stxRes.data && stxRes.data.length > 0) {
@@ -1024,31 +1091,43 @@ async function performDeltaSyncInternal(): Promise<{
       syncedCounts.supplierTransactions = activeStxs.length;
     }
 
-    // 5. Sync Transactions
+    // 5. Sync Transactions (with targeted transaction_items fetch to save egress)
     const hasFixedTxTimestamps = await db.syncMeta.get('tx_timestamp_repaired_v3');
     const txRes = await fetchSelectiveFromSupabase(
       'transactions',
-      '*',
+      TABLE_SELECT_COLUMNS.transactions,
       (!hasFixedTxTimestamps || localTxCount === 0) ? null : lastSync
     );
     if (txRes.data && txRes.data.length > 0) {
-      const itemsRes = await fetchSelectiveFromSupabase('transaction_items', '*');
       const itemsByTx: Record<string, any[]> = {};
-      if (itemsRes.data) {
-        itemsRes.data.forEach((item: any) => {
-          const tid = String(item.transaction_id);
-          if (!itemsByTx[tid]) itemsByTx[tid] = [];
-          itemsByTx[tid].push({
-            productId: String(item.product_id || ''),
-            productName: item.product_name || 'منتج',
-            sku: item.sku || '',
-            quantity: Number(item.quantity || 1),
-            priceTier: item.price_tier || 'cash',
-            unitPrice: Number(item.unit_price || 0),
-            totalPrice: Number(item.total_price || 0),
-            assignedAssociateId: item.assigned_associate_id,
+      const changedTxIds = txRes.data.map((t: any) => String(t.id)).filter(Boolean);
+
+      // Fetch transaction_items ONLY for the changed transactions in chunks of 50
+      const itemCols = getCleanSelectColumns('transaction_items');
+      const chunkSize = 50;
+      for (let i = 0; i < changedTxIds.length; i += chunkSize) {
+        const chunk = changedTxIds.slice(i, i + chunkSize);
+        const { data: chunkItems } = await supabase
+          .from('transaction_items')
+          .select(itemCols)
+          .in('transaction_id', chunk);
+
+        if (chunkItems && chunkItems.length > 0) {
+          chunkItems.forEach((item: any) => {
+            const tid = String(item.transaction_id);
+            if (!itemsByTx[tid]) itemsByTx[tid] = [];
+            itemsByTx[tid].push({
+              productId: String(item.product_id || ''),
+              productName: item.product_name || 'منتج',
+              sku: item.sku || '',
+              quantity: Number(item.quantity || 1),
+              priceTier: item.price_tier || 'cash',
+              unitPrice: Number(item.unit_price || 0),
+              totalPrice: Number(item.total_price || 0),
+              assignedAssociateId: item.assigned_associate_id,
+            });
           });
-        });
+        }
       }
 
       const activeTxs: Transaction[] = [];
@@ -1102,7 +1181,7 @@ async function performDeltaSyncInternal(): Promise<{
     // 6. Sync Associates
     const assocRes = await fetchSelectiveFromSupabase(
       'associates',
-      '*',
+      TABLE_SELECT_COLUMNS.associates,
       localAssocCount === 0 ? null : lastSync
     );
     if (assocRes.data && assocRes.data.length > 0) {
@@ -1129,7 +1208,7 @@ async function performDeltaSyncInternal(): Promise<{
     // 7. Sync Closed Shifts
     const shiftRes = await fetchSelectiveFromSupabase(
       'closed_shifts',
-      '*',
+      TABLE_SELECT_COLUMNS.closed_shifts,
       localShiftCount === 0 ? null : lastSync
     );
     if (shiftRes.data && shiftRes.data.length > 0) {
@@ -1156,7 +1235,7 @@ async function performDeltaSyncInternal(): Promise<{
     // 8. Sync Expenses
     const expRes = await fetchSelectiveFromSupabase(
       'expenses',
-      '*',
+      TABLE_SELECT_COLUMNS.expenses,
       localExpCount === 0 ? null : lastSync
     );
     if (expRes.data && expRes.data.length > 0) {

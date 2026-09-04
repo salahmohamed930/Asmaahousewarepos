@@ -10,6 +10,11 @@ import {
   deleteProduct as deleteProductService,
   bulkDeleteProducts as bulkDeleteProductsService,
   clearAllProducts as clearAllProductsService,
+  getNextUniqueProductCode,
+  checkProductCodeConflict,
+  identifyDuplicateProductCodes,
+  fetchDuplicateProductsAcrossCatalog,
+  DuplicateCodeGroup,
 } from '../../services/products.service';
 import {
   Package,
@@ -33,6 +38,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Sparkles,
+  Copy,
 } from 'lucide-react';
 
 export const CatalogView: React.FC = () => {
@@ -105,6 +112,72 @@ export const CatalogView: React.FC = () => {
   const [bulkAddRows, setBulkAddRows] = useState<any[]>([
     { name: '', sku: '', barcode: '', category: 'أطقم طهي وحلل', cost: 0, priceCash: 0, priceWholesale: 0, priceInstallment: 0, stock: 10 }
   ]);
+
+  // Duplicate codes filter state & Conflict states
+  const [filterDuplicatesOnly, setFilterDuplicatesOnly] = useState(false);
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateCodeGroup[]>([]);
+  const [duplicateProductsList, setDuplicateProductsList] = useState<Product[]>([]);
+  const [duplicateMap, setDuplicateMap] = useState<Map<string, { code: string; type: 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>>(new Map());
+  const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
+  const [duplicatesLoaded, setDuplicatesLoaded] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [skuConflict, setSkuConflict] = useState<{ exists: boolean; name?: string; sku?: string } | null>(null);
+  const [barcodeConflict, setBarcodeConflict] = useState<{ exists: boolean; name?: string; barcode?: string } | null>(null);
+
+  // Scan current catalog page for local duplicate SKUs and Barcodes
+  const duplicateCodesMap = React.useMemo(() => {
+    return identifyDuplicateProductCodes(catalogProducts);
+  }, [catalogProducts]);
+
+  // Load all duplicate products across the entire database
+  const loadDuplicates = useCallback(async () => {
+    setIsLoadingDuplicates(true);
+    try {
+      const res = await fetchDuplicateProductsAcrossCatalog();
+      setDuplicateGroups(res.groups);
+      setDuplicateProductsList(res.allDuplicateProducts);
+      setDuplicateMap(res.duplicateMap);
+      setDuplicatesLoaded(true);
+    } catch (e) {
+      console.error('[CatalogView] Error loading duplicate products:', e);
+    } finally {
+      setIsLoadingDuplicates(false);
+    }
+  }, []);
+
+  // Fetch duplicates once on catalog mount to populate counter badge
+  useEffect(() => {
+    loadDuplicates();
+  }, [loadDuplicates]);
+
+  // Handle clicking the "الأكواد المتشابهة" button
+  const handleToggleDuplicates = () => {
+    const nextVal = !filterDuplicatesOnly;
+    setFilterDuplicatesOnly(nextVal);
+    if (nextVal && (!duplicatesLoaded || duplicateProductsList.length === 0)) {
+      loadDuplicates();
+    }
+  };
+
+  // Filtered products: if filterDuplicatesOnly is active, show the duplicate items across the entire catalog
+  const displayedProducts = React.useMemo(() => {
+    if (!filterDuplicatesOnly) return catalogProducts;
+
+    let list = duplicateProductsList;
+    if (selectedCategory && selectedCategory !== 'الكل') {
+      list = list.filter((p) => p.category === selectedCategory);
+    }
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.trim().toLowerCase();
+      list = list.filter((p) =>
+        p.name?.toLowerCase().includes(q) ||
+        p.sku?.toLowerCase().includes(q) ||
+        p.barcode?.toLowerCase().includes(q) ||
+        (Array.isArray(p.barcodes) && p.barcodes.some((b) => b?.toLowerCase().includes(q)))
+      );
+    }
+    return list;
+  }, [filterDuplicatesOnly, catalogProducts, duplicateProductsList, selectedCategory, debouncedSearch]);
 
   // Debounce search input (400ms)
   useEffect(() => {
@@ -257,21 +330,103 @@ export const CatalogView: React.FC = () => {
     });
   };
 
-  const addBulkAddRow = () => {
+  // Debounced check for SKU conflict in add/edit modal
+  useEffect(() => {
+    if (!isModalOpen || !formData.sku?.trim()) {
+      setSkuConflict(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const res = await checkProductCodeConflict(formData.sku, editingProduct?.id);
+      if (res.exists && res.conflictingProduct) {
+        setSkuConflict({ exists: true, name: res.conflictingProduct.name, sku: res.conflictingProduct.sku });
+      } else {
+        setSkuConflict(null);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [formData.sku, isModalOpen, editingProduct?.id]);
+
+  // Debounced check for Barcode conflict in add/edit modal
+  useEffect(() => {
+    if (!isModalOpen || !formData.barcode?.trim()) {
+      setBarcodeConflict(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const res = await checkProductCodeConflict(formData.barcode, editingProduct?.id);
+      if (res.exists && res.conflictingProduct) {
+        setBarcodeConflict({ exists: true, name: res.conflictingProduct.name, barcode: res.conflictingProduct.barcode });
+      } else {
+        setBarcodeConflict(null);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [formData.barcode, isModalOpen, editingProduct?.id]);
+
+  // Generate unique codes for single add/edit product
+  const handleGenerateUniqueCodes = async () => {
+    setIsGeneratingCode(true);
+    try {
+      const next = await getNextUniqueProductCode(0);
+      setFormData((prev) => ({
+        ...prev,
+        sku: next.sku,
+        barcode: next.barcode,
+        barcodes: next.barcode ? [next.barcode, ...(prev.barcodes || []).filter((b) => b !== prev.barcode)] : prev.barcodes,
+      }));
+      setSkuConflict(null);
+      setBarcodeConflict(null);
+    } catch (e) {
+      console.error('Error generating unique codes:', e);
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
+
+  const addBulkAddRow = async () => {
+    const usedCodes = new Set<string>();
+    bulkAddRows.forEach((r) => {
+      if (r.sku) usedCodes.add(String(r.sku).trim());
+      if (r.barcode) usedCodes.add(String(r.barcode).trim());
+    });
+
+    const nextCode = await getNextUniqueProductCode(bulkAddRows.length, usedCodes);
     setBulkAddRows((prev) => [
       ...prev,
       {
         name: '',
-        sku: `HK-${Math.floor(100 + Math.random() * 900)}`,
-        barcode: `622100${Math.floor(100000 + Math.random() * 900000)}`,
+        sku: nextCode.sku,
+        barcode: nextCode.barcode,
         category: lastChosenCategory,
         cost: 0,
         priceCash: 0,
         priceWholesale: 0,
         priceInstallment: 0,
-        stock: 10
-      }
+        stock: 10,
+      },
     ]);
+  };
+
+  const regenerateRowCode = async (index: number) => {
+    const usedCodes = new Set<string>();
+    bulkAddRows.forEach((r, i) => {
+      if (i !== index) {
+        if (r.sku) usedCodes.add(String(r.sku).trim());
+        if (r.barcode) usedCodes.add(String(r.barcode).trim());
+      }
+    });
+
+    const nextCode = await getNextUniqueProductCode(index, usedCodes);
+    setBulkAddRows((prev) => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        sku: nextCode.sku,
+        barcode: nextCode.barcode,
+      };
+      return updated;
+    });
   };
 
   const removeBulkAddRow = (index: number) => {
@@ -279,18 +434,83 @@ export const CatalogView: React.FC = () => {
     setBulkAddRows((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleOpenBulkAdd = async () => {
+    setIsGeneratingCode(true);
+    try {
+      const nextCode = await getNextUniqueProductCode(0);
+      setBulkAddRows([
+        {
+          name: '',
+          sku: nextCode.sku,
+          barcode: nextCode.barcode,
+          category: lastChosenCategory,
+          cost: 0,
+          priceCash: 0,
+          priceWholesale: 0,
+          priceInstallment: 0,
+          stock: 10,
+        },
+      ]);
+    } finally {
+      setIsGeneratingCode(false);
+    }
+    setIsBulkAddModalOpen(true);
+  };
+
   const handleSaveBulkAdd = async () => {
-    const invalidRowIndex = bulkAddRows.findIndex(row => !row.name.trim());
+    const invalidRowIndex = bulkAddRows.findIndex((row) => !row.name.trim());
     if (invalidRowIndex !== -1) {
       alert(`يرجى إدخال اسم الصنف في الصف رقم ${invalidRowIndex + 1}`);
       return;
     }
 
+    // 1. Check for duplicate SKUs or Barcodes within the modal rows
+    const skuSeen = new Map<string, number>();
+    const barcodeSeen = new Map<string, number>();
+    for (let i = 0; i < bulkAddRows.length; i++) {
+      const row = bulkAddRows[i];
+      if (row.sku?.trim()) {
+        const s = row.sku.trim();
+        if (skuSeen.has(s)) {
+          alert(`تنبيه: الكود (SKU) "${s}" مكرر في الصف ${i + 1} والصف ${skuSeen.get(s)! + 1}. يجب أن يكون كود كل صنف مميزاً وغير متشابه.`);
+          return;
+        }
+        skuSeen.set(s, i);
+      }
+      if (row.barcode?.trim()) {
+        const b = row.barcode.trim();
+        if (barcodeSeen.has(b)) {
+          alert(`تنبيه: الباركود "${b}" مكرر في الصف ${i + 1} والصف ${barcodeSeen.get(b)! + 1}.`);
+          return;
+        }
+        barcodeSeen.set(b, i);
+      }
+    }
+
+    // 2. Check for conflicts with existing database products
+    for (let i = 0; i < bulkAddRows.length; i++) {
+      const row = bulkAddRows[i];
+      if (row.sku?.trim()) {
+        const conflict = await checkProductCodeConflict(row.sku.trim());
+        if (conflict.exists && conflict.conflictingProduct) {
+          alert(`تنبيه في الصف رقم ${i + 1}: الكود (SKU) "${row.sku}" مستخدم بالفعل للمنتج "${conflict.conflictingProduct.name}". يرجى تعديل الكود لتجنب تكرار الأكواد.`);
+          return;
+        }
+      }
+      if (row.barcode?.trim()) {
+        const bConflict = await checkProductCodeConflict(row.barcode.trim());
+        if (bConflict.exists && bConflict.conflictingProduct) {
+          alert(`تنبيه في الصف رقم ${i + 1}: الباركود "${row.barcode}" مستخدم بالفعل للمنتج "${bConflict.conflictingProduct.name}". يرجى تعديله.`);
+          return;
+        }
+      }
+    }
+
     for (const row of bulkAddRows) {
       await createProduct({
         name: row.name,
-        sku: row.sku || `HK-${Math.floor(100 + Math.random() * 900)}`,
-        barcode: row.barcode || `622100${Math.floor(100000 + Math.random() * 900000)}`,
+        sku: row.sku || '',
+        barcode: row.barcode || '',
         category: row.category,
         cost: Number(row.cost),
         priceCash: Number(row.priceCash),
@@ -299,30 +519,40 @@ export const CatalogView: React.FC = () => {
         stock: Number(row.stock),
         image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
         description: 'صنف مضاف من خلال الإضافة المتعددة',
-        barcodes: row.barcode ? [row.barcode] : []
+        barcodes: row.barcode ? [row.barcode] : [],
       });
     }
 
     setIsBulkAddModalOpen(false);
     fetchCatalogProducts();
+    loadDuplicates();
   };
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = async () => {
     setEditingProduct(null);
-    setFormData({
-      name: '',
-      sku: `HK-${Math.floor(100 + Math.random() * 900)}`,
-      barcode: `622100${Math.floor(100000 + Math.random() * 900000)}`,
-      category: lastChosenCategory,
-      priceCash: 0,
-      priceInstallment: 0,
-      priceWholesale: 0,
-      cost: 0,
-      stock: 10,
-      image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
-      description: '',
-      barcodes: [],
-    });
+    setIsGeneratingCode(true);
+    try {
+      const nextCode = await getNextUniqueProductCode(0);
+      setFormData({
+        name: '',
+        sku: nextCode.sku,
+        barcode: nextCode.barcode,
+        category: lastChosenCategory,
+        priceCash: 0,
+        priceInstallment: 0,
+        priceWholesale: 0,
+        cost: 0,
+        stock: 10,
+        image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
+        description: '',
+        barcodes: nextCode.barcode ? [nextCode.barcode] : [],
+      });
+      setSkuConflict(null);
+      setBarcodeConflict(null);
+    } finally {
+      setIsGeneratingCode(false);
+    }
+    setExtraBarcodeEntry('');
     setIsModalOpen(true);
   };
 
@@ -340,14 +570,35 @@ export const CatalogView: React.FC = () => {
       stock: p.stock,
       image: p.image,
       description: p.description || '',
-      barcodes: p.barcodes || [],
+      barcodes: p.barcodes || (p.barcode ? [p.barcode] : []),
     });
+    setSkuConflict(null);
+    setBarcodeConflict(null);
+    setExtraBarcodeEntry('');
     setIsModalOpen(true);
   };
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
+
+    // Check SKU conflict before saving
+    if (formData.sku?.trim()) {
+      const skuCheck = await checkProductCodeConflict(formData.sku.trim(), editingProduct?.id);
+      if (skuCheck.exists && skuCheck.conflictingProduct) {
+        alert(`لا يمكن حفظ الصنف: كود المنتج (SKU) "${formData.sku}" مستخدم بالفعل للصنف "${skuCheck.conflictingProduct.name}". يرجى اختيار كود فريد.`);
+        return;
+      }
+    }
+
+    // Check Barcode conflict before saving
+    if (formData.barcode?.trim()) {
+      const barcodeCheck = await checkProductCodeConflict(formData.barcode.trim(), editingProduct?.id);
+      if (barcodeCheck.exists && barcodeCheck.conflictingProduct) {
+        alert(`لا يمكن حفظ الصنف: الباركود "${formData.barcode}" مستخدم بالفعل للصنف "${barcodeCheck.conflictingProduct.name}". يرجى اختيار باركود فريد.`);
+        return;
+      }
+    }
 
     localStorage.setItem('last_chosen_category', formData.category);
 
@@ -374,6 +625,7 @@ export const CatalogView: React.FC = () => {
 
     setIsModalOpen(false);
     fetchCatalogProducts();
+    loadDuplicates();
   };
 
   const handleApplyBulkEdit = async () => {
@@ -428,12 +680,14 @@ export const CatalogView: React.FC = () => {
     setSelectedProductIds([]);
     setIsBulkModalOpen(false);
     fetchCatalogProducts();
+    loadDuplicates();
   };
 
   const handleDeleteProduct = async (p: Product) => {
     if (window.confirm(`هل أنت متأكد من حذف الصنف "${p.name}"؟ سيتم حذفه من قاعدة البيانات أيضاً.`)) {
       await deleteProductService(p.id);
       fetchCatalogProducts();
+      loadDuplicates();
     }
   };
 
@@ -442,6 +696,7 @@ export const CatalogView: React.FC = () => {
       await bulkDeleteProductsService(selectedProductIds);
       setSelectedProductIds([]);
       fetchCatalogProducts();
+      loadDuplicates();
     }
   };
 
@@ -450,6 +705,7 @@ export const CatalogView: React.FC = () => {
       await clearAllProductsService();
       setSelectedProductIds([]);
       fetchCatalogProducts();
+      loadDuplicates();
     }
   };
 
@@ -541,18 +797,35 @@ export const CatalogView: React.FC = () => {
 
             {canAdd && (
               <button
-                onClick={() => {
-                  setBulkAddRows([
-                    { name: '', sku: `HK-${Math.floor(100 + Math.random() * 900)}`, barcode: `622100${Math.floor(100000 + Math.random() * 900000)}`, category: lastChosenCategory, cost: 0, priceCash: 0, priceWholesale: 0, priceInstallment: 0, stock: 10 }
-                  ]);
-                  setIsBulkAddModalOpen(true);
-                }}
+                onClick={handleOpenBulkAdd}
                 className="py-2 px-3 bg-stone-950 hover:bg-stone-800 text-stone-200 border border-stone-800 rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 space-x-reverse transition-all"
               >
                 <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
                 <span>إضافة أصناف متعددة</span>
               </button>
             )}
+
+            {/* Filter Duplicate / Similar Codes Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleDuplicates}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 space-x-reverse border ${
+                filterDuplicatesOnly
+                  ? 'bg-rose-500/25 text-rose-300 border-rose-500/50 shadow-sm ring-1 ring-rose-500/30'
+                  : 'bg-stone-950 hover:bg-stone-800 text-stone-300 border-stone-800'
+              }`}
+              title="تصفية وعرض جميع الأصناف التي تشترك في نفس الكود أو الباركود عبر كامل الكتالوج"
+            >
+              <AlertTriangle className={`w-3.5 h-3.5 ${filterDuplicatesOnly ? 'text-rose-400 animate-pulse' : (duplicateGroups.length > 0 ? 'text-rose-400' : 'text-stone-500')}`} />
+              <span>الأكواد المتشابهة</span>
+              {isLoadingDuplicates ? (
+                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+              ) : duplicateGroups.length > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-200 border border-rose-500/40 text-[10px] font-mono font-bold">
+                  {duplicateGroups.length}
+                </span>
+              ) : null}
+            </button>
 
             {/* Sorting Select */}
             <div className="flex items-center space-x-1.5 space-x-reverse bg-stone-950 border border-stone-800 px-3 py-1.5 rounded-xl text-xs">
@@ -635,6 +908,49 @@ export const CatalogView: React.FC = () => {
         </div>
       </div>
 
+      {/* Active Duplicate Codes Filter Banner */}
+      {filterDuplicatesOnly && (
+        <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+          <div className="flex items-start sm:items-center space-x-3 space-x-reverse">
+            <div className="p-2.5 bg-rose-500/20 border border-rose-500/40 rounded-xl text-rose-400 shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-bold text-rose-200">
+                  عرض الأصناف ذات الأكواد أو الباركودات المتشابهة
+                </h3>
+                <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-xs px-2 py-0.5 rounded-full font-bold font-mono">
+                  {duplicateGroups.length} مجموعة تشابه ({duplicateProductsList.length} صنف مكرر)
+                </span>
+              </div>
+              <p className="text-xs text-rose-300/80 mt-1 leading-relaxed">
+                يتم عرض الأصناف التي تشترك في نفس كود المنتج (SKU) أو الباركود معاً لتسهيل مراجعتها وتوليد كود فريد لمنع التعارض في نقاط البيع والفواتير.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={loadDuplicates}
+              disabled={isLoadingDuplicates}
+              className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              title="إعادة فحص قاعدة البيانات للأكواد المتشابهة"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDuplicates ? 'animate-spin text-amber-400' : ''}`} />
+              <span>تحديث الفحص</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterDuplicatesOnly(false)}
+              className="px-3 py-1.5 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-800 rounded-xl text-xs font-bold transition-colors"
+            >
+              عرض جميع الأصناف
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Loading & Error States */}
       {isLoading ? (
         <div className="bg-stone-900 border border-stone-800 rounded-2xl py-16 text-center space-y-3">
@@ -684,48 +1000,104 @@ export const CatalogView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-800/80 text-xs text-stone-200">
-                {catalogProducts.map((p, idx) => {
-                  const isLow = p.stock <= 5;
-                  const isSelected = selectedProductIds.includes(p.id);
-                  return (
-                    <tr 
-                      key={p.id ? `prod_row_${p.id}_${idx}` : `prod_row_${idx}`} 
-                      className={`hover:bg-stone-950/50 transition-colors ${isSelected ? 'bg-amber-600/5 hover:bg-amber-650/10' : ''}`}
-                    >
-                      <td className="py-1.5 px-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedProductIds([...selectedProductIds, p.id]);
-                            } else {
-                              setSelectedProductIds(selectedProductIds.filter((id) => id !== p.id));
-                            }
-                          }}
-                          className="rounded bg-stone-950 border-stone-800 text-amber-600 focus:ring-0 cursor-pointer"
-                        />
-                      </td>
-                      <td className="py-1.5 px-3">
-                        <div className="flex items-center space-x-2.5 space-x-reverse">
-                          <img
-                            src={p.image}
-                            alt={p.name}
-                            className="w-8 h-8 rounded-lg object-cover bg-stone-950 border border-stone-800 shrink-0"
+                {isLoadingDuplicates && filterDuplicatesOnly ? (
+                  <tr>
+                    <td colSpan={9} className="py-16 text-center text-stone-400 font-bold text-xs space-y-2">
+                      <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
+                      <p className="text-sm font-bold text-stone-300">جاري فحص كامل أصناف قاعدة البيانات لتحديد الأكواد المتشابهة...</p>
+                    </td>
+                  </tr>
+                ) : displayedProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-stone-400 font-bold text-xs">
+                      {filterDuplicatesOnly
+                        ? 'رائع! لا توجد أصناف بأكواد أو باركودات متشابهة في قاعدة البيانات.'
+                        : 'لا توجد أصناف تطابق معايير البحث.'}
+                    </td>
+                  </tr>
+                ) : (
+                  displayedProducts.map((p, idx) => {
+                    const isLow = p.stock <= 5;
+                    const isSelected = selectedProductIds.includes(p.id);
+                    const globalDup = duplicateMap.get(String(p.id));
+                    const localDup = !duplicatesLoaded ? duplicateCodesMap.get(p.id) : null;
+                    const dupInfo = globalDup || (localDup ? { code: localDup.code, type: localDup.type, conflictingProducts: [localDup.duplicateName], groupIndex: 0 } : null);
+
+                    return (
+                      <tr 
+                        key={p.id ? `prod_row_${p.id}_${idx}` : `prod_row_${idx}`} 
+                        className={`hover:bg-stone-950/50 transition-colors ${
+                          dupInfo ? 'bg-rose-950/10 hover:bg-rose-950/20' : ''
+                        } ${isSelected ? 'bg-amber-600/5 hover:bg-amber-650/10' : ''}`}
+                      >
+                        <td className="py-1.5 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedProductIds([...selectedProductIds, p.id]);
+                              } else {
+                                setSelectedProductIds(selectedProductIds.filter((id) => id !== p.id));
+                              }
+                            }}
+                            className="rounded bg-stone-950 border-stone-800 text-amber-600 focus:ring-0 cursor-pointer"
                           />
-                          <div className="min-w-0">
-                            <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
-                            <p className="text-[9px] text-stone-500 font-mono mt-0.5 flex flex-wrap items-center gap-1">
-                              <span>كود: {p.sku} | باركود: {p.barcode}</span>
-                              {p.barcodes && p.barcodes.length > 0 && (
-                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] font-sans font-extrabold px-1 rounded-sm" title={p.barcodes.join(' - ')}>
-                                  +{p.barcodes.length} أكواد
-                                </span>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <div className="flex items-center space-x-2.5 space-x-reverse">
+                            <img
+                              src={p.image}
+                              alt={p.name}
+                              className="w-8 h-8 rounded-lg object-cover bg-stone-950 border border-stone-800 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
+                              <p className="text-[9px] text-stone-500 font-mono mt-0.5 flex flex-wrap items-center gap-1.5">
+                                {dupInfo && dupInfo.type === 'sku' ? (
+                                  <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
+                                    كود: {p.sku} (مكرر)
+                                  </span>
+                                ) : (
+                                  <span>كود: {p.sku}</span>
+                                )}
+                                <span className="text-stone-700">|</span>
+                                {dupInfo && dupInfo.type === 'barcode' ? (
+                                  <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
+                                    باركود: {p.barcode} (مكرر)
+                                  </span>
+                                ) : (
+                                  <span>باركود: {p.barcode}</span>
+                                )}
+                                {p.barcodes && p.barcodes.length > 0 && (
+                                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] font-sans font-extrabold px-1 rounded-sm" title={p.barcodes.join(' - ')}>
+                                    +{p.barcodes.length} أكواد
+                                  </span>
+                                )}
+                              </p>
+                              {dupInfo && (
+                                <div
+                                  className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-sans font-bold px-2 py-0.5 rounded flex flex-wrap items-center gap-1 mt-1"
+                                  title={
+                                    dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0
+                                      ? `مشترك في ${dupInfo.type === 'sku' ? 'كود الصنف' : 'الباركود'} (${dupInfo.code}) مع:\n${dupInfo.conflictingProducts.join('\n')}`
+                                      : `كود مكرر (${dupInfo.code})`
+                                  }
+                                >
+                                  <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-400" />
+                                  <span>
+                                    {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-white underline">{dupInfo.code}</strong>
+                                  </span>
+                                  {dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0 && (
+                                    <span className="text-rose-300/80 mr-1 truncate max-w-[280px]">
+                                      مع: {dupInfo.conflictingProducts.join('، ')}
+                                    </span>
+                                  )}
+                                </div>
                               )}
-                            </p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
                       <td className="py-1.5 px-3 whitespace-nowrap">
                         <span className="text-[9px] bg-stone-950 text-stone-300 border border-stone-800 px-1.5 py-0.2 rounded font-bold">
                           {p.category}
@@ -765,10 +1137,15 @@ export const CatalogView: React.FC = () => {
                           {canEdit && (
                             <button
                               onClick={() => handleOpenEdit(p)}
-                              className="px-2 py-0.5 bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border border-stone-800 rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse"
+                              className={`px-2 py-0.5 border rounded-lg text-[10px] font-bold transition-colors inline-flex items-center space-x-1 space-x-reverse ${
+                                dupInfo
+                                  ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40'
+                                  : 'bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-stone-100 border-stone-800'
+                              }`}
+                              title={dupInfo ? 'تعديل وتوليد كود فريد جديد للصنف' : 'تعديل الصنف'}
                             >
-                              <Edit className="w-3 h-3" />
-                              <span>تعديل</span>
+                              {dupInfo ? <Sparkles className="w-3 h-3 text-rose-400" /> : <Edit className="w-3 h-3" />}
+                              <span>{dupInfo ? 'تعديل الكود' : 'تعديل'}</span>
                             </button>
                           )}
                           {canDelete && (
@@ -785,45 +1162,52 @@ export const CatalogView: React.FC = () => {
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
-            {catalogProducts.length === 0 && (
-              <div className="py-12 text-center text-stone-400 space-y-2">
-                <Package className="w-10 h-10 mx-auto text-stone-600 stroke-1" />
-                <p className="text-sm font-bold text-stone-300">لا توجد أصناف معروضة حالياً</p>
-                <p className="text-xs text-stone-500">
-                  {totalCount === 0 
-                    ? 'قاعدة البيانات فارغة من الأصناف. يمكنك إضافة أصناف جديدة بالضغط على "إضافة صنف جديد" أو "إضافة أصناف متعددة".'
-                    : 'لا توجد نتائج تطابق البحث أو التصنيف المحدد.'}
-                </p>
-              </div>
-            )}
           </div>
         </div>
       ) : (
         /* Grid Layout Cards */
-        catalogProducts.length === 0 ? (
+        isLoadingDuplicates && filterDuplicatesOnly ? (
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl py-16 text-center space-y-3">
+            <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
+            <p className="text-sm font-bold text-stone-300">جاري فحص كامل أصناف قاعدة البيانات لتحديد الأكواد المتشابهة...</p>
+          </div>
+        ) : displayedProducts.length === 0 ? (
           <div className="bg-stone-900 border border-stone-800 rounded-2xl py-12 text-center text-stone-400 space-y-2">
             <Package className="w-10 h-10 mx-auto text-stone-600 stroke-1" />
-            <p className="text-sm font-bold text-stone-300">لا توجد أصناف معروضة حالياً</p>
+            <p className="text-sm font-bold text-stone-300">
+              {filterDuplicatesOnly
+                ? 'رائع! لا توجد أصناف بأكواد أو باركودات متشابهة في قاعدة البيانات.'
+                : 'لا توجد أصناف معروضة حالياً'}
+            </p>
             <p className="text-xs text-stone-500">
-              {totalCount === 0 
-                ? 'قاعدة البيانات فارغة من الأصناف. يمكنك إضافة أصناف جديدة بالضغط على "إضافة صنف جديد".'
-                : 'لا توجد نتائج تطابق البحث أو التصنيف المحدد.'}
+              {filterDuplicatesOnly
+                ? 'جميع الأكواد والباركودات المعروضة فريدة وغير مكررة عبر كامل الكتالوج.'
+                : totalCount === 0 
+                  ? 'قاعدة البيانات فارغة من الأصناف. يمكنك إضافة أصناف جديدة بالضغط على "إضافة صنف جديد".'
+                  : 'لا توجد نتائج تطابق البحث أو التصنيف المحدد.'}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-            {catalogProducts.map((p, idx) => {
+            {displayedProducts.map((p, idx) => {
               const isLow = p.stock <= 5;
               const isSelected = selectedProductIds.includes(p.id);
+              const globalDup = duplicateMap.get(String(p.id));
+              const localDup = !duplicatesLoaded ? duplicateCodesMap.get(p.id) : null;
+              const dupInfo = globalDup || (localDup ? { code: localDup.code, type: localDup.type, conflictingProducts: [localDup.duplicateName], groupIndex: 0 } : null);
 
               return (
                 <div
                   key={p.id ? `prod_card_${p.id}_${idx}` : `prod_card_${idx}`}
-                  className={`bg-stone-900 border hover:border-amber-500/40 rounded-xl p-2.5 shadow-sm flex flex-col justify-between space-y-2 transition-all ${
-                    isSelected ? 'border-amber-500/85 ring-1 ring-amber-500/30 bg-stone-900/90' : 'border-stone-800'
+                  className={`bg-stone-900 border rounded-xl p-2.5 shadow-sm flex flex-col justify-between space-y-2 transition-all ${
+                    dupInfo
+                      ? 'border-rose-500/40 bg-rose-950/10 hover:border-rose-500/60'
+                      : 'border-stone-800 hover:border-amber-500/40'
+                  } ${
+                    isSelected ? 'border-amber-500/85 ring-1 ring-amber-500/30 bg-stone-900/90' : ''
                   }`}
                 >
                   <div>
@@ -851,8 +1235,42 @@ export const CatalogView: React.FC = () => {
                         </span>
                         <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
                         <p className="text-[8px] text-stone-500 font-mono flex flex-wrap items-center gap-1">
-                          <span>كود: {p.sku} | باركود: {p.barcode}</span>
+                          {dupInfo && dupInfo.type === 'sku' ? (
+                            <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
+                              كود: {p.sku} (مكرر)
+                            </span>
+                          ) : (
+                            <span>كود: {p.sku}</span>
+                          )}
+                          <span className="text-stone-700">|</span>
+                          {dupInfo && dupInfo.type === 'barcode' ? (
+                            <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
+                              باركود: {p.barcode} (مكرر)
+                            </span>
+                          ) : (
+                            <span>باركود: {p.barcode}</span>
+                          )}
                         </p>
+                        {dupInfo && (
+                          <div
+                            className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[8px] font-sans font-bold px-1.5 py-0.5 rounded flex flex-wrap items-center gap-1 mt-1"
+                            title={
+                              dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0
+                                ? `مشترك في ${dupInfo.type === 'sku' ? 'كود الصنف' : 'الباركود'} (${dupInfo.code}) مع:\n${dupInfo.conflictingProducts.join('\n')}`
+                                : `كود مكرر (${dupInfo.code})`
+                            }
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-400" />
+                            <span>
+                              {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-white underline">{dupInfo.code}</strong>
+                            </span>
+                            {dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0 && (
+                              <span className="text-rose-300/80 truncate max-w-full">
+                                مع: {dupInfo.conflictingProducts.join('، ')}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -901,10 +1319,14 @@ export const CatalogView: React.FC = () => {
                       {canEdit && (
                         <button
                           onClick={() => handleOpenEdit(p)}
-                          className="p-1 bg-stone-950 hover:bg-stone-800 text-stone-300 border border-stone-800 rounded-lg text-[10px] transition-colors"
-                          title="تعديل الصنف"
+                          className={`p-1 border rounded-lg text-[10px] transition-colors ${
+                            dupInfo
+                              ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40'
+                              : 'bg-stone-950 hover:bg-stone-800 text-stone-300 border-stone-800'
+                          }`}
+                          title={dupInfo ? 'تعديل وتوليد كود فريد' : 'تعديل الصنف'}
                         >
-                          <Edit className="w-3 h-3" />
+                          {dupInfo ? <Sparkles className="w-3 h-3 text-rose-400" /> : <Edit className="w-3 h-3" />}
                         </button>
                       )}
                       {canDelete && (
@@ -929,60 +1351,72 @@ export const CatalogView: React.FC = () => {
       <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-300">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-bold text-stone-300">
-            عرض {totalCount === 0 ? 0 : (page - 1) * pageSize + 1} - {Math.min(page * pageSize, totalCount)} من إجمالي {totalCount} صنف
+            {filterDuplicatesOnly ? (
+              <span>
+                عرض <strong className="text-amber-400 font-mono">{displayedProducts.length}</strong> صنف بأكواد متشابهة (موزعة على <strong className="text-rose-400 font-mono">{duplicateGroups.length}</strong> مجموعة)
+              </span>
+            ) : (
+              <span>
+                عرض {totalCount === 0 ? 0 : (page - 1) * pageSize + 1} - {Math.min(page * pageSize, totalCount)} من إجمالي {totalCount} صنف
+              </span>
+            )}
           </span>
-          <div className="flex items-center space-x-1.5 space-x-reverse bg-stone-950 px-2.5 py-1 rounded-xl border border-stone-800">
-            <span className="text-[11px] text-stone-400 font-medium">عدد العناصر بالصفحة:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="bg-stone-900 text-amber-400 font-bold text-xs border border-stone-800 rounded px-2 py-0.5 focus:outline-none"
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
+          {!filterDuplicatesOnly && (
+            <div className="flex items-center space-x-1.5 space-x-reverse bg-stone-950 px-2.5 py-1 rounded-xl border border-stone-800">
+              <span className="text-[11px] text-stone-400 font-medium">عدد العناصر بالصفحة:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="bg-stone-900 text-amber-400 font-bold text-xs border border-stone-800 rounded px-2 py-0.5 focus:outline-none"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Pagination Controls */}
-        <div className="flex items-center space-x-1 space-x-reverse">
-          <button
-            onClick={() => setPage(1)}
-            disabled={page <= 1 || isLoading}
-            className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
-            title="الصفحة الأولى"
-          >
-            <ChevronsRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1 || isLoading}
-            className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
-          >
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span>السابقة</span>
-          </button>
-          <span className="px-3 py-1 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-lg font-extrabold font-mono">
-            صفحة {page} من {totalPages || 1}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages || isLoading}
-            className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
-          >
-            <span>التالية</span>
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setPage(totalPages)}
-            disabled={page >= totalPages || isLoading}
-            className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
-            title="الصفحة الأخيرة"
-          >
-            <ChevronsLeft className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        {!filterDuplicatesOnly && (
+          <div className="flex items-center space-x-1 space-x-reverse">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page <= 1 || isLoading}
+              className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+              title="الصفحة الأولى"
+            >
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || isLoading}
+              className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+              <span>السابقة</span>
+            </button>
+            <span className="px-3 py-1 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-lg font-extrabold font-mono">
+              صفحة {page} من {totalPages || 1}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || isLoading}
+              className="px-3 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+            >
+              <span>التالية</span>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages || isLoading}
+              className="px-2.5 py-1 bg-stone-950 hover:bg-stone-800 disabled:opacity-40 text-stone-300 rounded-lg font-bold border border-stone-800 transition-all flex items-center gap-1"
+              title="الصفحة الأخيرة"
+            >
+              <ChevronsLeft className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Add / Edit Product Single Modal */}
@@ -1018,23 +1452,57 @@ export const CatalogView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-stone-300 mb-1">كود المنتج (SKU)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-stone-300">كود المنتج (SKU)</label>
+                    <button
+                      type="button"
+                      onClick={handleGenerateUniqueCodes}
+                      disabled={isGeneratingCode}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 bg-stone-900 border border-stone-800 hover:border-amber-500/50 px-2 py-0.5 rounded-lg transition-colors"
+                      title="إنشاء كود SKU وباركود جديدين مميزين وغير مكررين"
+                    >
+                      <Sparkles className={`w-3 h-3 ${isGeneratingCode ? 'animate-spin' : ''}`} />
+                      <span>توليد كود تلقائي فريد</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={formData.sku}
                     onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500"
+                    className={`w-full bg-stone-950 border rounded-xl px-3 py-2 text-xs font-mono focus:outline-none ${
+                      skuConflict?.exists
+                        ? 'border-rose-500 text-rose-300 bg-rose-500/10 focus:border-rose-500'
+                        : 'border-stone-800 text-stone-100 focus:border-amber-500'
+                    }`}
                   />
+                  {skuConflict?.exists && (
+                    <p className="text-[10px] text-rose-400 font-bold mt-1.5 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 p-2 rounded-lg">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>⚠️ تنبيه: كود المنتج (SKU) مستخدم بالفعل للمنتج: "{skuConflict.name}"! يرجى توليد أو اختيار كود فريد.</span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-stone-300 mb-1">الباركود الرئيسي</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-stone-300">الباركود الرئيسي</label>
+                  </div>
                   <input
                     type="text"
                     value={formData.barcode}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500"
+                    className={`w-full bg-stone-950 border rounded-xl px-3 py-2 text-xs font-mono focus:outline-none ${
+                      barcodeConflict?.exists
+                        ? 'border-rose-500 text-rose-300 bg-rose-500/10 focus:border-rose-500'
+                        : 'border-stone-800 text-stone-100 focus:border-amber-500'
+                    }`}
                   />
+                  {barcodeConflict?.exists && (
+                    <p className="text-[10px] text-rose-400 font-bold mt-1.5 flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 p-2 rounded-lg">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>⚠️ تنبيه: هذا الباركود مستخدم بالفعل للمنتج: "{barcodeConflict.name}"!</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Additional Barcodes Section (Multi-Barcode Support) */}
@@ -1250,98 +1718,149 @@ export const CatalogView: React.FC = () => {
                   <thead className="bg-stone-950 text-[10px] text-stone-400 uppercase font-bold">
                     <tr>
                       <th className="py-2 px-2 text-center w-8">#</th>
-                      <th className="py-2 px-2 min-w-[160px]">اسم الصنف *</th>
-                      <th className="py-2 px-2 min-w-[120px]">القسم / التصنيف</th>
-                      <th className="py-2 px-2 w-24 text-center">التكلفة</th>
-                      <th className="py-2 px-2 w-24 text-center text-emerald-400">سعر الكاش</th>
-                      <th className="py-2 px-2 w-24 text-center text-amber-400">تقسيط</th>
-                      <th className="py-2 px-2 w-24 text-center text-indigo-400">جملة</th>
-                      <th className="py-2 px-2 w-20 text-center">المخزون</th>
+                      <th className="py-2 px-2 min-w-[150px]">اسم الصنف *</th>
+                      <th className="py-2 px-2 min-w-[120px]">كود الصنف (SKU)</th>
+                      <th className="py-2 px-2 min-w-[130px]">الباركود الرئيسي</th>
+                      <th className="py-2 px-2 min-w-[110px]">القسم / التصنيف</th>
+                      <th className="py-2 px-2 w-20 text-center">التكلفة</th>
+                      <th className="py-2 px-2 w-20 text-center text-emerald-400">كاش</th>
+                      <th className="py-2 px-2 w-20 text-center text-amber-400">تقسيط</th>
+                      <th className="py-2 px-2 w-20 text-center text-indigo-400">جملة</th>
+                      <th className="py-2 px-2 w-16 text-center">المخزون</th>
                       <th className="py-2 px-2 text-center w-10">حذف</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-800">
-                    {bulkAddRows.map((row, index) => (
-                      <tr key={index} className="hover:bg-stone-950/40">
-                        <td className="py-1.5 px-2 text-center font-mono text-[10px] text-stone-500">
-                          {index + 1}
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="text"
-                            placeholder="اسم الصنف..."
-                            value={row.name}
-                            onChange={(e) => handleBulkAddRowChange(index, 'name', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <select
-                            value={row.category}
-                            onChange={(e) => handleBulkAddRowChange(index, 'category', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs text-amber-400 font-bold focus:outline-none"
-                          >
-                            {categories.filter(c => c !== 'الكل').map((c, idx) => (
-                              <option key={`bulk_cat_${c}_${idx}`} value={c}>{c}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={row.cost}
-                            onChange={(e) => handleBulkAddRowChange(index, 'cost', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono text-stone-100 text-center focus:outline-none focus:border-amber-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={row.priceCash}
-                            onChange={(e) => handleBulkAddRowChange(index, 'priceCash', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-emerald-400 text-center focus:outline-none focus:border-emerald-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={row.priceInstallment}
-                            onChange={(e) => handleBulkAddRowChange(index, 'priceInstallment', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-400 text-center focus:outline-none focus:border-amber-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={row.priceWholesale}
-                            onChange={(e) => handleBulkAddRowChange(index, 'priceWholesale', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-indigo-400 text-center focus:outline-none focus:border-indigo-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={row.stock}
-                            onChange={(e) => handleBulkAddRowChange(index, 'stock', e.target.value)}
-                            className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono text-stone-100 text-center focus:outline-none focus:border-amber-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2 text-center">
-                          <button
-                            onClick={() => removeBulkAddRow(index)}
-                            disabled={bulkAddRows.length <= 1}
-                            className="p-1 text-stone-500 hover:text-rose-400 disabled:opacity-30 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {bulkAddRows.map((row, index) => {
+                      const isSkuDup = row.sku && bulkAddRows.some((r, i) => i !== index && r.sku?.trim() === row.sku?.trim());
+                      const isBarcodeDup = row.barcode && bulkAddRows.some((r, i) => i !== index && r.barcode?.trim() === row.barcode?.trim());
+
+                      return (
+                        <tr key={index} className="hover:bg-stone-950/40">
+                          <td className="py-1.5 px-2 text-center font-mono text-[10px] text-stone-500">
+                            {index + 1}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="text"
+                              placeholder="اسم الصنف..."
+                              value={row.name}
+                              onChange={(e) => handleBulkAddRowChange(index, 'name', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                placeholder="كود..."
+                                value={row.sku}
+                                onChange={(e) => handleBulkAddRowChange(index, 'sku', e.target.value)}
+                                className={`w-full bg-stone-950 border ${
+                                  isSkuDup
+                                    ? 'border-rose-500 text-rose-300 bg-rose-500/10'
+                                    : 'border-stone-800 text-stone-100'
+                                } rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-500`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => regenerateRowCode(index)}
+                                title="توليد كود تلقائي جديد فريد"
+                                className="p-1 hover:bg-stone-800 text-stone-400 hover:text-amber-400 rounded-md transition-colors"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {isSkuDup && (
+                              <span className="text-[8px] text-rose-400 font-bold block mt-0.5">⚠️ كود مكرر</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                placeholder="باركود..."
+                                value={row.barcode}
+                                onChange={(e) => handleBulkAddRowChange(index, 'barcode', e.target.value)}
+                                className={`w-full bg-stone-950 border ${
+                                  isBarcodeDup
+                                    ? 'border-rose-500 text-rose-300 bg-rose-500/10'
+                                    : 'border-stone-800 text-stone-100'
+                                } rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:border-amber-500`}
+                              />
+                            </div>
+                            {isBarcodeDup && (
+                              <span className="text-[8px] text-rose-400 font-bold block mt-0.5">⚠️ باركود مكرر</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <select
+                              value={row.category}
+                              onChange={(e) => handleBulkAddRowChange(index, 'category', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs text-amber-400 font-bold focus:outline-none"
+                            >
+                              {categories.filter(c => c !== 'الكل').map((c, idx) => (
+                                <option key={`bulk_cat_${c}_${idx}`} value={c}>{c}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.cost}
+                              onChange={(e) => handleBulkAddRowChange(index, 'cost', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono text-stone-100 text-center focus:outline-none focus:border-amber-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.priceCash}
+                              onChange={(e) => handleBulkAddRowChange(index, 'priceCash', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-emerald-400 text-center focus:outline-none focus:border-emerald-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.priceInstallment}
+                              onChange={(e) => handleBulkAddRowChange(index, 'priceInstallment', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-400 text-center focus:outline-none focus:border-amber-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.priceWholesale}
+                              onChange={(e) => handleBulkAddRowChange(index, 'priceWholesale', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-indigo-400 text-center focus:outline-none focus:border-indigo-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.stock}
+                              onChange={(e) => handleBulkAddRowChange(index, 'stock', e.target.value)}
+                              className="w-full bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-xs font-mono text-stone-100 text-center focus:outline-none focus:border-amber-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2 text-center">
+                            <button
+                              onClick={() => removeBulkAddRow(index)}
+                              disabled={bulkAddRows.length <= 1}
+                              className="p-1 text-stone-500 hover:text-rose-400 disabled:opacity-30 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1349,10 +1868,10 @@ export const CatalogView: React.FC = () => {
               <button
                 type="button"
                 onClick={addBulkAddRow}
-                className="w-full py-2 bg-stone-950 hover:bg-stone-800 border border-dashed border-stone-800 rounded-xl text-xs font-bold text-amber-500 flex items-center justify-center space-x-2 space-x-reverse transition-all"
+                className="w-full py-2.5 bg-stone-950 hover:bg-stone-800 border border-dashed border-stone-700 hover:border-amber-500/60 rounded-xl text-xs font-bold text-amber-400 flex items-center justify-center space-x-2 space-x-reverse transition-all shadow-sm"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة صف جديد القائمة</span>
+                <span>إضافة صف جديد للقائمة (توليد كود تلقائي فريد ✨)</span>
               </button>
             </div>
 

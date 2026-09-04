@@ -29,6 +29,14 @@ export type Permission =
   | 'manage_suppliers'       // حسابات ومستحقات الموردين
   | 'manage_associates';     // إدارة الموظفين والصلاحيات وتراخيص الحسابات
 
+export type InvoiceDaysAccess =
+  | 'today'        // فواتير اليوم الحالي فقط
+  | 'last_2_days'  // فواتير اليوم والأمس (آخر يومين)
+  | 'last_7_days'  // آخر 7 أيام (أسبوع)
+  | 'last_30_days' // آخر 30 يوماً (شهر)
+  | 'custom'       // عدد أيام مخصص
+  | 'all';         // كافة الأيام (كل الفواتير التاريخية بدون قيود)
+
 export interface Associate {
   id: string;
   name: string;
@@ -37,6 +45,8 @@ export interface Associate {
   pin: string;
   role: Role;
   permissions?: Permission[];
+  invoiceDaysAccess?: InvoiceDaysAccess; // صلاحية الأيام المسموح للمستخدم برؤية فواتيرها
+  invoiceCustomDaysLimit?: number;       // عدد الأيام المسموح بها في حال اختيار مخصص
   avatar: string;
   email: string;
   phone: string;

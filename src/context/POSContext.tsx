@@ -487,7 +487,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (navigator.onLine) {
         triggerBackgroundSync();
       }
-    }, 60000); // 60s background cycle
+    }, 600000); // 10 minutes background cycle for delta sync (only fetches new/updated records)
 
     return () => {
       window.removeEventListener('online', handleOnline);

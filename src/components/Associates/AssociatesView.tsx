@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { Associate, Permission } from '../../types';
+import { Associate, Permission, InvoiceDaysAccess } from '../../types';
 import {
   Users,
   UserPlus,
@@ -24,6 +24,7 @@ import {
   ShoppingBag,
   Receipt,
   Layers,
+  Calendar,
 } from 'lucide-react';
 
 export interface PermissionGroup {
@@ -281,6 +282,8 @@ export const AssociatesView: React.FC = () => {
     pin: string;
     role: Associate['role'];
     permissions: Permission[];
+    invoiceDaysAccess: InvoiceDaysAccess;
+    invoiceCustomDaysLimit: number;
     email: string;
     phone: string;
     commissionRate: number;
@@ -294,6 +297,8 @@ export const AssociatesView: React.FC = () => {
     pin: '',
     role: 'مسؤول مبيعات',
     permissions: ['create_invoice', 'apply_discount'],
+    invoiceDaysAccess: 'today',
+    invoiceCustomDaysLimit: 3,
     email: '',
     phone: '',
     commissionRate: 5, // %
@@ -312,6 +317,8 @@ export const AssociatesView: React.FC = () => {
       pin: generatedPin,
       role: 'مسؤول مبيعات',
       permissions: ['create_invoice', 'apply_discount'],
+      invoiceDaysAccess: 'today',
+      invoiceCustomDaysLimit: 3,
       email: '',
       phone: '',
       commissionRate: 5,
@@ -332,6 +339,8 @@ export const AssociatesView: React.FC = () => {
       pin: assoc.pin,
       role: assoc.role,
       permissions: assoc.permissions || ['create_invoice', 'apply_discount'],
+      invoiceDaysAccess: assoc.invoiceDaysAccess || (assoc.role === 'مدير الفرع' ? 'all' : 'today'),
+      invoiceCustomDaysLimit: assoc.invoiceCustomDaysLimit || 3,
       email: assoc.email,
       phone: assoc.phone,
       commissionRate: assoc.commissionRate * 100,
@@ -369,6 +378,8 @@ export const AssociatesView: React.FC = () => {
         role: formData.role,
         pin: formData.pin,
         permissions: formData.permissions,
+        invoiceDaysAccess: formData.invoiceDaysAccess,
+        invoiceCustomDaysLimit: formData.invoiceCustomDaysLimit,
         email: formData.email,
         phone: formData.phone,
         commissionRate: formData.commissionRate / 100,
@@ -384,6 +395,8 @@ export const AssociatesView: React.FC = () => {
         role: formData.role,
         pin: formData.pin,
         permissions: formData.permissions,
+        invoiceDaysAccess: formData.invoiceDaysAccess,
+        invoiceCustomDaysLimit: formData.invoiceCustomDaysLimit,
         email: formData.email,
         phone: formData.phone,
         commissionRate: formData.commissionRate / 100,
@@ -556,6 +569,20 @@ export const AssociatesView: React.FC = () => {
                         </span>
                         <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/60">
                           {assoc.pin || '—'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-stone-900/60">
+                        <span className="text-stone-400 font-semibold flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-amber-400" />
+                          أيام عرض الفواتير:
+                        </span>
+                        <span className="font-bold text-amber-400">
+                          {(!assoc.invoiceDaysAccess || assoc.invoiceDaysAccess === 'today') && 'اليوم فقط'}
+                          {assoc.invoiceDaysAccess === 'last_2_days' && 'اليوم وأمس'}
+                          {assoc.invoiceDaysAccess === 'last_7_days' && 'آخر 7 أيام'}
+                          {assoc.invoiceDaysAccess === 'last_30_days' && 'آخر 30 يوماً'}
+                          {assoc.invoiceDaysAccess === 'custom' && `آخر ${assoc.invoiceCustomDaysLimit || 1} أيام`}
+                          {assoc.invoiceDaysAccess === 'all' && 'كافة الأيام'}
                         </span>
                       </div>
                     </div>
@@ -850,6 +877,151 @@ export const AssociatesView: React.FC = () => {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* صلاحية الأيام المسموح بعرض فواتيرها للمستخدم */}
+              <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-amber-400" />
+                    <div>
+                      <h4 className="font-extrabold text-stone-100 text-xs">صلاحية نطاق أيام الفواتير المسموحة</h4>
+                      <p className="text-[10px] text-stone-400">تحديد أي الأيام التي ستظهر لهذا المستخدم الفواتير الخاصة بها في صفحة الفواتير</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-0.5 rounded-lg">
+                    {formData.invoiceDaysAccess === 'today' && 'اليوم فقط'}
+                    {formData.invoiceDaysAccess === 'last_2_days' && 'اليوم وأمس'}
+                    {formData.invoiceDaysAccess === 'last_7_days' && 'آخر 7 أيام'}
+                    {formData.invoiceDaysAccess === 'last_30_days' && 'آخر 30 يوماً'}
+                    {formData.invoiceDaysAccess === 'custom' && `آخر ${formData.invoiceCustomDaysLimit} أيام`}
+                    {formData.invoiceDaysAccess === 'all' && 'كافة الأيام (غير محدود)'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    formData.invoiceDaysAccess === 'today'
+                      ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                      : 'bg-stone-900/60 border-stone-800 text-stone-300 hover:border-stone-700'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="invoiceDaysAccess"
+                      checked={formData.invoiceDaysAccess === 'today'}
+                      onChange={() => setFormData({ ...formData, invoiceDaysAccess: 'today' })}
+                      className="mt-0.5 text-amber-500 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">📅 فواتير اليوم فقط (موصى به للكاشير)</span>
+                      <span className="text-[9.5px] text-stone-400 block mt-0.5">يقتصر استعراض الفواتير على اليوم الحالي فقط لمنع تصفح سجلات الأيام السابقة.</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    formData.invoiceDaysAccess === 'last_2_days'
+                      ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                      : 'bg-stone-900/60 border-stone-800 text-stone-300 hover:border-stone-700'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="invoiceDaysAccess"
+                      checked={formData.invoiceDaysAccess === 'last_2_days'}
+                      onChange={() => setFormData({ ...formData, invoiceDaysAccess: 'last_2_days' })}
+                      className="mt-0.5 text-amber-500 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">⏪ فواتير اليوم والأمس (آخر يومين)</span>
+                      <span className="text-[9.5px] text-stone-400 block mt-0.5">يتيح للمستخدم مراجعة تسليم الوردية السابقة واليومية معاً.</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    formData.invoiceDaysAccess === 'last_7_days'
+                      ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                      : 'bg-stone-900/60 border-stone-800 text-stone-300 hover:border-stone-700'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="invoiceDaysAccess"
+                      checked={formData.invoiceDaysAccess === 'last_7_days'}
+                      onChange={() => setFormData({ ...formData, invoiceDaysAccess: 'last_7_days' })}
+                      className="mt-0.5 text-amber-500 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">🗓️ آخر 7 أيام (أسبوع كامل)</span>
+                      <span className="text-[9.5px] text-stone-400 block mt-0.5">مناسب لمشرفي الأقسام لمتابعة حركة المبيعات الأسبوعية.</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    formData.invoiceDaysAccess === 'last_30_days'
+                      ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                      : 'bg-stone-900/60 border-stone-800 text-stone-300 hover:border-stone-700'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="invoiceDaysAccess"
+                      checked={formData.invoiceDaysAccess === 'last_30_days'}
+                      onChange={() => setFormData({ ...formData, invoiceDaysAccess: 'last_30_days' })}
+                      className="mt-0.5 text-amber-500 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">📊 آخر 30 يوماً (شهر كامل)</span>
+                      <span className="text-[9.5px] text-stone-400 block mt-0.5">عرض فواتير الشهر الحالي للمراجعة المحاسبية.</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    formData.invoiceDaysAccess === 'custom'
+                      ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                      : 'bg-stone-900/60 border-stone-800 text-stone-300 hover:border-stone-700'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="invoiceDaysAccess"
+                      checked={formData.invoiceDaysAccess === 'custom'}
+                      onChange={() => setFormData({ ...formData, invoiceDaysAccess: 'custom' })}
+                      className="mt-0.5 text-amber-500 focus:ring-0"
+                    />
+                    <div className="flex-1">
+                      <span className="font-bold text-xs block">🔢 تحديد عدد أيام مخصص</span>
+                      <span className="text-[9.5px] text-stone-400 block mt-0.5">تحديد عدد الأيام السابقة المسموح بظهورها بدقة.</span>
+                      {formData.invoiceDaysAccess === 'custom' && (
+                        <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-[11px] text-stone-300 font-bold">آخر:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={formData.invoiceCustomDaysLimit}
+                            onChange={(e) => setFormData({ ...formData, invoiceCustomDaysLimit: Math.max(1, parseInt(e.target.value) || 1) })}
+                            className="w-20 bg-stone-900 border border-amber-500/80 rounded-lg px-2.5 py-1 text-amber-300 font-mono font-bold text-center text-xs focus:outline-none"
+                          />
+                          <span className="text-[11px] text-stone-300 font-bold">يوم</span>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    formData.invoiceDaysAccess === 'all'
+                      ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                      : 'bg-stone-900/60 border-stone-800 text-stone-300 hover:border-stone-700'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="invoiceDaysAccess"
+                      checked={formData.invoiceDaysAccess === 'all'}
+                      onChange={() => setFormData({ ...formData, invoiceDaysAccess: 'all' })}
+                      className="mt-0.5 text-amber-500 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-bold text-xs block">🌐 كافة الأيام (غير محدود)</span>
+                      <span className="text-[9.5px] text-stone-400 block mt-0.5">صلاحية تامة لعرض كل الفواتير التاريخية دون قيود زمنية (للمدير والمشرفين).</span>
+                    </div>
+                  </label>
                 </div>
               </div>
 

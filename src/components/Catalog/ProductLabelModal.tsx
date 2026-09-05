@@ -589,7 +589,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                         Math.max(1, (productCounts[previewProduct.id] ?? 1) - 1)
                       )
                     }
-                    className="w-8 h-8 rounded-lg bg-stone-800 hover:bg-stone-700 text-white font-bold flex items-center justify-center text-sm"
+                    className="w-8 h-8 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-bold flex items-center justify-center text-sm"
                   >
                     -
                   </button>
@@ -611,7 +611,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                         (productCounts[previewProduct.id] ?? 1) + 1
                       )
                     }
-                    className="w-8 h-8 rounded-lg bg-stone-800 hover:bg-stone-700 text-white font-bold flex items-center justify-center text-sm"
+                    className="w-8 h-8 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-bold flex items-center justify-center text-sm"
                   >
                     +
                   </button>

@@ -729,7 +729,7 @@ export const AnalyticsView: React.FC = () => {
                 <select
                   value={revDateFilter}
                   onChange={(e) => setRevDateFilter(e.target.value as any)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                 >
                   <option value="today">اليوم الحالي</option>
                   <option value="yesterday">الأمس (24 ساعة مضت)</option>
@@ -745,7 +745,7 @@ export const AnalyticsView: React.FC = () => {
                 <select
                   value={revEmployeeFilter}
                   onChange={(e) => setRevEmployeeFilter(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                 >
                   <option value="all">جميع الموظفين والمبيعات</option>
                   {associates.map((assoc) => (
@@ -762,7 +762,7 @@ export const AnalyticsView: React.FC = () => {
                 <select
                   value={revTypeFilter}
                   onChange={(e) => setRevTypeFilter(e.target.value as any)}
-                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                  className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                 >
                   <option value="all">الكل (الفواتير والمديونيات)</option>
                   <option value="cash">المبيعات النقدية فقط (كاش)</option>
@@ -781,7 +781,7 @@ export const AnalyticsView: React.FC = () => {
                     value={revSearchCustomer}
                     onChange={(e) => setRevSearchCustomer(e.target.value)}
                     placeholder="ابحث باسم العميل..."
-                    className="w-full bg-stone-950 border border-stone-800 rounded-xl pl-3 pr-9 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl pl-3 pr-9 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold placeholder-stone-500"
                   />
                   <Search className="w-4 h-4 text-stone-500 absolute top-2.5 right-3" />
                 </div>
@@ -798,7 +798,7 @@ export const AnalyticsView: React.FC = () => {
                     type="date"
                     value={revStartDate}
                     onChange={(e) => setRevStartDate(e.target.value)}
-                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -807,7 +807,7 @@ export const AnalyticsView: React.FC = () => {
                     type="date"
                     value={revEndDate}
                     onChange={(e) => setRevEndDate(e.target.value)}
-                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                   />
                 </div>
               </div>
@@ -844,7 +844,7 @@ export const AnalyticsView: React.FC = () => {
                 <span className="text-xs text-indigo-400 font-bold">التحصيل الإلكتروني (بطاقة/فيزا)</span>
                 <span className="p-1 rounded-lg bg-stone-950 text-indigo-500"><ArrowUpCircle className="w-3.5 h-3.5" /></span>
               </div>
-              <span className="text-2xl font-mono font-extrabold text-white block">
+              <span className="text-2xl font-mono font-extrabold text-stone-100 block">
                 {totalFilteredCardInflow.toLocaleString()} ج.م
               </span>
               <span className="text-[10px] text-stone-500">حوالات الخزينة البنكية</span>
@@ -934,7 +934,7 @@ export const AnalyticsView: React.FC = () => {
                                     : (tx.paymentMethod === 'تقسيط شهري' ? 'تقسيط 📅' : 'بطاقة 💳'))}
                             </span>
                           </td>
-                          <td className="p-3 font-mono font-extrabold text-white text-sm">
+                          <td className="p-3 font-mono font-extrabold text-stone-100 text-sm">
                             {actualInflowAmount.toLocaleString()} ج.م
                           </td>
                           <td className="p-3 text-center">
@@ -983,7 +983,7 @@ export const AnalyticsView: React.FC = () => {
                   <select
                     value={shiftCloseEmployeeId}
                     onChange={(e) => setShiftCloseEmployeeId(e.target.value)}
-                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                   >
                     <option value="all_associates">جميع الموظفين (تقفيل وردية مجمعة للمحل)</option>
                     {associates.map((assoc) => (
@@ -1000,7 +1000,7 @@ export const AnalyticsView: React.FC = () => {
                     type="datetime-local"
                     value={shiftStartTime}
                     onChange={(e) => setShiftStartTime(e.target.value)}
-                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                   />
                 </div>
 
@@ -1010,7 +1010,7 @@ export const AnalyticsView: React.FC = () => {
                     type="datetime-local"
                     value={shiftEndTime}
                     onChange={(e) => setShiftEndTime(e.target.value)}
-                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                    className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
                   />
                 </div>
 
@@ -1146,7 +1146,7 @@ export const AnalyticsView: React.FC = () => {
                     value={shiftNotes}
                     onChange={(e) => setShiftNotes(e.target.value)}
                     placeholder="ملاحظات حول عهدة الدرج، الفئات النقدية، أو عجز مسجل..."
-                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500 placeholder-stone-500"
                   />
                 </div>
               </div>

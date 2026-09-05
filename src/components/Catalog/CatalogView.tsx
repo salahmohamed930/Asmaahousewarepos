@@ -1097,7 +1097,7 @@ export const CatalogView: React.FC = () => {
                                 >
                                   <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-400" />
                                   <span>
-                                    {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-white underline">{dupInfo.code}</strong>
+                                    {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-stone-100 underline">{dupInfo.code}</strong>
                                   </span>
                                   {dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0 && (
                                     <span className="text-rose-300/80 mr-1 truncate max-w-[280px]">
@@ -1273,7 +1273,7 @@ export const CatalogView: React.FC = () => {
                           >
                             <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-400" />
                             <span>
-                              {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-white underline">{dupInfo.code}</strong>
+                              {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-stone-100 underline">{dupInfo.code}</strong>
                             </span>
                             {dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0 && (
                               <span className="text-rose-300/80 truncate max-w-full">

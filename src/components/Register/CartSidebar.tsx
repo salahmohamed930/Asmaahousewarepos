@@ -305,7 +305,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         placeholder="اسم العميل الكامل"
                         value={newCustName}
                         onChange={(e) => setNewCustName(e.target.value)}
-                        className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500"
+                        className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-stone-100 focus:outline-none focus:border-amber-500 placeholder-stone-500"
                         required
                       />
                       <input
@@ -313,7 +313,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         placeholder="رقم التليفون"
                         value={newCustPhone}
                         onChange={(e) => setNewCustPhone(e.target.value)}
-                        className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                        className="bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs text-stone-100 font-mono focus:outline-none focus:border-amber-500 placeholder-stone-500"
                         required
                       />
                     </div>
@@ -575,7 +575,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
               <span className="font-mono text-stone-200">{(taxTotal || 0).toLocaleString()} ج.م</span>
             </div>
 
-            <div className="flex justify-between text-base font-extrabold text-white pt-1.5 border-t border-stone-800">
+            <div className="flex justify-between text-base font-extrabold text-stone-100 pt-1.5 border-t border-stone-800">
               <span>{cart.some((item) => item.quantity < 0) ? 'إجمالي قيمة المرتجع المسترد' : (discountTotal > 0 ? 'الإجمالي بعد الخصم' : 'إجمالي الفاتورة')}</span>
               <span className="font-mono text-amber-400">{(grandTotal || 0).toLocaleString()} ج.م</span>
             </div>

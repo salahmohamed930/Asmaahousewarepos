@@ -99,15 +99,40 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
     }
   };
 
-  const getPaymentTypeName = (method: string): string => {
-    if (method === 'cash' || method === 'كاش' || method === 'نقداً (كاش)') return 'كاش';
-    if (method === 'installment' || method === 'تقسيط شهري' || method === 'تقسيط') return 'تقسيط';
-    if (method === 'آجل / حساب جملة' || method === 'آجل' || method === 'credit') return 'آجل';
-    if (method === 'فيزا / كارت') return 'فيزا / كارت';
-    if (method === 'محفظة إلكترونية') return 'محفظة إلكترونية';
-    if (method === 'دفع متعدد') return 'دفع متعدد';
+  const getInvoiceTypeLabel = (tx: Transaction): string => {
+    if (!tx) return 'كاش';
+
+    // 1. Check explicit payment method
+    const method = String(tx.paymentMethod || '').trim();
+    if (method === 'installment' || method === 'تقسيط شهري' || method === 'تقسيط') {
+      return 'تقسيط';
+    }
+    if (method === 'wholesale' || method === 'جملة' || method === 'آجل / حساب جملة') {
+      return 'جملة';
+    }
+
+    // 2. Check item price tiers if present
+    const items = tx.items || [];
+    if (items.length > 0) {
+      const hasInstallment = items.some(
+        (i) => i.priceTier === 'installment' || (i as any).selectedPriceTier === 'installment'
+      );
+      if (hasInstallment) return 'تقسيط';
+
+      const hasWholesale = items.some(
+        (i) => i.priceTier === 'wholesale' || (i as any).selectedPriceTier === 'wholesale'
+      );
+      if (hasWholesale) return 'جملة';
+    }
+
+    // 3. Fallback check for other method names
+    if (method === 'آجل' || method === 'credit') return 'جملة';
+    if (method === 'فيزا / كارت') return 'كاش (فيزا)';
+    if (method === 'محفظة إلكترونية') return 'كاش (محفظة)';
+    if (method === 'دفع متعدد') return 'كاش (متعدد)';
     if (method === 'نقاط ولاء') return 'نقاط ولاء';
-    return method || 'كاش';
+
+    return 'كاش';
   };
 
   const handlePrint = async () => {
@@ -344,7 +369,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
               </div>
               <div>
                 <span className="font-extrabold">نوع الفاتوره : </span>
-                <span className="font-black text-black">{getPaymentTypeName(transaction.paymentMethod)}</span>
+                <span className="font-black text-black">{getInvoiceTypeLabel(transaction)}</span>
               </div>
               <div>
                 <span className="font-extrabold">حالة الفاتوره : </span>

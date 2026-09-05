@@ -166,8 +166,8 @@ export const QuickPinModal: React.FC<QuickPinModalProps> = ({ isOpen, onClose })
                 onClick={() => selectAssociateDirect(a.pin)}
                 className={`flex items-center space-x-2.5 space-x-reverse p-2 rounded-2xl border text-right transition-all group ${
                   currentAssociate?.id === a.id
-                    ? 'bg-amber-950/60 border-amber-800 text-white'
-                    : 'bg-stone-950 hover:bg-stone-800/80 border-stone-800 text-stone-300'
+                    ? 'bg-amber-600 border-amber-500 text-white shadow-md'
+                    : 'bg-stone-950 hover:bg-stone-850 border-stone-800 text-stone-300'
                 }`}
               >
                 <img
@@ -176,8 +176,8 @@ export const QuickPinModal: React.FC<QuickPinModalProps> = ({ isOpen, onClose })
                   className="w-8 h-8 rounded-xl object-cover ring-1 ring-stone-700 group-hover:ring-amber-500 shrink-0"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-stone-200 truncate">{a.name}</p>
-                  <p className="text-[10px] text-amber-400 font-mono font-extrabold">
+                  <p className={`text-xs font-bold truncate ${currentAssociate?.id === a.id ? 'text-white' : 'text-stone-200'}`}>{a.name}</p>
+                  <p className={`text-[10px] font-mono font-extrabold ${currentAssociate?.id === a.id ? 'text-amber-100' : 'text-amber-400'}`}>
                     كود: {a.pin}
                   </p>
                 </div>

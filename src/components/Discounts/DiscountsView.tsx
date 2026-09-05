@@ -111,7 +111,7 @@ export const DiscountsView: React.FC = () => {
       {/* Header section with negative space and elegant typography */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-stone-800">
         <div>
-          <h1 className="text-2xl font-black text-white flex items-center gap-2">
+          <h1 className="text-2xl font-black text-stone-100 flex items-center gap-2">
             <Percent className="w-6 h-6 text-amber-500" />
             <span>قسم إدارة الخصومات والعروض</span>
           </h1>
@@ -126,7 +126,7 @@ export const DiscountsView: React.FC = () => {
         {/* Right side: Apply a discount form */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-xl">
-            <h2 className="text-base font-extrabold text-white mb-5 flex items-center gap-2">
+            <h2 className="text-base font-extrabold text-stone-100 mb-5 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
               <span>تطبيق خصم جديد على صنف</span>
             </h2>
@@ -193,9 +193,9 @@ export const DiscountsView: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-bold text-stone-100 block truncate">{selectedProduct.name}</span>
                     <div className="flex space-x-2 space-x-reverse mt-1 text-[10px] text-stone-400">
-                      <span>سعر الكاش: <strong className="text-white">{selectedProduct.priceCash} ج.م</strong></span>
+                      <span>سعر الكاش: <strong className="text-stone-100">{selectedProduct.priceCash} ج.م</strong></span>
                       <span>•</span>
-                      <span>سعر الجملة: <strong className="text-white">{selectedProduct.priceWholesale} ج.م</strong></span>
+                      <span>سعر الجملة: <strong className="text-stone-100">{selectedProduct.priceWholesale} ج.م</strong></span>
                     </div>
                   </div>
                 </div>
@@ -325,7 +325,7 @@ export const DiscountsView: React.FC = () => {
         {/* Left side: Active discounts list */}
         <div className="lg:col-span-7">
           <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-xl min-h-[450px] flex flex-col">
-            <h2 className="text-base font-extrabold text-white mb-5 flex items-center gap-2">
+            <h2 className="text-base font-extrabold text-stone-100 mb-5 flex items-center gap-2">
               <Package className="w-4 h-4 text-stone-400" />
               <span>الأصناف النشطة المطبق عليها خصم حالياً</span>
               <span className="text-stone-500 font-mono text-xs">({discounts.length})</span>
@@ -403,7 +403,7 @@ export const DiscountsView: React.FC = () => {
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 text-center font-mono font-black text-white">
+                          <td className="py-3.5 text-center font-mono font-black text-stone-100">
                             {discountedPrice.toLocaleString()} ج.م <span className="text-[10px] text-stone-500">({priceLabel})</span>
                           </td>
                           <td className="py-3.5 text-left pl-1">

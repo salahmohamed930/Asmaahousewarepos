@@ -1211,7 +1211,7 @@ export const RegisterView: React.FC = () => {
                           </td>
 
                           {/* الإجمالي */}
-                          <td className="py-1.5 px-3 text-center font-mono font-extrabold text-white whitespace-nowrap text-[11px]">
+                          <td className="py-1.5 px-3 text-center font-mono font-extrabold text-stone-100 whitespace-nowrap text-[11px]">
                             {(txTotal || 0).toLocaleString()} ج.م
                           </td>
 

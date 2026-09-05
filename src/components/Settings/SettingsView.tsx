@@ -550,7 +550,7 @@ export const SettingsView: React.FC = () => {
               {sidebarTabs.find((t) => t.id === activeTab)?.label}
             </span>
           </div>
-          <h1 className="text-lg sm:text-xl font-black text-white">
+          <h1 className="text-lg sm:text-xl font-black text-stone-100">
             {sidebarTabs.find((t) => t.id === activeTab)?.label}
           </h1>
         </div>

@@ -96,7 +96,7 @@ export const SplitAssociateModal: React.FC<SplitAssociateModalProps> = ({ isOpen
               />
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-bold text-white">{currentAssociate.name}</span>
+                  <span className="text-sm font-bold text-stone-100">{currentAssociate.name}</span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-medium">
                     Primary Register
                   </span>

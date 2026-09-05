@@ -1,23 +1,91 @@
 @import "tailwindcss";
 
 html.light {
-  --color-stone-50: #0c0a09;
-  --color-stone-100: #1c1917;
-  --color-stone-200: #292524;
-  --color-stone-300: #44403c;
+  /* Inverted Stone Neutrals for High Contrast Light Mode */
+  --color-stone-50: #050504;
+  --color-stone-100: #141210;
+  --color-stone-200: #24211e;
+  --color-stone-300: #3a3632;
   --color-stone-400: #57534e;
   --color-stone-500: #78716c;
   --color-stone-600: #a8a29e;
   --color-stone-700: #d6d3d1;
-  --color-stone-800: #e7e5e4;
-  --color-stone-850: #f0eeed;
-  --color-stone-900: #f5f5f4;
-  --color-stone-950: #fafaf9;
+  --color-stone-800: #e2dfdc;
+  --color-stone-850: #eceae8;
+  --color-stone-900: #f5f4f2;
+  --color-stone-950: #faf9f7;
+
+  /* Saturated Semantic Light Backgrounds (900/950 become soft, elegant tints) */
+  --color-amber-950: #fef3c7;
+  --color-amber-900: #fde68a;
+  --color-emerald-950: #d1fae5;
+  --color-emerald-900: #a7f3d0;
+  --color-rose-950: #ffe4e6;
+  --color-rose-900: #fecdd3;
+  --color-indigo-950: #e0e7ff;
+  --color-indigo-900: #c7d2fe;
+  --color-blue-950: #dbeafe;
+  --color-blue-900: #bfdbfe;
+
+  /* Saturated Semantic Text & Numbers (200, 300, 400 become dark & crisp for high contrast) */
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #c25e00;
+  --color-amber-500: #d97706;
+
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-emerald-500: #059669;
+
+  --color-rose-200: #9f1239;
+  --color-rose-300: #be123c;
+  --color-rose-400: #e11d48;
+  --color-rose-500: #e11d48;
+
+  --color-indigo-200: #312e81;
+  --color-indigo-300: #3730a3;
+  --color-indigo-400: #4338ca;
+  --color-indigo-500: #4f46e5;
+
+  --color-blue-200: #1e3a8a;
+  --color-blue-300: #1e40af;
+  --color-blue-400: #1d4ed8;
+  --color-blue-500: #2563eb;
+
+  --color-sky-400: #0284c7;
+}
+
+/* Ensure form inputs, selects, and textareas always have high-contrast dark text in light mode */
+html.light input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea {
+  color: #141210 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #78716c !important;
+}
+
+/* Prevent white text on light backgrounds in tables, stats, and numbers */
+html.light td.text-white,
+html.light th.text-white,
+html.light .font-mono.text-white:not([class*="bg-amber-"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-blue-"]):not([class*="bg-indigo-"]):not([class*="bg-red-"]):not([class*="bg-black"]) {
+  color: #141210 !important;
+}
+
+/* Safety rule: text-white on neutral container cards renders in crisp high-contrast dark tone unless inside an explicitly colored button */
+html.light .bg-stone-950 .text-white:not([class*="bg-"]):not(button *),
+html.light .bg-stone-900 .text-white:not([class*="bg-"]):not(button *),
+html.light .bg-stone-850 .text-white:not([class*="bg-"]):not(button *),
+html.light .bg-stone-800 .text-white:not([class*="bg-"]):not(button *) {
+  color: #141210 !important;
 }
 
 /* Let's make sure the light mode has elegant scrollbars and prints clean */
 html.light ::-webkit-scrollbar-track {
-  background: #fafaf9;
+  background: #faf9f7;
 }
 
 html.light ::-webkit-scrollbar-thumb {

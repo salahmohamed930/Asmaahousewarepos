@@ -402,7 +402,9 @@ export const CustomersView: React.FC = () => {
               }`}
             >
               <span>عليهم مديونيات</span>
-              <span className="bg-stone-900 px-1.5 py-0.2 rounded-md font-mono text-[10px]">{indebtedCustomers.length}</span>
+              <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] ${
+                debtFilter === 'indebted' ? 'bg-black/30 text-white' : 'bg-stone-900 text-stone-200 border border-stone-800'
+              }`}>{indebtedCustomers.length}</span>
             </button>
 
             <button
@@ -414,7 +416,9 @@ export const CustomersView: React.FC = () => {
               }`}
             >
               <span>أصحاب أقساط</span>
-              <span className="bg-stone-900 px-1.5 py-0.2 rounded-md font-mono text-[10px]">{installmentCustomersCount}</span>
+              <span className={`px-1.5 py-0.2 rounded-md font-mono text-[10px] ${
+                debtFilter === 'installments' ? 'bg-black/30 text-white' : 'bg-stone-900 text-stone-200 border border-stone-800'
+              }`}>{installmentCustomersCount}</span>
             </button>
 
             <button

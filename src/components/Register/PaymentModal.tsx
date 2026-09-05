@@ -366,7 +366,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             )}
 
             <div className="border-t border-stone-800 pt-2.5 mt-2 flex justify-between items-baseline">
-              <span className="text-sm font-bold text-white">{isReturn ? 'إجمالي قيمة المرتجع المسترد للعميل' : 'الإجمالي النهائي المطلوب'}</span>
+              <span className="text-sm font-bold text-stone-100">{isReturn ? 'إجمالي قيمة المرتجع المسترد للعميل' : 'الإجمالي النهائي المطلوب'}</span>
               <span className="text-2xl font-mono font-extrabold text-amber-400">
                 {(grandTotal || 0).toLocaleString()} ج.م
               </span>
@@ -661,7 +661,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 <div className="grid grid-cols-2 gap-3 text-xs pt-1">
                   <div className="bg-stone-900/60 p-2.5 rounded-xl border border-stone-800">
                     <span className="text-stone-400 block mb-1">النقاط المطلوبة للفاتورة</span>
-                    <span className="font-mono text-white font-extrabold text-base">
+                    <span className="font-mono text-stone-100 font-extrabold text-base">
                       {Math.ceil(grandTotal / (settings.loyaltyPointValue || 0.1))} نقطة
                     </span>
                   </div>

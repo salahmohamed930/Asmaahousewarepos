@@ -439,7 +439,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 <span className="font-mono font-black">{formatPrice(transaction.amountPaid ?? totalAfterDiscount)}</span>
               </div>
               <div>
-                <span className="font-extrabold">المتبقي : </span>
+                <span className="font-extrabold">المديونية المتبقية : </span>
                 <span className="font-mono font-black">{formatPrice(remainingDebtAmount)}</span>
               </div>
             </div>

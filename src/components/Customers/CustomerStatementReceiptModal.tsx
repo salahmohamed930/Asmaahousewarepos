@@ -387,7 +387,7 @@ export const CustomerStatementReceiptModal: React.FC<CustomerStatementReceiptMod
             {/* Financial Summary Box */}
             <div className="bg-gray-100 border border-black p-2 rounded-xs mb-2 text-[10px] font-extrabold space-y-1">
               <div className="flex justify-between">
-                <span>رصيد سابق (قبل 3 أشهر):</span>
+                <span>مديونية سابقة (قبل 3 أشهر):</span>
                 <span className="font-mono font-black">{formatPrice(openingBalance)} ج.م</span>
               </div>
               <div className="flex justify-between">
@@ -399,7 +399,7 @@ export const CustomerStatementReceiptModal: React.FC<CustomerStatementReceiptMod
                 <span className="font-mono font-black">- {formatPrice(periodPaymentsTotal)} ج.م</span>
               </div>
               <div className="flex justify-between border-t border-black pt-1 font-black text-xs text-black">
-                <span>الرصيد المتبقي الحالي:</span>
+                <span>إجمالي المديونية الحالية:</span>
                 <span className="font-mono">{formatPrice(endingBalance)} ج.م</span>
               </div>
             </div>
@@ -421,7 +421,7 @@ export const CustomerStatementReceiptModal: React.FC<CustomerStatementReceiptMod
                       <th className="p-1 text-right">التاريخ</th>
                       <th className="p-1 text-right">البيان</th>
                       <th className="p-1 text-left">المبلغ</th>
-                      <th className="p-1 text-left">الرصيد</th>
+                      <th className="p-1 text-left">المديونية المتبقية</th>
                     </tr>
                   </thead>
                   <tbody className="text-[9px] font-extrabold">

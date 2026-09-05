@@ -462,7 +462,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
             }`}
           >
             <Receipt className="w-4 h-4 text-amber-400" />
-            <span>كشف حركة الحساب والرصيد ({statementEntries.length})</span>
+            <span>كشف حركة الحساب والمديونية ({statementEntries.length})</span>
           </button>
 
           <button
@@ -934,7 +934,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                 <div className="flex items-center space-x-3 space-x-reverse text-xs">
                   <div className="bg-stone-900 px-3 py-1.5 rounded-xl border border-stone-800">
-                    <span className="text-stone-400">الرصيد الحالي: </span>
+                    <span className="text-stone-400">إجمالي المديونية الحالية: </span>
                     <strong className={`font-mono font-black ${currentDebt > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                       {currentDebt.toLocaleString()} ج.م
                     </strong>
@@ -1021,7 +1021,7 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
                           {/* Highlighted Running Balance After Transaction */}
                           <div className="text-left border-r border-stone-800 pr-4">
-                            <span className="text-[10px] text-amber-400 block font-extrabold">الرصيد بعد المعاملة</span>
+                            <span className="text-[10px] text-amber-400 block font-extrabold">المديونية المتبقية بعد المعاملة</span>
                             <span className={`font-mono text-sm font-black ${entry.balanceAfter > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                               {entry.balanceAfter.toLocaleString()} ج.م
                             </span>

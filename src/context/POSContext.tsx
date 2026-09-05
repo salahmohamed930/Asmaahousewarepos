@@ -293,43 +293,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
-  // Global Function Key Shortcuts Listener
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!e.key || !/^F(1[0-2]|[1-9])$/.test(e.key)) return;
 
-      const activeShortcuts = { ...DEFAULT_SHORTCUT_KEYS, ...(settings.shortcutKeys || {}) };
-      const actionId = activeShortcuts[e.key];
-
-      if (!actionId || actionId === 'none') return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (actionId === 'open_new_invoice') {
-        startNewInvoice().then(() => {
-          window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
-        });
-      } else if (actionId === 'open_register') setActiveTab('register');
-      else if (actionId === 'open_catalog') setActiveTab('catalog');
-      else if (actionId === 'open_customers') setActiveTab('customers');
-      else if (actionId === 'open_suppliers') setActiveTab('suppliers');
-      else if (actionId === 'open_analytics') setActiveTab('analytics');
-      else if (actionId === 'open_discounts') setActiveTab('discounts');
-      else if (actionId === 'open_associates') setActiveTab('associates');
-      else if (actionId === 'open_settings') setActiveTab('settings');
-      else if (actionId === 'clear_cart') {
-        if (cart.length > 0 && window.confirm('هل أنت متأكد من تفريغ سلة المبيعات بالكامل؟')) {
-          setCart([]);
-        }
-      } else {
-        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: e.key } }));
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown, true);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
-  }, [settings.shortcutKeys, cart.length]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_settings`, JSON.stringify(settings));
@@ -704,6 +668,83 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveHeldTransactionId(null);
     setEditingTransaction(null);
   };
+
+  // Universal Global Function Key Shortcuts Listener (F1 - F12) across any page
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Normalize function key (F1 to F12)
+      let fKey: string | null = null;
+      if (e.key && /^F(1[0-2]|[1-9])$/i.test(e.key)) {
+        fKey = e.key.toUpperCase();
+      } else if (e.code && /^F(1[0-2]|[1-9])$/i.test(e.code)) {
+        fKey = e.code.toUpperCase();
+      }
+
+      if (!fKey) return;
+
+      const activeShortcuts = { ...DEFAULT_SHORTCUT_KEYS, ...(settings.shortcutKeys || {}) };
+      const actionId = activeShortcuts[fKey];
+
+      if (!actionId || actionId === 'none') return;
+
+      // Always block default browser function key behaviors across all pages & input fields
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Navigation Actions
+      if (actionId === 'open_register') {
+        setActiveTab('register');
+      } else if (actionId === 'open_catalog') {
+        setActiveTab('catalog');
+      } else if (actionId === 'open_customers') {
+        setActiveTab('customers');
+      } else if (actionId === 'open_suppliers') {
+        setActiveTab('suppliers');
+      } else if (actionId === 'open_analytics') {
+        setActiveTab('analytics');
+      } else if (actionId === 'open_discounts') {
+        setActiveTab('discounts');
+      } else if (actionId === 'open_associates') {
+        setActiveTab('associates');
+      } else if (actionId === 'open_settings') {
+        setActiveTab('settings');
+      } else if (actionId === 'open_new_invoice') {
+        setActiveTab('register');
+        clearCart();
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: fKey } }));
+        }, 80);
+      } else if (
+        actionId === 'checkout_payment' ||
+        actionId === 'focus_search' ||
+        actionId === 'add_expense' ||
+        actionId === 'print_last_receipt'
+      ) {
+        // Switch to Register tab if on another page, then dispatch the action
+        setActiveTab('register');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: fKey } }));
+        }, 80);
+      } else if (actionId === 'pay_installment') {
+        // Switch to Customers tab if on another page, then dispatch the action
+        setActiveTab('customers');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: fKey } }));
+        }, 80);
+      } else if (actionId === 'clear_cart') {
+        if (cart.length > 0) {
+          if (window.confirm('هل أنت متأكد من تفريغ سلة المبيعات بالكامل؟')) {
+            clearCart();
+          }
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent('pos-shortcut-action', { detail: { action: actionId, key: fKey } }));
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [settings.shortcutKeys, cart.length, clearCart]);
 
   // --- LOCAL-FIRST WRITE OPERATIONS (Save to Dexie -> Queue in Outbox -> Update State -> Sync) ---
 

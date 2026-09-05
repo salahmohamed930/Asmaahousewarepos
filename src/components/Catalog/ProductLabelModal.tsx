@@ -291,6 +291,10 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           background: #ffffff !important;
           color: #000000 !important;
           width: 100% !important;
+          font-weight: 900 !important;
+        }
+        #printable-price-labels, #printable-price-labels * {
+          font-weight: 900 !important;
         }
         .label-sticker-thermal {
           width: ${config.width} !important;
@@ -400,6 +404,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           }
           #printable-price-labels, #printable-price-labels * {
             visibility: visible !important;
+            font-weight: 900 !important;
           }
           #printable-price-labels {
             position: absolute !important;
@@ -945,7 +950,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 {showStoreName && (
                   <div
                     className="font-black border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
-                    style={{ fontSize: config.fontSizeHeader }}
+                    style={{ fontSize: config.fontSizeHeader, fontWeight: 900 }}
                   >
                     {storeName}
                   </div>
@@ -953,7 +958,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
                 <div
                   className="font-black line-clamp-1 leading-tight w-full px-0.5"
-                  style={{ fontSize: config.fontSizeTitle }}
+                  style={{ fontSize: config.fontSizeTitle, fontWeight: 900 }}
                 >
                   {item.product.name}
                 </div>
@@ -970,7 +975,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   {showItemCode && (
                     <span
                       className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
+                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1, fontWeight: 900 }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
                     </span>
@@ -978,17 +983,17 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices: Exact match to user photo */}
-                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5">
-                  <div style={{ fontSize: config.fontSizePrice }}>
+                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5" style={{ fontWeight: 900 }}>
+                  <div style={{ fontSize: config.fontSizePrice, fontWeight: 900 }}>
                     <span>السعر : </span>
-                    <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
+                    <span className="font-mono mx-1" style={{ fontWeight: 900 }}>{formatStickerPrice(item.product.priceCash)}</span>
                     <span>ج</span>
                   </div>
 
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
                       className="font-mono font-black text-black"
-                      style={{ fontSize: `calc(${config.fontSizePrice} - 1px)` }}
+                      style={{ fontSize: `calc(${config.fontSizePrice} - 1px)`, fontWeight: 900 }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}
                     </div>
@@ -1019,7 +1024,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 {showStoreName && (
                   <div
                     className="font-black border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
-                    style={{ fontSize: config.fontSizeHeader }}
+                    style={{ fontSize: config.fontSizeHeader, fontWeight: 900 }}
                   >
                     {storeName}
                   </div>
@@ -1027,7 +1032,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
                 <div
                   className="font-black line-clamp-1 leading-tight w-full px-0.5"
-                  style={{ fontSize: config.fontSizeTitle }}
+                  style={{ fontSize: config.fontSizeTitle, fontWeight: 900 }}
                 >
                   {item.product.name}
                 </div>
@@ -1044,7 +1049,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   {showItemCode && (
                     <span
                       className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
+                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1, fontWeight: 900 }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
                     </span>
@@ -1052,17 +1057,17 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices */}
-                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5">
-                  <div style={{ fontSize: config.fontSizePrice }}>
+                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5" style={{ fontWeight: 900 }}>
+                  <div style={{ fontSize: config.fontSizePrice, fontWeight: 900 }}>
                     <span>السعر : </span>
-                    <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
+                    <span className="font-mono mx-1" style={{ fontWeight: 900 }}>{formatStickerPrice(item.product.priceCash)}</span>
                     <span>ج</span>
                   </div>
 
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
                       className="font-mono font-black text-black"
-                      style={{ fontSize: `calc(${config.fontSizePrice} - 2px)` }}
+                      style={{ fontSize: `calc(${config.fontSizePrice} - 2px)`, fontWeight: 900 }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}
                     </div>

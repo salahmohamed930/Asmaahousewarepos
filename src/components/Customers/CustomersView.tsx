@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { CustomerAccountModal } from './CustomerAccountModal';
 import { CustomerPaymentModal } from './CustomerPaymentModal';
+import { matchesArabicQuery } from '../../utils/textUtils';
 
 export const CustomersView: React.FC = () => {
   const {
@@ -161,11 +162,13 @@ export const CustomersView: React.FC = () => {
       // 1. Text Search (Name, Phone, Email, Address, Notes)
       if (q) {
         const matchSearch =
-          (c.name || '').toLowerCase().includes(q) ||
+          matchesArabicQuery(c.name, q) ||
+          (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
           (c.phone || '').includes(q) ||
           (c.email || '').toLowerCase().includes(q) ||
-          (c.address || '').toLowerCase().includes(q) ||
-          (c.notes || '').toLowerCase().includes(q);
+          matchesArabicQuery(c.address, q) ||
+          matchesArabicQuery(c.notes, q) ||
+          String(c.id) === q;
 
         if (!matchSearch) return false;
       }

@@ -10,6 +10,22 @@ interface CustomerStatementReceiptModalProps {
   initialFormat?: 'thermal' | 'a4';
 }
 
+function formatDate(isoStr: string | null | undefined): string {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  } catch {
+    return '';
+  }
+}
+
+function formatPrice(num: number | null | undefined): string {
+  const val = Number(num) || 0;
+  return val.toLocaleString('ar-EG', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+}
+
 export const CustomerStatementReceiptModal: React.FC<CustomerStatementReceiptModalProps> = ({
   customer,
   onClose,
@@ -122,20 +138,6 @@ export const CustomerStatementReceiptModal: React.FC<CustomerStatementReceiptMod
   });
 
   const endingBalance = customer.currentDebt !== undefined ? customer.currentDebt : runningBalance;
-
-  const formatDate = (isoStr: string) => {
-    try {
-      const d = new Date(isoStr);
-      if (isNaN(d.getTime())) return '';
-      return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
-    } catch {
-      return '';
-    }
-  };
-
-  const formatPrice = (num: number) => {
-    return num.toLocaleString('ar-EG', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
-  };
 
   const handlePrint = async () => {
     await smartPrintElementById('printable-statement-receipt', {

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import SplitAssociateModal from './SplitAssociateModal';
 import { CustomerPaymentModal } from '../Customers/CustomerPaymentModal';
+import { matchesArabicQuery } from '../../utils/textUtils';
 
 interface CartSidebarProps {
   onOpenCheckout: () => void;
@@ -107,13 +108,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const taxTotal = Math.round(netSubtotal * taxRate * 100) / 100;
   const grandTotal = Math.round((netSubtotal + taxTotal) * 100) / 100;
 
-  // Filtered customer search (by name or phone)
+  // Filtered customer search (by name, phone, address)
   const filteredCustomers = customers.filter((c) => {
-    const q = customerSearch.trim().toLowerCase();
+    const q = customerSearch.trim();
     if (!q) return true;
     return (
-      c.name.toLowerCase().includes(q) ||
-      c.phone.includes(q)
+      matchesArabicQuery(c.name, q) ||
+      (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
+      (c.phone || '').includes(q) ||
+      matchesArabicQuery(c.address, q)
     );
   });
 

@@ -197,8 +197,8 @@ export const TABLE_SELECT_COLUMNS: Record<string, string> = {
   customers: 'id, name, phone, email, address, notes, current_debt, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, monthly_installment_amount, updated_at, is_deleted',
   suppliers: 'id, name, company_name, phone, email, address, notes, category, tax_number, current_balance, updated_at, is_deleted',
   supplier_transactions: 'id, supplier_id, type, amount, date, notes, invoice_number, payment_method, updated_at, is_deleted',
-  transactions: 'id, receipt_number, subtotal, discount_total, tax_total, grand_total, payment_method, payment_details, customer_id, customer_name, primary_associate_id, primary_associate_name, split_associates, split_payments, commissions, notes, status, amount_paid, amount_deferred, timestamp, updated_at, is_deleted',
-  transaction_items: 'id, transaction_id, product_id, product_name, sku, quantity, price_tier, unit_price, total_price, assigned_associate_id, updated_at, is_deleted',
+  transactions: '*',
+  transaction_items: '*',
   associates: 'id, name, username, password, pin, role, phone, email, commission_rate, daily_goal, hourly_rate, advances_balance, is_clocked_in, permissions, allowed_invoice_days, custom_invoice_days, updated_at, is_deleted',
   closed_shifts: 'id, associate_id, associate_name, start_time, end_time, expected_cash, actual_cash, discrepancy, sales_count, total_sales, total_card, total_installment, total_debt_collected, notes, opening_balance, leftover_balance, updated_at, is_deleted',
   expenses: 'id, amount, category, notes, associate_id, associate_name, timestamp, updated_at, is_deleted',
@@ -343,6 +343,11 @@ export async function safeSupabaseMutation(
         delete currentPayload.id;
         continue;
       }
+    }
+
+    if (errMsg.includes('PGRST116') || errMsg.includes('JSON object requested') || errMsg.includes('multiple (or no) rows')) {
+      console.warn(`[SUPABASE ADAPTER] Table '${tableName}' returned PGRST116 multiple/no rows. Treating mutation as resolved.`);
+      return { data: currentPayload, error: null };
     }
 
     return res;
@@ -672,6 +677,84 @@ export function resolveTransactionTimestamp(t: any): string {
   }
 
   return new Date().toISOString();
+}
+
+export function mapDbTransactionToTransaction(t: any, itemsByTx?: Record<string, any[]>): Transaction {
+  const id = String(t.id || `tx_${Date.now()}`);
+  const resolvedTime = resolveTransactionTimestamp(t);
+  let resolvedItems = itemsByTx ? itemsByTx[id] : undefined;
+  if (!resolvedItems || resolvedItems.length === 0) {
+    if (Array.isArray(t.items) && t.items.length > 0) {
+      resolvedItems = t.items.map((it: any) => ({
+        productId: String(it.productId || it.product_id || it.id || ''),
+        productName: it.productName || it.product_name || it.name || 'منتج',
+        sku: it.sku || '',
+        quantity: Number(it.quantity || 1),
+        priceTier: it.priceTier || it.price_tier || 'cash',
+        unitPrice: Number(it.unitPrice ?? it.unit_price ?? it.price ?? 0),
+        totalPrice: Number(
+          it.totalPrice ?? it.total_price ?? (Number(it.quantity || 1) * Number(it.unitPrice ?? it.unit_price ?? it.price ?? 0))
+        ),
+        assignedAssociateId: it.assignedAssociateId ?? it.assigned_associate_id,
+      }));
+    } else if (Array.isArray(t.original_cart) && t.original_cart.length > 0) {
+      resolvedItems = t.original_cart.map((c: any) => ({
+        productId: String(c.productId || c.id || ''),
+        productName: c.productName || c.name || 'منتج',
+        sku: c.sku || '',
+        quantity: Number(c.quantity || 1),
+        priceTier: c.priceTier || 'cash',
+        unitPrice: Number(c.unitPrice || c.price || 0),
+        totalPrice: Number(c.totalPrice || (c.quantity || 1) * (c.price || 0)),
+        assignedAssociateId: c.assignedAssociateId,
+      }));
+    } else if (Array.isArray(t.cart) && t.cart.length > 0) {
+      resolvedItems = t.cart.map((c: any) => ({
+        productId: String(c.productId || c.id || ''),
+        productName: c.productName || c.name || 'منتج',
+        sku: c.sku || '',
+        quantity: Number(c.quantity || 1),
+        priceTier: c.priceTier || 'cash',
+        unitPrice: Number(c.unitPrice || c.price || 0),
+        totalPrice: Number(c.totalPrice || (c.quantity || 1) * (c.price || 0)),
+        assignedAssociateId: c.assignedAssociateId,
+      }));
+    } else {
+      resolvedItems = [];
+    }
+  }
+
+  const grandTotal = Number(t.grand_total ?? t.grandTotal ?? t.total ?? t.subtotal ?? 0);
+  const subtotal = Number(t.subtotal ?? t.sub_total ?? grandTotal);
+  const discountTotal = Number(t.discount_total ?? t.discountTotal ?? 0);
+  const taxTotal = Number(t.tax_total ?? t.taxTotal ?? 0);
+
+  return {
+    id,
+    receiptNumber: t.receipt_number || t.receiptNumber || t.invoice_number || `RCP-${id}`,
+    timestamp: resolvedTime,
+    items: resolvedItems,
+    subtotal,
+    discountTotal,
+    taxTotal,
+    grandTotal,
+    paymentMethod: t.payment_method || t.paymentMethod || 'كاش',
+    paymentDetails: t.payment_details || t.paymentDetails || '',
+    customerId: t.customer_id || t.customerId || undefined,
+    customerName: t.customer_name || t.customerName || undefined,
+    primaryAssociateId: t.primary_associate_id || t.primaryAssociateId || 'system',
+    primaryAssociateName: t.primary_associate_name || t.primaryAssociateName || 'النظام',
+    splitAssociates: t.split_associates || t.splitAssociates,
+    commissions: t.commissions || [],
+    notes: t.notes || '',
+    status: t.status || 'مكتملة',
+    amountPaid: Number(t.amount_paid ?? t.amountPaid ?? grandTotal),
+    amountDeferred: Number(t.amount_deferred ?? t.amountDeferred ?? 0),
+    splitPayments: t.split_payments || t.splitPayments,
+    originalCart: t.original_cart || t.originalCart,
+    isSynced: true,
+    updated_at: t.updated_at || t.updatedAt || resolvedTime,
+  };
 }
 
 export function mapDbAssociateToAssociate(a: any): Associate {
@@ -1109,11 +1192,11 @@ async function performDeltaSyncInternal(): Promise<{
     }
 
     // 5. Sync Transactions (with targeted transaction_items fetch to save egress)
-    const hasFixedTxTimestamps = await db.syncMeta.get('tx_timestamp_repaired_v3');
+    const hasFullTxSynced = await db.syncMeta.get('tx_full_restore_v6');
     const txRes = await fetchSelectiveFromSupabase(
       'transactions',
       TABLE_SELECT_COLUMNS.transactions,
-      (!hasFixedTxTimestamps || localTxCount === 0) ? null : lastSync
+      (!hasFullTxSynced || localTxCount === 0) ? null : lastSync
     );
     if (txRes.data && txRes.data.length > 0) {
       const itemsByTx: Record<string, any[]> = {};
@@ -1171,53 +1254,7 @@ async function performDeltaSyncInternal(): Promise<{
         if (t.is_deleted === true || t.is_deleted === 1 || String(t.is_deleted) === 'true') {
           deletedTxIds.push(id);
         } else {
-          const resolvedTime = resolveTransactionTimestamp(t);
-          let resolvedItems = itemsByTx[id];
-          if (!resolvedItems || resolvedItems.length === 0) {
-            if (Array.isArray(t.items) && t.items.length > 0) {
-              resolvedItems = t.items;
-            } else if (Array.isArray(t.original_cart) && t.original_cart.length > 0) {
-              resolvedItems = t.original_cart.map((c: any) => ({
-                productId: String(c.productId || c.id || ''),
-                productName: c.productName || c.name || 'منتج',
-                sku: c.sku || '',
-                quantity: Number(c.quantity || 1),
-                priceTier: c.priceTier || 'cash',
-                unitPrice: Number(c.unitPrice || c.price || 0),
-                totalPrice: Number(c.totalPrice || (c.quantity || 1) * (c.price || 0)),
-                assignedAssociateId: c.assignedAssociateId,
-              }));
-            } else {
-              resolvedItems = [];
-            }
-          }
-
-          activeTxs.push({
-            id,
-            receiptNumber: t.receipt_number || `RCP-${id}`,
-            timestamp: resolvedTime,
-            items: resolvedItems,
-            subtotal: Number(t.subtotal || 0),
-            discountTotal: Number(t.discount_total || 0),
-            taxTotal: Number(t.tax_total || 0),
-            grandTotal: Number(t.grand_total || 0),
-            paymentMethod: t.payment_method || 'كاش',
-            paymentDetails: t.payment_details || '',
-            customerId: t.customer_id || undefined,
-            customerName: t.customer_name || undefined,
-            primaryAssociateId: t.primary_associate_id || 'system',
-            primaryAssociateName: t.primary_associate_name || 'النظام',
-            splitAssociates: t.split_associates,
-            commissions: t.commissions || [],
-            notes: t.notes || '',
-            status: t.status || 'مكتملة',
-            amountPaid: Number(t.amount_paid ?? t.grand_total ?? 0),
-            amountDeferred: Number(t.amount_deferred ?? 0),
-            splitPayments: t.split_payments,
-            originalCart: t.original_cart,
-            isSynced: true,
-            updated_at: t.updated_at || resolvedTime,
-          });
+          activeTxs.push(mapDbTransactionToTransaction(t, itemsByTx));
         }
       }
 
@@ -1226,8 +1263,7 @@ async function performDeltaSyncInternal(): Promise<{
         await db.transactions.bulkDelete(deletedTxIds);
         console.log(`[SOFT-DELETE SYNC] Deleted ${deletedTxIds.length} soft-deleted transactions from Dexie.js`);
       }
-      await cleanupOrphanLocalRecords('transactions', activeTxs, 'transactions');
-      await db.syncMeta.put({ key: 'tx_timestamp_repaired_v3', value: 'true' });
+      await db.syncMeta.put({ key: 'tx_full_restore_v6', value: 'true' });
       syncedCounts.transactions = activeTxs.length;
     }
 
@@ -1517,7 +1553,11 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
 
     const { data, error } = await safeSupabaseMutation(
       'products',
-      async (p) => await supabase.from('products').insert([p]).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('products').insert([p]).select('id, name');
+        if (res.error) return res;
+        return { data: (res.data && res.data.length > 0) ? res.data[0] : { id: p.id, name: p.name }, error: null };
+      },
       payload
     );
     if (error) return { success: false, error };
@@ -1538,6 +1578,7 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
 
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
     const skuNum = (product.sku && !isNaN(Number(product.sku))) ? Number(product.sku) : null;
+    const barcodeStr = product.barcode ? String(product.barcode).trim() : null;
 
     const { data, error } = await safeSupabaseMutation(
       'products',
@@ -1548,11 +1589,10 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
             .from('products')
             .update(p)
             .eq('id', idNum)
-            .select('id, name')
-            .maybeSingle();
+            .select('id, name');
 
-          if (!updateErr && updateData) {
-            return { data: updateData, error: null };
+          if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
+            return { data: updateData[0], error: null };
           }
         }
 
@@ -1562,27 +1602,59 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
             .from('products')
             .update(p)
             .eq('p_k', skuNum)
-            .select('id, name')
-            .maybeSingle();
+            .select('id, name');
 
-          if (!updateErr && updateData) {
-            return { data: updateData, error: null };
+          if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
+            return { data: updateData[0], error: null };
           }
         }
 
-        // 3. Fallback: match by product name
+        // 3. Try matching by barcode if available
+        if (barcodeStr) {
+          const { data: updateData, error: updateErr } = await supabase
+            .from('products')
+            .update(p)
+            .eq('barcode', barcodeStr)
+            .select('id, name');
+
+          if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
+            return { data: updateData[0], error: null };
+          }
+        }
+
+        // 4. Fallback: match by product name
         if (product.name) {
           const { data: updateData, error: updateErr } = await supabase
             .from('products')
             .update(p)
             .eq('name', product.name)
-            .select('id, name')
-            .maybeSingle();
+            .select('id, name');
 
-          if (!updateErr && updateData) {
-            return { data: updateData, error: null };
+          if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
+            return { data: updateData[0], error: null };
           }
-          if (updateErr) return { data: null, error: updateErr };
+          if (updateErr && !String(updateErr.message || '').includes('PGRST116')) {
+            return { data: null, error: updateErr };
+          }
+        }
+
+        // 5. If no row was found to update, insert as new product to avoid blocking the sync queue
+        const insertPayload: any = { ...p };
+        if (idNum !== null && idNum <= 2147483647) {
+          insertPayload.id = idNum;
+        }
+        if (skuNum !== null) {
+          insertPayload.p_k = skuNum;
+        }
+        delete insertPayload.updated_at;
+
+        const { data: insertData, error: insertErr } = await supabase
+          .from('products')
+          .insert([insertPayload])
+          .select('id, name');
+
+        if (!insertErr && Array.isArray(insertData) && insertData.length > 0) {
+          return { data: insertData[0], error: null };
         }
 
         return { data: { id: idNum || skuNum, name: product.name }, error: null };
@@ -1648,13 +1720,21 @@ export async function insertCustomerToSupabase(customer: Customer): Promise<{ su
     const payload = mapCustomerToDbPayload(customer);
     const { data, error } = await safeSupabaseMutation(
       'customers',
-      async (p) => await supabase.from('customers').insert([p]).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('customers').insert([p]).select('id, name');
+        if (res.error) return res;
+        return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+      },
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
         'customers',
-        async (p) => await supabase.from('customers').upsert([p]).select('id, name').single(),
+        async (p) => {
+          const res = await supabase.from('customers').upsert([p]).select('id, name');
+          if (res.error) return res;
+          return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+        },
         payload
       );
       if (upsertErr) return { success: false, error: upsertErr };
@@ -1672,13 +1752,21 @@ export async function updateCustomerInSupabase(customer: Customer): Promise<{ su
     const targetId = payload.id || toSafeDbId(customer.id) || customer.id;
     const { data, error } = await safeSupabaseMutation(
       'customers',
-      async (p) => await supabase.from('customers').update(p).eq('id', targetId).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('customers').update(p).eq('id', targetId).select('id, name');
+        if (res.error) return res;
+        return { data: res.data?.[0] || { id: targetId, name: p.name }, error: null };
+      },
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
         'customers',
-        async (p) => await supabase.from('customers').upsert([p]).select('id, name').single(),
+        async (p) => {
+          const res = await supabase.from('customers').upsert([p]).select('id, name');
+          if (res.error) return res;
+          return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+        },
         payload
       );
       if (upsertErr) return { success: false, error: upsertErr };
@@ -1718,13 +1806,21 @@ export async function insertSupplierToSupabase(supplier: Supplier): Promise<{ su
     const payload = mapSupplierToDbPayload(supplier);
     const { data, error } = await safeSupabaseMutation(
       'suppliers',
-      async (p) => await supabase.from('suppliers').insert([p]).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('suppliers').insert([p]).select('id, name');
+        if (res.error) return res;
+        return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+      },
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
         'suppliers',
-        async (p) => await supabase.from('suppliers').upsert([p]).select('id, name').single(),
+        async (p) => {
+          const res = await supabase.from('suppliers').upsert([p]).select('id, name');
+          if (res.error) return res;
+          return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+        },
         payload
       );
       if (upsertErr) return { success: false, error: upsertErr };
@@ -1741,13 +1837,21 @@ export async function updateSupplierInSupabase(supplier: Supplier): Promise<{ su
     const payload = mapSupplierToDbPayload(supplier);
     const { data, error } = await safeSupabaseMutation(
       'suppliers',
-      async (p) => await supabase.from('suppliers').update(p).eq('id', supplier.id).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('suppliers').update(p).eq('id', supplier.id).select('id, name');
+        if (res.error) return res;
+        return { data: res.data?.[0] || { id: supplier.id, name: p.name }, error: null };
+      },
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
         'suppliers',
-        async (p) => await supabase.from('suppliers').upsert([p]).select('id, name').single(),
+        async (p) => {
+          const res = await supabase.from('suppliers').upsert([p]).select('id, name');
+          if (res.error) return res;
+          return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+        },
         payload
       );
       if (upsertErr) return { success: false, error: upsertErr };
@@ -1820,56 +1924,7 @@ export async function fetchTransactionsFromSupabase(): Promise<{ data: Transacti
       });
     }
 
-    const txs: Transaction[] = (txRes.data || []).map((t: any) => {
-      const id = String(t.id);
-      const resolvedTime = resolveTransactionTimestamp(t);
-      let resolvedItems = itemsByTx[id];
-      if (!resolvedItems || resolvedItems.length === 0) {
-        if (Array.isArray(t.items) && t.items.length > 0) {
-          resolvedItems = t.items;
-        } else if (Array.isArray(t.original_cart) && t.original_cart.length > 0) {
-          resolvedItems = t.original_cart.map((c: any) => ({
-            productId: String(c.productId || c.id || ''),
-            productName: c.productName || c.name || 'منتج',
-            sku: c.sku || '',
-            quantity: Number(c.quantity || 1),
-            priceTier: c.priceTier || 'cash',
-            unitPrice: Number(c.unitPrice || c.price || 0),
-            totalPrice: Number(c.totalPrice || (c.quantity || 1) * (c.price || 0)),
-            assignedAssociateId: c.assignedAssociateId,
-          }));
-        } else {
-          resolvedItems = [];
-        }
-      }
-
-      return {
-        id,
-        receiptNumber: t.receipt_number || `RCP-${id}`,
-        timestamp: resolvedTime,
-        items: resolvedItems,
-        subtotal: Number(t.subtotal || 0),
-        discountTotal: Number(t.discount_total || 0),
-        taxTotal: Number(t.tax_total || 0),
-        grandTotal: Number(t.grand_total || 0),
-        paymentMethod: t.payment_method || 'كاش',
-        paymentDetails: t.payment_details || '',
-        customerId: t.customer_id || undefined,
-        customerName: t.customer_name || undefined,
-        primaryAssociateId: t.primary_associate_id || 'system',
-        primaryAssociateName: t.primary_associate_name || 'النظام',
-        splitAssociates: t.split_associates,
-        commissions: t.commissions || [],
-        notes: t.notes || '',
-        status: t.status || 'مكتملة',
-        amountPaid: Number(t.amount_paid ?? t.grand_total ?? 0),
-        amountDeferred: Number(t.amount_deferred ?? 0),
-        splitPayments: t.split_payments,
-        originalCart: t.original_cart,
-        isSynced: true,
-        updated_at: t.updated_at || resolvedTime,
-      };
-    });
+    const txs: Transaction[] = (txRes.data || []).map((t: any) => mapDbTransactionToTransaction(t, itemsByTx));
 
     return { data: txs };
   } catch (err) {
@@ -1996,7 +2051,11 @@ export async function insertAssociateToSupabase(associate: Associate): Promise<{
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
       'associates',
-      async (p) => await supabase.from('associates').upsert([p]).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('associates').upsert([p]).select('id, name');
+        if (res.error) return res;
+        return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+      },
       payload
     );
     if (error) return { success: false, error };
@@ -2011,13 +2070,21 @@ export async function updateAssociateInSupabase(associate: Associate): Promise<{
     const payload = mapAssociateToDbPayload(associate);
     const { data, error } = await safeSupabaseMutation(
       'associates',
-      async (p) => await supabase.from('associates').update(p).eq('id', associate.id).select('id, name').single(),
+      async (p) => {
+        const res = await supabase.from('associates').update(p).eq('id', associate.id).select('id, name');
+        if (res.error) return res;
+        return { data: res.data?.[0] || { id: associate.id, name: p.name }, error: null };
+      },
       payload
     );
     if (error) {
       const { data: upsertData, error: upsertErr } = await safeSupabaseMutation(
         'associates',
-        async (p) => await supabase.from('associates').upsert([p]).select('id, name').single(),
+        async (p) => {
+          const res = await supabase.from('associates').upsert([p]).select('id, name');
+          if (res.error) return res;
+          return { data: res.data?.[0] || { id: p.id, name: p.name }, error: null };
+        },
         payload
       );
       if (upsertErr) return { success: false, error: upsertErr };

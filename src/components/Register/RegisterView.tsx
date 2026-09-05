@@ -59,6 +59,7 @@ export const RegisterView: React.FC = () => {
     startEditingTransaction,
     cancelEditingTransaction,
     startNewInvoice,
+    syncNow,
   } = usePOS();
 
   const canManageExpenses = hasPermission('manage_expenses');
@@ -999,30 +1000,51 @@ export const RegisterView: React.FC = () => {
             {filteredTransactions.length === 0 ? (
               <div className="p-8 text-center text-stone-500">
                 <FileText className="w-10 h-10 stroke-[1.25] text-stone-600 mx-auto mb-2" />
-                <p className="text-xs font-bold text-stone-300">لم يتم العثور على فواتير سابقة مطابقة للفلاتر الحالية</p>
-                <p className="text-[11px] text-stone-500 mt-1">
-                  جرب تغيير كلمات البحث أو إعادة ضبط الفلاتر لإظهار الفواتير
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2 mt-3.5">
-                  {isAnyInvoiceFilterActive && (
-                    <button
-                      type="button"
-                      onClick={resetInvoiceFilters}
-                      className="px-3.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-sm"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                      <span>إعادة ضبط كافة الفلاتر</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('create')}
-                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-md shadow-amber-950/50"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>إضافة فاتورة جديدة الآن</span>
-                  </button>
-                </div>
+                {transactions.length > 0 ? (
+                  <>
+                    <p className="text-sm font-bold text-stone-200">
+                      يوجد {transactions.length} فاتورة مسجلة بالنظام، لكنها محجوبة بالفلاتر الحالية
+                    </p>
+                    <p className="text-xs text-stone-400 mt-1">
+                      الفلتر الحالي للتاريخ ({dateFilter === 'today' ? 'اليوم' : dateFilter}) أو شروط البحث لا تطابق أياً من الفواتير
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                      <button
+                        type="button"
+                        onClick={resetInvoiceFilters}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-md shadow-amber-950/50"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        <span>عرض كافة الفواتير ({transactions.length})</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-stone-300">لم يتم العثور على فواتير سابقة مسجلة</p>
+                    <p className="text-[11px] text-stone-500 mt-1">
+                      يمكنك مزامنة البيانات من قاعدة البيانات السحابية أو إضافة فاتورة جديدة
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-3.5">
+                      <button
+                        type="button"
+                        onClick={() => syncNow()}
+                        className="px-3.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-amber-400 border border-stone-700 rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-sm"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>مزامنة الفواتير من السيرفر</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('create')}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold inline-flex items-center space-x-1.5 space-x-reverse transition-all shadow-md shadow-amber-950/50"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة فاتورة جديدة الآن</span>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">

@@ -37,6 +37,7 @@ import {
   processPendingSyncQueue,
   runFullSyncCycle,
   resolveTransactionTimestamp,
+  fetchTransactionsFromSupabase,
 } from '../lib/supabaseSync';
 import { getSupabaseKeys } from '../lib/supabase';
 
@@ -388,6 +389,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         db.transactions.bulkPut(verifiedTxs).catch((e) => console.warn('[POSContext] bulkPut repair error:', e));
       }
       setTransactions(verifiedTxs);
+
+      // If local transactions are empty and browser is online, fetch from Supabase immediately
+      if (verifiedTxs.length === 0 && typeof navigator !== 'undefined' && navigator.onLine) {
+        fetchTransactionsFromSupabase()
+          .then(async ({ data: remoteTxs }) => {
+            if (remoteTxs && remoteTxs.length > 0) {
+              await db.transactions.bulkPut(remoteTxs);
+              setTransactions(remoteTxs);
+            }
+          })
+          .catch((e) => console.warn('[POSContext] initial tx fetch error:', e));
+      }
       setClosedShifts(localShifts);
       setExpenses(localExps);
       setDiscounts(localDiscs);

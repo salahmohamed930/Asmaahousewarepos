@@ -409,9 +409,9 @@ export async function getProductById(id: string): Promise<Product | null> {
     } else {
       query = query.eq('name', id);
     }
-    const { data, error } = await query.maybeSingle();
-    if (error || !data) return null;
-    return mapDbProductToProduct(data);
+    const { data, error } = await query.limit(1);
+    if (error || !Array.isArray(data) || data.length === 0) return null;
+    return mapDbProductToProduct(data[0]);
   } catch (err) {
     console.error('[products.service] getProductById exception:', err);
     return null;

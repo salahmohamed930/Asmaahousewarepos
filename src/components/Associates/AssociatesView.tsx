@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { Associate, Permission, InvoiceDaysAccess } from '../../types';
+import { Associate, Permission, InvoiceDaysAccess, POSExpense } from '../../types';
 import {
   Users,
   UserPlus,
@@ -25,6 +25,11 @@ import {
   Receipt,
   Layers,
   Calendar,
+  FileText,
+  PlusCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+  Search,
 } from 'lucide-react';
 
 export interface PermissionGroup {
@@ -95,10 +100,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
 export const ALL_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) => g.permissions);
 
 export const AssociatesView: React.FC = () => {
-  const { associates, transactions, addAssociate, updateAssociate } = usePOS();
+  const { associates, transactions, expenses, addExpense, addAssociate, updateAssociate } = usePOS();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAssociate, setEditingAssociate] = useState<Associate | null>(null);
+  const [statementAssociate, setStatementAssociate] = useState<Associate | null>(null);
 
   const [salesResets, setSalesResets] = useState<Record<string, string>>(() => {
     const saved = localStorage.getItem('pos_sales_resets');
@@ -688,6 +694,32 @@ export const AssociatesView: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Employee Salary & Expenses Summary Row */}
+                {(() => {
+                  const assocExps = expenses.filter((e) => e.linkedAssociateId === assoc.id);
+                  const assocSalariesSum = assocExps
+                    .filter((e) => e.category === 'رواتب وأجور')
+                    .reduce((sum, e) => sum + e.amount, 0);
+
+                  return (
+                    <div className="bg-stone-950 border border-stone-800/80 rounded-2xl p-3 mt-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold text-stone-400 block">مسحوبات ورواتب مسجلة:</span>
+                        <span className="text-xs font-mono font-extrabold text-emerald-400">
+                          {assocSalariesSum.toLocaleString('ar-EG')} ج.م
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setStatementAssociate(assoc)}
+                        className="py-1.5 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>كشف حساب الرواتب</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
               </div>
             </div>
           );
@@ -1093,6 +1125,365 @@ export const AssociatesView: React.FC = () => {
         </div>
       )}
 
+      {/* Employee Statement Modal */}
+      {statementAssociate && (
+        <AssociateStatementModal
+          associate={statementAssociate}
+          onClose={() => setStatementAssociate(null)}
+          expenses={expenses}
+          addExpense={addExpense}
+        />
+      )}
+
+    </div>
+  );
+};
+
+interface AssociateStatementModalProps {
+  associate: Associate;
+  onClose: () => void;
+  expenses: POSExpense[];
+  addExpense: (expense: Omit<POSExpense, 'id' | 'timestamp'>) => Promise<void>;
+}
+
+const AssociateStatementModal: React.FC<AssociateStatementModalProps> = ({
+  associate,
+  onClose,
+  expenses,
+  addExpense,
+}) => {
+  const [activeTab, setActiveTab] = useState<'all' | 'رواتب وأجور' | 'سلفة لموظف' | 'bonuses_penalties'>('all');
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payCategory, setPayCategory] = useState<'رواتب وأجور' | 'سلفة لموظف' | 'حافز / مكافأة' | 'خصم / جزاء'>('رواتب وأجور');
+  const [payAmount, setPayAmount] = useState('');
+  const [payDesc, setPayDesc] = useState('');
+  const [payError, setPayError] = useState('');
+
+  // Filter expenses linked to this associate
+  const assocExpenses = expenses.filter((e) => e.linkedAssociateId === associate.id);
+
+  const totalSalaries = assocExpenses
+    .filter((e) => e.category === 'رواتب وأجور')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const totalAdvances = assocExpenses
+    .filter((e) => e.category === 'سلفة لموظف')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const totalBonuses = assocExpenses
+    .filter((e) => e.category === 'حافز / مكافأة')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const totalPenalties = assocExpenses
+    .filter((e) => e.category === 'خصم / جزاء')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const displayExpenses = assocExpenses.filter((e) => {
+    if (activeTab === 'all') return true;
+    if (activeTab === 'bonuses_penalties') return e.category === 'حافز / مكافأة' || e.category === 'خصم / جزاء';
+    return e.category === activeTab;
+  });
+
+  const handleAddPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPayError('');
+    const parsed = parseFloat(payAmount);
+    if (isNaN(parsed) || parsed <= 0) {
+      setPayError('يرجى إدخال مبلغ صحيح أكبر من الصفر');
+      return;
+    }
+
+    await addExpense({
+      amount: parsed,
+      category: payCategory,
+      description: payDesc || `صرف ${payCategory} للموظف ${associate.name}`,
+      linkedAssociateId: associate.id,
+      linkedAssociateName: associate.name,
+    });
+
+    setPayAmount('');
+    setPayDesc('');
+    setShowPayModal(false);
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const rows = assocExpenses.map((exp) => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #ccc;">${new Date(exp.timestamp).toLocaleDateString('ar-EG')} ${new Date(exp.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</td>
+        <td style="padding: 8px; border: 1px solid #ccc; font-weight: bold;">${exp.category}</td>
+        <td style="padding: 8px; border: 1px solid #ccc; font-family: monospace; font-weight: bold;">${exp.amount.toLocaleString('ar-EG')} ج.م</td>
+        <td style="padding: 8px; border: 1px solid #ccc;">${exp.description || '-'}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8" />
+        <title>كشف حساب الموظف - ${associate.name}</title>
+        <style>
+          body { font-family: sans-serif; padding: 20px; color: #000; }
+          .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+          .summary { display: flex; justify-content: space-between; margin-bottom: 20px; background: #f5f5f5; padding: 15px; border-radius: 8px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th { background: #eee; padding: 8px; border: 1px solid #ccc; text-align: right; }
+          .footer { margin-top: 40px; display: flex; justify-content: space-between; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2>أسماء للأدوات المنزلية</h2>
+          <h3>كشف حساب رواتب ومسحوبات موظف</h3>
+          <p>اسم الموظف: <strong>${associate.name}</strong> (${associate.role}) | تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')}</p>
+        </div>
+        <div class="summary">
+          <div>إجمالي الرواتب المسددة: <strong>${totalSalaries.toLocaleString('ar-EG')} ج.م</strong></div>
+          <div>رصيد السلف الحالي: <strong>${(associate.advancesBalance || 0).toLocaleString('ar-EG')} ج.م</strong></div>
+          <div>الحوافز والمكافآت: <strong>${totalBonuses.toLocaleString('ar-EG')} ج.م</strong></div>
+          <div>الخصومات والجزاءات: <strong>${totalPenalties.toLocaleString('ar-EG')} ج.م</strong></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ والوقت</th>
+              <th>نوع الحركة / القيد</th>
+              <th>المبلغ</th>
+              <th>البيان والتفاصيل</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length > 0 ? rows : '<tr><td colspan="4" style="text-align:center; padding: 15px;">لا توجد حركات مسجلة للموظف</td></tr>'}
+          </tbody>
+        </table>
+        <div class="footer">
+          <div>توقيع الموظف المستلم: ....................</div>
+          <div>توقيع الإدارة / الحسابات: ....................</div>
+        </div>
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-stone-800 flex items-center justify-between bg-stone-950">
+          <div className="flex items-center space-x-3 space-x-reverse">
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl">
+              <FileText className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-stone-100">كشف حساب وسجل راتب: {associate.name}</h2>
+              <p className="text-xs text-stone-400">الوظيفة: {associate.role} | نسبة العمولة: {associate.commissionRate}%</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 space-x-reverse">
+            <button
+              onClick={handlePrint}
+              className="py-2 px-3 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+            >
+              <Printer className="w-4 h-4" />
+              <span>طباعة الكشف</span>
+            </button>
+            <button
+              onClick={() => setShowPayModal(true)}
+              className="py-2 px-4 bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow-lg transition-all"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>صرف راتب / سلفة</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-stone-400 hover:text-stone-100 hover:bg-stone-800 rounded-xl transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Financial Summary Cards */}
+        <div className="p-4 bg-stone-950/60 border-b border-stone-800 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-stone-900 border border-stone-800 rounded-xl p-3">
+            <span className="text-[10px] text-stone-400 font-bold block mb-1">إجمالي الرواتب المسددة</span>
+            <span className="text-base font-mono font-extrabold text-emerald-400">
+              {totalSalaries.toLocaleString('ar-EG')} ج.م
+            </span>
+          </div>
+          <div className="bg-stone-900 border border-stone-800 rounded-xl p-3">
+            <span className="text-[10px] text-stone-400 font-bold block mb-1">رصيد السلف الحالي</span>
+            <span className="text-base font-mono font-extrabold text-sky-400">
+              {(associate.advancesBalance || 0).toLocaleString('ar-EG')} ج.م
+            </span>
+          </div>
+          <div className="bg-stone-900 border border-stone-800 rounded-xl p-3">
+            <span className="text-[10px] text-stone-400 font-bold block mb-1">إجمالي الحوافز والمكافآت</span>
+            <span className="text-base font-mono font-extrabold text-amber-400">
+              {totalBonuses.toLocaleString('ar-EG')} ج.م
+            </span>
+          </div>
+          <div className="bg-stone-900 border border-stone-800 rounded-xl p-3">
+            <span className="text-[10px] text-stone-400 font-bold block mb-1">إجمالي الخصومات والجزاءات</span>
+            <span className="text-base font-mono font-extrabold text-rose-400">
+              {totalPenalties.toLocaleString('ar-EG')} ج.م
+            </span>
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="px-6 py-3 border-b border-stone-800 bg-stone-900 flex gap-2">
+          {[
+            { id: 'all', label: 'كافة القيود المحدثة' },
+            { id: 'رواتب وأجور', label: 'الرواتب والأجور' },
+            { id: 'سلفة لموظف', label: 'السلف والذمم' },
+            { id: 'bonuses_penalties', label: 'الحوافز والخصومات' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeTab === tab.id
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Transactions Table */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {displayExpenses.length === 0 ? (
+            <div className="text-center py-12 text-stone-500">
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-bold">لا توجد حركات أجور أو سلف مسجلة لهذا الموظف</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="border-b border-stone-800 text-stone-400 text-[11px] font-bold">
+                    <th className="pb-3 px-2">التاريخ والوقت</th>
+                    <th className="pb-3 px-2">نوع الحركة</th>
+                    <th className="pb-3 px-2">المبلغ</th>
+                    <th className="pb-3 px-2">البيان والتفاصيل</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-800/60 font-medium">
+                  {displayExpenses.map((exp) => (
+                    <tr key={exp.id} className="hover:bg-stone-800/30 transition-all">
+                      <td className="py-3 px-2 text-stone-400 font-mono">
+                        {new Date(exp.timestamp).toLocaleDateString('ar-EG')} {new Date(exp.timestamp).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="py-3 px-2">
+                        <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-extrabold ${
+                          exp.category === 'رواتب وأجور' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' :
+                          exp.category === 'سلفة لموظف' ? 'bg-sky-950 text-sky-400 border border-sky-800/50' :
+                          exp.category === 'حافز / مكافأة' ? 'bg-amber-950 text-amber-400 border border-amber-800/50' :
+                          'bg-rose-950 text-rose-400 border border-rose-800/50'
+                        }`}>
+                          {exp.category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 font-mono font-extrabold text-stone-100 text-sm">
+                        {exp.amount.toLocaleString('ar-EG')} ج.م
+                      </td>
+                      <td className="py-3 px-2 text-stone-300">
+                        {exp.description || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Pay Modal */}
+        {showPayModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-stone-800">
+                <h3 className="text-base font-bold text-stone-100">تسجيل صرف للموظف: {associate.name}</h3>
+                <button onClick={() => setShowPayModal(false)} className="text-stone-400 hover:text-stone-100">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {payError && (
+                <div className="mb-4 p-3 bg-rose-950/80 border border-rose-800 rounded-xl text-xs text-rose-300 font-bold">
+                  {payError}
+                </div>
+              )}
+
+              <form onSubmit={handleAddPayment} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-400 mb-1">نوع الحركة / القيد *</label>
+                  <select
+                    value={payCategory}
+                    onChange={(e) => setPayCategory(e.target.value as any)}
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="رواتب وأجور">صرف راتب / أجر شهر</option>
+                    <option value="سلفة لموظف">صرف سلفة لموظف</option>
+                    <option value="حافز / مكافأة">صرف حافز / مكافأة تشجيعية</option>
+                    <option value="خصم / جزاء">تسجيل خصم / جزاء</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-400 mb-1">المبلغ (ج.م) *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    required
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    placeholder="أدخل المبلغ بالجنيه"
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-sm font-extrabold text-stone-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-400 mb-1">البيان / تفاصيل القيد</label>
+                  <textarea
+                    value={payDesc}
+                    onChange={(e) => setPayDesc(e.target.value)}
+                    placeholder="مثال: راتب شهر سبتمبر 2026 بعد الخصومات"
+                    rows={2}
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition-all"
+                  >
+                    حفظ وصرف القيد
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPayModal(false)}
+                    className="py-2.5 px-4 bg-stone-800 text-stone-300 font-bold text-xs rounded-xl hover:bg-stone-700 transition-all"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

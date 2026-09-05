@@ -45,7 +45,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
   const [selectedPreviewId, setSelectedPreviewId] = useState<string>('');
   const [bulkUniformCount, setBulkUniformCount] = useState<number>(1);
 
-  const [showStoreName, setShowStoreName] = useState<boolean>(true);
+  const [showStoreName, setShowStoreName] = useState<boolean>(false);
   const [showInstallmentPrice, setShowInstallmentPrice] = useState<boolean>(true);
   const [showItemCode, setShowItemCode] = useState<boolean>(true);
   const [storeName, setStoreName] = useState<string>(defaultHeader);
@@ -864,7 +864,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
                       style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
                     >
                       {previewProduct.sku || previewProduct.barcode || '000000'}
@@ -969,7 +969,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
                       style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
@@ -1043,7 +1043,7 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-1"
+                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
                       style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}

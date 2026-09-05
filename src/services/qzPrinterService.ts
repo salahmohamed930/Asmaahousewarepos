@@ -492,11 +492,10 @@ class QzPrinterService {
   ): Promise<{ success: boolean; error?: string }> {
     const testHtml = `
       <div style="width: 38mm; height: 25mm; padding: 2px; box-sizing: border-box; font-family: sans-serif; text-align: center; border: 1px solid #000;">
-        <div style="font-size: 8px; font-weight: bold; white-space: nowrap; overflow: hidden;">أسماء للأدوات المنزليه</div>
-        <div style="font-size: 9px; font-weight: bold; margin: 1px 0;">صنف تجريبي (Secure)</div>
-        <div style="font-family: monospace; font-size: 12px; font-weight: bold; letter-spacing: 1px; margin: 1px 0; border: 1px solid #000; padding: 1px;">||||||||||||||||||</div>
-        <div style="font-size: 8px; font-weight: bold; font-family: monospace;">2026001122</div>
-        <div style="font-size: 9px; font-weight: bold; margin-top: 1px;">السعر: 150.0 ج</div>
+        <div style="font-size: 9.5px; font-weight: bold; margin: 1px 0;">صنف تجريبي (Secure)</div>
+        <div style="font-family: monospace; font-size: 13px; font-weight: bold; letter-spacing: 1px; margin: 1px 0; border: 1px solid #000; padding: 1px;">||||||||||||||||||</div>
+        <div style="font-size: 8px; font-weight: bold; font-family: monospace; margin-top: -3px;">2026001122</div>
+        <div style="font-size: 9.5px; font-weight: bold; margin-top: 1px;">السعر: 150.0 ج</div>
       </div>
     `;
 

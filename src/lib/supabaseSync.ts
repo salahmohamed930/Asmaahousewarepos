@@ -1012,7 +1012,7 @@ export function isSyncing(): boolean {
  * 2. Perform Delta Sync (Supabase changes -> Dexie.js)
  * Prevents double triggering / concurrent execution loops.
  */
-export async function runFullSyncCycle(): Promise<{
+export async function runFullSyncCycle(forceFullSync = false): Promise<{
   outboxResult: { processedCount: number; remainingCount: number; failedCount: number };
   deltaSyncResult: { success: boolean; syncedCounts: Record<string, number>; downloadedCount: number; error?: any };
 } | null> {
@@ -1023,9 +1023,9 @@ export async function runFullSyncCycle(): Promise<{
 
   isSyncingLock = true;
   try {
-    console.log('[SYNC ENGINE] Starting thread-safe synchronization cycle...');
+    console.log(`[SYNC ENGINE] Starting thread-safe synchronization cycle (forceFullSync: ${forceFullSync})...`);
     const outboxResult = await processPendingSyncQueueInternal();
-    const deltaSyncResult = await performDeltaSyncInternal();
+    const deltaSyncResult = await performDeltaSyncInternal(forceFullSync);
 
     if (outboxResult.processedCount > 0) {
       await setLastPushTime(new Date().toISOString());
@@ -1048,7 +1048,7 @@ export async function runFullSyncCycle(): Promise<{
  * Compares last_sync_timestamp and only fetches changed records from Supabase, then updates Dexie.js
  * Handles soft-deleted records (is_deleted: true) by removing them from Dexie.js
  */
-export async function performDeltaSync(): Promise<{
+export async function performDeltaSync(forceFullSync = false): Promise<{
   success: boolean;
   syncedCounts: Record<string, number>;
   downloadedCount: number;
@@ -1060,7 +1060,7 @@ export async function performDeltaSync(): Promise<{
   }
   isSyncingLock = true;
   try {
-    const res = await performDeltaSyncInternal();
+    const res = await performDeltaSyncInternal(forceFullSync);
     if (res.success) {
       await setLastPullTime(new Date().toISOString());
       await setLastSyncError(null);
@@ -1073,14 +1073,14 @@ export async function performDeltaSync(): Promise<{
   }
 }
 
-async function performDeltaSyncInternal(): Promise<{
+async function performDeltaSyncInternal(forceFullSync = false): Promise<{
   success: boolean;
   syncedCounts: Record<string, number>;
   downloadedCount: number;
   error?: any;
 }> {
-  console.log('[SUPABASE DELTA SYNC] Starting sync cycle...');
-  const lastSync = await getLastSyncTimestamp();
+  console.log(`[SUPABASE DELTA SYNC] Starting sync cycle (forceFullSync: ${forceFullSync})...`);
+  const lastSync = forceFullSync ? null : await getLastSyncTimestamp();
   const nextSyncTimestamp = new Date().toISOString();
   const syncedCounts: Record<string, number> = {};
   let totalDownloaded = 0;
@@ -2249,3 +2249,57 @@ export const syncSupplierTransactionToSupabase = async (st: SupplierTransaction)
 export const syncExpenseToSupabase = async (e: POSExpense) => insertExpenseToSupabase(e);
 export const syncClosedShiftToSupabase = async (cs: ClosedShift) => insertClosedShiftToSupabase(cs);
 export const syncTransactionToSupabase = async (t: Transaction) => insertTransactionToSupabase(t);
+
+/**
+ * Completely clears local Dexie tables and performs a full sync cycle from Supabase
+ */
+export async function wipeLocalDbAndReFetchAllFromSupabase(): Promise<{
+  success: boolean;
+  syncedCounts: Record<string, number>;
+  downloadedCount: number;
+  error?: any;
+}> {
+  console.log('[RESET LOCAL DB] Clearing all local Dexie IndexedDB tables...');
+  
+  try {
+    await db.transaction('rw', [
+      db.products,
+      db.customers,
+      db.suppliers,
+      db.supplierTransactions,
+      db.transactions,
+      db.associates,
+      db.closedShifts,
+      db.expenses,
+      db.discounts,
+      db.syncMeta,
+      db.pendingSync,
+      db.syncErrors,
+    ], async () => {
+      await db.products.clear();
+      await db.customers.clear();
+      await db.suppliers.clear();
+      await db.supplierTransactions.clear();
+      await db.transactions.clear();
+      await db.associates.clear();
+      await db.closedShifts.clear();
+      await db.expenses.clear();
+      await db.discounts.clear();
+      await db.syncMeta.clear();
+      await db.pendingSync.clear();
+      await db.syncErrors.clear();
+    });
+
+    console.log('[RESET LOCAL DB] Local Dexie tables wiped. Running full sync cycle from Supabase...');
+    const result = await performDeltaSync(true);
+    return result;
+  } catch (err: any) {
+    console.error('[RESET LOCAL DB ERROR]', err);
+    return {
+      success: false,
+      syncedCounts: {},
+      downloadedCount: 0,
+      error: err,
+    };
+  }
+}

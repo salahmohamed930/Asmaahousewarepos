@@ -38,8 +38,9 @@ import {
   runFullSyncCycle,
   resolveTransactionTimestamp,
   fetchTransactionsFromSupabase,
+  wipeLocalDbAndReFetchAllFromSupabase,
 } from '../lib/supabaseSync';
-import { getSupabaseKeys } from '../lib/supabase';
+import { supabase, getSupabaseKeys } from '../lib/supabase';
 
 interface POSContextType {
   associates: Associate[];
@@ -166,6 +167,7 @@ interface POSContextType {
   retryAllFailedItems: () => Promise<void>;
 
   refreshDataFromSupabase: () => Promise<void>;
+  resetAndRefetchLocalData: () => Promise<{ success: boolean; syncedCounts: Record<string, number>; downloadedCount: number; error?: any }>;
   syncUnsyncedItems: () => Promise<void>;
   resetDemoData: () => Promise<void>;
   dbStatus: { isConnected: boolean; isChecking: boolean; errorMessage?: string; isCustom: boolean };
@@ -448,14 +450,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [loadFromLocal]);
 
-  const syncNow = useCallback(async () => {
+  const syncNow = useCallback(async (forceFull = false) => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       setSyncStatus('offline');
       return;
     }
     setSyncStatus('syncing');
     try {
-      const syncResult = await runFullSyncCycle();
+      const syncResult = await runFullSyncCycle(forceFull);
       await loadFromLocal();
       if (syncResult) {
         setSyncSummaryResult({
@@ -470,6 +472,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await loadFromLocal();
     }
   }, [loadFromLocal]);
+
+  const forceFullRefresh = useCallback(async () => {
+    await syncNow(true);
+  }, [syncNow]);
 
   const retryFailedItem = useCallback(async (id: number) => {
     await retryPendingItem(id);
@@ -507,6 +513,32 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearInterval(syncInterval);
     };
   }, [triggerBackgroundSync]);
+
+  // Supabase Realtime Postgres Changes Subscription
+  // Automatically triggers sync when changes are made directly in the Supabase database
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.onLine) return;
+
+    console.log('[SUPABASE REALTIME] Subscribing to postgres_changes channel...');
+    const channel = supabase
+      .channel('pos_db_changes_channel')
+      .on('postgres_changes', { event: '*', schema: 'public' }, async (payload) => {
+        console.log('[SUPABASE REALTIME CHANGE DETECTED]', payload.table, payload.eventType);
+        try {
+          await runFullSyncCycle(true);
+          await loadFromLocal();
+        } catch (err) {
+          console.warn('[Realtime sync warning]', err);
+        }
+      })
+      .subscribe((status) => {
+        console.log('[SUPABASE REALTIME STATUS]', status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadFromLocal]);
 
   const testDbConnection = async () => {
     setDbStatus((p) => ({ ...p, isChecking: true }));
@@ -1530,6 +1562,32 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return defaultPerms.includes(perm);
   }, [currentAssociate]);
 
+  const resetAndRefetchLocalData = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error('لا يوجد اتصال بالإنترنت. يرجى الاتصال بالشبكة أولاً لإعادة جلب البيانات من السحابة.');
+    }
+    setSyncStatus('syncing');
+    try {
+      const result = await wipeLocalDbAndReFetchAllFromSupabase();
+      await loadFromLocal();
+      if (result.success) {
+        setSyncSummaryResult({
+          uploadedCount: 0,
+          downloadedCount: result.downloadedCount || 0,
+          failedCount: 0,
+          completedAt: new Date().toLocaleTimeString('ar-EG'),
+        });
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('failed');
+      }
+      return result;
+    } catch (err) {
+      setSyncStatus('failed');
+      throw err;
+    }
+  }, [loadFromLocal]);
+
   const resetDemoData = async () => {
     clearCart();
     await triggerBackgroundSync();
@@ -1624,7 +1682,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncNow,
         retryFailedItem,
         retryAllFailedItems,
-        refreshDataFromSupabase: triggerBackgroundSync,
+        refreshDataFromSupabase: forceFullRefresh,
+        resetAndRefetchLocalData,
         syncUnsyncedItems: triggerBackgroundSync,
         resetDemoData,
         dbStatus,

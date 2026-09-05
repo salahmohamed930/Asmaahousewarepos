@@ -111,6 +111,18 @@ export const RegisterView: React.FC = () => {
       return;
     }
 
+    const isEmployeeCategory = ['رواتب وأجور', 'سلفة لموظف', 'حافز / مكافأة', 'خصم / جزاء'].includes(expenseCategory);
+
+    if (isEmployeeCategory && !linkedAssociateId) {
+      setExpenseError('يرجى اختيار الموظف/البائع المستلم');
+      return;
+    }
+
+    if (expenseCategory === 'دفعة لمورد' && !linkedSupplierId) {
+      setExpenseError('يرجى اختيار المورد المستلم');
+      return;
+    }
+
     const selectedSupplier = suppliers.find((s) => s.id === linkedSupplierId);
     const selectedAssociate = associates.find((a) => a.id === linkedAssociateId);
 
@@ -120,8 +132,8 @@ export const RegisterView: React.FC = () => {
       description: expenseDescription,
       linkedSupplierId: expenseCategory === 'دفعة لمورد' ? linkedSupplierId : undefined,
       linkedSupplierName: expenseCategory === 'دفعة لمورد' ? selectedSupplier?.name : undefined,
-      linkedAssociateId: expenseCategory === 'سلفة لموظف' ? linkedAssociateId : undefined,
-      linkedAssociateName: expenseCategory === 'سلفة لموظف' ? selectedAssociate?.name : undefined,
+      linkedAssociateId: isEmployeeCategory ? linkedAssociateId : undefined,
+      linkedAssociateName: isEmployeeCategory ? selectedAssociate?.name : undefined,
     });
 
     // Reset fields & close modal
@@ -143,6 +155,8 @@ export const RegisterView: React.FC = () => {
   const expenseCategoriesList = [
     'رواتب وأجور',
     'سلفة لموظف',
+    'حافز / مكافأة',
+    'خصم / جزاء',
     'دفعة لمورد',
     'إيجار',
     'مرافق (كهرباء / مياه)',
@@ -1884,16 +1898,21 @@ export const RegisterView: React.FC = () => {
                 </div>
               )}
 
-              {expenseCategory === 'سلفة لموظف' && (
+              {['رواتب وأجور', 'سلفة لموظف', 'حافز / مكافأة', 'خصم / جزاء'].includes(expenseCategory) && (
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-400 mb-1">الموظف المستلم *</label>
+                  <label className="block text-[11px] font-bold text-stone-400 mb-1">
+                    {expenseCategory === 'رواتب وأجور' && 'الموظف / البائع المستلم للراتب *'}
+                    {expenseCategory === 'سلفة لموظف' && 'الموظف المستلم للسلفة *'}
+                    {expenseCategory === 'حافز / مكافأة' && 'الموظف المستحق للحافز *'}
+                    {expenseCategory === 'خصم / جزاء' && 'الموظف المخصوم عليه *'}
+                  </label>
                   <select
                     required
                     value={linkedAssociateId}
                     onChange={(e) => setLinkedAssociateId(e.target.value)}
                     className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs font-bold text-stone-100 focus:outline-none"
                   >
-                    <option value="">-- اختر الموظف لتسجيل السلفة عليه --</option>
+                    <option value="">-- اختر الموظف لربط القيد بحسابه --</option>
                     {associates.map((a, idx) => (
                       <option key={a.id ? `assoc1_${a.id}_${idx}` : `assoc1_${idx}`} value={a.id}>
                         {a.name} ({a.role})

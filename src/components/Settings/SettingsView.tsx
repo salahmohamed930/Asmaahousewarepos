@@ -65,6 +65,7 @@ export const SettingsView: React.FC = () => {
     closedShifts,
     syncUnsyncedItems,
     refreshDataFromSupabase,
+    resetAndRefetchLocalData,
     clearAllProducts,
     syncStatus,
     pendingSyncCount,
@@ -81,6 +82,33 @@ export const SettingsView: React.FC = () => {
 
   const [diagnosticResult, setDiagnosticResult] = useState<{ success?: boolean; msg?: string } | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [isResettingLocalDb, setIsResettingLocalDb] = useState(false);
+
+  const handleResetLocalDatabase = async () => {
+    if (!window.confirm('هل أنت متأكد من تصفير قاعدة البيانات المحلية وإعادة جلب كل البيانات بالكامل من السحابة؟\n\nسيتم مسح الذاكرة المحلية وجلب أحدث البيانات والأصناف والعملاء والموردين والمبيعات طازجة ومباشرة من Supabase.')) {
+      return;
+    }
+
+    setIsResettingLocalDb(true);
+    try {
+      const res = await resetAndRefetchLocalData();
+      if (res.success) {
+        setDiagnosticResult({
+          success: true,
+          msg: `تم تصفير البيانات المحلية وإعادة جلب البيانات بنجاح (${res.downloadedCount || 0} سجل جديد)!`,
+        });
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          // notification feedback if available
+        }
+      } else {
+        alert(`حدث خطأ أثناء إعادة الجلب: ${res.error?.message || 'تعذر استكمال المزامنة'}`);
+      }
+    } catch (err: any) {
+      alert(`خطأ: ${err?.message || 'تعذر تصفير الذاكرة وإعادة جلب البيانات'}`);
+    } finally {
+      setIsResettingLocalDb(false);
+    }
+  };
 
   // Direct Printing Service States (QZ Tray)
   const [printerStatus, setPrinterStatus] = useState<PrinterServiceStatus>(qzPrinterService.getStatus());
@@ -1588,6 +1616,33 @@ export const SettingsView: React.FC = () => {
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
                     <span>بدء مزامنة يدوية فورية (Push & Pull)</span>
+                  </button>
+                </div>
+
+                {/* Reset Local DB & Refetch All Action */}
+                <div className="pt-3 border-t border-stone-850 space-y-2">
+                  <div className="bg-amber-950/20 border border-amber-800/40 p-3 rounded-xl text-xs space-y-1 text-amber-200">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                      <RefreshCw className="w-4 h-4 text-amber-400" />
+                      <span>تصفير قاعدة البيانات المحلية وإعادة جلب كل البيانات</span>
+                    </div>
+                    <p className="text-[11px] text-stone-300 leading-relaxed">
+                      يقوم هذا الزر بتفريغ ذاكرة الكاش والجداول المحلية (Dexie IndexedDB) بالكامل، ثم إعادة جلب كافة الأصناف، العملاء، الموردين، والمبيعات طازجة ومباشرة من قاعدة بيانات Supabase المركزية.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleResetLocalDatabase}
+                    disabled={isResettingLocalDb || dbStatus.isChecking}
+                    className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-98"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isResettingLocalDb ? 'animate-spin' : ''}`} />
+                    <span>
+                      {isResettingLocalDb
+                        ? 'جاري تصفير البيانات المحلية وإعادة بناء قاعدة البيانات...'
+                        : 'تصفير قاعدة البيانات المحلية وإعادة جلب كل البيانات'}
+                    </span>
                   </button>
                 </div>
 

@@ -123,8 +123,8 @@ export const TABLE_SCHEMAS: Record<string, TableSchemaConfig> = {
   products: {
     tableName: 'products',
     primaryKey: 'id',
-    createdTimeCol: null,
-    updatedTimeCol: 'updated_at',
+    createdTimeCol: 'created_at',
+    updatedTimeCol: 'created_at',
     deletedFlagCol: 'is_deleted',
   },
   customers: {
@@ -193,7 +193,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchemaConfig> = {
 };
 
 export const TABLE_SELECT_COLUMNS: Record<string, string> = {
-  products: 'id, name, p_k, barcode, barcodes, alternative_barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, updated_at, is_deleted',
+  products: 'id, name, p_k, barcodes, alternative_barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, created_at, is_deleted',
   customers: 'id, name, phone, email, address, notes, current_debt, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, monthly_installment_amount, updated_at, is_deleted',
   suppliers: 'id, name, company_name, phone, email, address, notes, category, tax_number, current_balance, updated_at, is_deleted',
   supplier_transactions: 'id, supplier_id, type, amount, date, notes, invoice_number, payment_method, updated_at, is_deleted',
@@ -1446,7 +1446,7 @@ async function processPendingSyncQueueInternal(): Promise<{
 
 export async function fetchProductsFromSupabase(): Promise<{ data: Product[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('products', 'id, name, sku, barcode, category, price, wholesale_price, price_installment, cost, stock_quantity, description, image, barcodes');
+    const res = await fetchSelectiveFromSupabase('products', 'id, name, category, price, wholesale_price, price_installment, cost, stock_quantity, description, barcodes, alternative_barcodes, p_k, created_at');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbProductToProduct) };
   } catch (err: any) {

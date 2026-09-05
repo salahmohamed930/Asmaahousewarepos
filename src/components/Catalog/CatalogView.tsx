@@ -603,6 +603,7 @@ export const CatalogView: React.FC = () => {
     localStorage.setItem('last_chosen_category', formData.category);
 
     const productPayload: Partial<Product> = {
+      id: editingProduct?.id,
       name: formData.name,
       sku: formData.sku,
       barcode: formData.barcode,
@@ -614,18 +615,22 @@ export const CatalogView: React.FC = () => {
       stock: Number(formData.stock),
       image: formData.image,
       description: formData.description,
-      barcodes: formData.barcodes || [],
+      barcodes: formData.barcodes || (formData.barcode ? [formData.barcode] : []),
     };
 
     if (editingProduct) {
+      const updatedProduct = { ...editingProduct, ...productPayload } as Product;
+      setCatalogProducts((prev) => prev.map((p) => (String(p.id) === String(editingProduct.id) ? updatedProduct : p)));
+      setDuplicateProductsList((prev) => prev.map((p) => (String(p.id) === String(editingProduct.id) ? updatedProduct : p)));
+
       await updateProductService(editingProduct.id, productPayload);
     } else {
       await createProduct(productPayload);
     }
 
     setIsModalOpen(false);
-    fetchCatalogProducts();
-    loadDuplicates();
+    await loadDuplicates();
+    await fetchCatalogProducts();
   };
 
   const handleApplyBulkEdit = async () => {
@@ -679,33 +684,39 @@ export const CatalogView: React.FC = () => {
 
     setSelectedProductIds([]);
     setIsBulkModalOpen(false);
-    fetchCatalogProducts();
-    loadDuplicates();
+    await loadDuplicates();
+    await fetchCatalogProducts();
   };
 
   const handleDeleteProduct = async (p: Product) => {
     if (window.confirm(`هل أنت متأكد من حذف الصنف "${p.name}"؟ سيتم حذفه من قاعدة البيانات أيضاً.`)) {
+      setCatalogProducts((prev) => prev.filter((item) => String(item.id) !== String(p.id)));
+      setDuplicateProductsList((prev) => prev.filter((item) => String(item.id) !== String(p.id)));
       await deleteProductService(p.id);
-      fetchCatalogProducts();
-      loadDuplicates();
+      await loadDuplicates();
+      await fetchCatalogProducts();
     }
   };
 
   const handleBulkDelete = async () => {
     if (window.confirm(`هل أنت متأكد من حذف ${selectedProductIds.length} صنف محدد؟ سيتم حذفها نهائياً من قاعدة البيانات.`)) {
+      setCatalogProducts((prev) => prev.filter((item) => !selectedProductIds.includes(item.id)));
+      setDuplicateProductsList((prev) => prev.filter((item) => !selectedProductIds.includes(item.id)));
       await bulkDeleteProductsService(selectedProductIds);
       setSelectedProductIds([]);
-      fetchCatalogProducts();
-      loadDuplicates();
+      await loadDuplicates();
+      await fetchCatalogProducts();
     }
   };
 
   const handleClearAll = async () => {
     if (window.confirm('تنبيه هام: هل أنت متأكد من مسح وتفريغ جميع الأصناف بالكامل؟\nسيتم تفريغ السجل ومسح الأصناف في قاعدة البيانات.')) {
+      setCatalogProducts([]);
+      setDuplicateProductsList([]);
       await clearAllProductsService();
       setSelectedProductIds([]);
-      fetchCatalogProducts();
-      loadDuplicates();
+      await loadDuplicates();
+      await fetchCatalogProducts();
     }
   };
 

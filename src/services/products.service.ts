@@ -442,22 +442,54 @@ export async function getCategories(): Promise<string[]> {
  * 6. CRUD Operations Wrappers
  */
 export async function createProduct(product: Partial<Product>): Promise<{ success: boolean; data?: Product; error?: any }> {
-  return await insertProductToSupabase(product as Product);
+  const res = await insertProductToSupabase(product as Product);
+  if (res.data) {
+    try {
+      await db.products.put(res.data);
+    } catch (e) {
+      console.warn('[createProduct] Dexie put warning:', e);
+    }
+  }
+  return res;
 }
 
 export async function updateProduct(id: string, product: Partial<Product>): Promise<{ success: boolean; data?: Product; error?: any }> {
-  return await updateProductInSupabase({ ...product, id } as Product);
+  const fullProd = { ...product, id } as Product;
+  try {
+    await db.products.put(fullProd);
+  } catch (e) {
+    console.warn('[updateProduct] Dexie put warning:', e);
+  }
+  return await updateProductInSupabase(fullProd);
 }
 
 export async function deleteProduct(id: string): Promise<{ success: boolean; error?: any }> {
+  try {
+    await db.products.delete(id);
+    if (!isNaN(Number(id))) {
+      await db.products.delete(Number(id) as any);
+    }
+  } catch (e) {
+    console.warn('[deleteProduct] Dexie delete warning:', e);
+  }
   return await deleteProductFromSupabase(id);
 }
 
 export async function bulkDeleteProducts(ids: string[]): Promise<{ success: boolean; error?: any }> {
+  try {
+    await db.products.bulkDelete(ids);
+  } catch (e) {
+    console.warn('[bulkDeleteProducts] Dexie bulkDelete warning:', e);
+  }
   return await bulkDeleteProductsFromSupabase(ids);
 }
 
 export async function clearAllProducts(): Promise<{ success: boolean; error?: any }> {
+  try {
+    await db.products.clear();
+  } catch (e) {
+    console.warn('[clearAllProducts] Dexie clear warning:', e);
+  }
   return await clearAllProductsFromSupabase();
 }
 
@@ -743,24 +775,36 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
   duplicateMap: Map<string, { code: string; type: 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>;
 }> {
   try {
-    let products: Product[] = await db.products.toArray();
+    let products: Product[] = [];
+
+    // 1. If online, fetch from Supabase to guarantee 100% fresh codes across the database
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        let allDbRows: any[] = [];
+        let from = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from('products')
+            .select(PRODUCT_SELECT_COLUMNS)
+            .order('id')
+            .range(from, from + 999);
+          if (error || !data || data.length === 0) break;
+          allDbRows.push(...data);
+          from += 1000;
+          if (data.length < 1000) break;
+        }
+        if (allDbRows.length > 0) {
+          products = allDbRows.map(mapDbProductToProduct);
+          await db.products.bulkPut(products);
+        }
+      } catch (supabaseErr) {
+        console.warn('[fetchDuplicateProductsAcrossCatalog] Supabase scan fallback to Dexie:', supabaseErr);
+      }
+    }
+
+    // 2. Fallback to local Dexie cache if offline or query returned empty
     if (products.length === 0) {
-      let allDbRows: any[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from('products')
-          .select(PRODUCT_SELECT_COLUMNS)
-          .order('id')
-          .range(from, from + 999);
-        if (error || !data || data.length === 0) break;
-        allDbRows.push(...data);
-        from += 1000;
-        if (data.length < 1000) break;
-      }
-      if (allDbRows.length > 0) {
-        products = allDbRows.map(mapDbProductToProduct);
-      }
+      products = await db.products.toArray();
     }
 
     const codeToProducts = new Map<string, Product[]>();

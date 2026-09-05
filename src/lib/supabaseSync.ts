@@ -408,6 +408,17 @@ export function mapDbProductToProduct(p: any): Product {
 }
 
 export function mapProductToDbPayload(product: Product): any {
+  const allBarcodes: string[] = Array.from(
+    new Set(
+      [
+        product.barcode,
+        ...(Array.isArray(product.barcodes) ? product.barcodes : []),
+      ]
+        .map((b) => (b ? String(b).trim() : ''))
+        .filter(Boolean)
+    )
+  );
+
   const payload: any = {
     name: product.name || 'منتج',
     category: product.category || 'عام',
@@ -417,8 +428,14 @@ export function mapProductToDbPayload(product: Product): any {
     cost: Number(product.cost || 0),
     stock_quantity: Number(product.stock || 0),
     description: product.description || '',
-    barcodes: product.barcodes || (product.barcode ? [product.barcode] : []),
+    barcodes: allBarcodes,
+    alternative_barcodes: allBarcodes.slice(1),
+    updated_at: new Date().toISOString(),
   };
+
+  if (product.barcode) {
+    payload.barcode = String(product.barcode).trim();
+  }
 
   if (product.sku && !isNaN(Number(product.sku))) {
     payload.p_k = Number(product.sku);
@@ -1554,14 +1571,22 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
     const { data, error } = await safeSupabaseMutation(
       'products',
       async (p) => {
-        const res = await supabase.from('products').insert([p]).select('id, name');
+        const res = await supabase.from('products').insert([p]).select('id, name, p_k, barcode, barcodes');
         if (res.error) return res;
         return { data: (res.data && res.data.length > 0) ? res.data[0] : { id: p.id, name: p.name }, error: null };
       },
       payload
     );
+
+    const resultingProduct = data ? mapDbProductToProduct(data) : product;
+    try {
+      await db.products.put(resultingProduct);
+    } catch (dexieErr) {
+      console.warn('[insertProductToSupabase] Dexie put warning:', dexieErr);
+    }
+
     if (error) return { success: false, error };
-    return { success: true, data: data ? mapDbProductToProduct(data) : product };
+    return { success: true, data: resultingProduct };
   } catch (err: any) {
     return { success: false, error: err };
   }
@@ -1573,11 +1598,8 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
     // Never update primary/immutable keys on update payload
     delete payload.id;
     delete payload.created_at;
-    delete payload.updated_at;
-    delete payload.p_k; // p_k is an immutable unique sequential code in Supabase
 
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
-    const skuNum = (product.sku && !isNaN(Number(product.sku))) ? Number(product.sku) : null;
     const barcodeStr = product.barcode ? String(product.barcode).trim() : null;
 
     const { data, error } = await safeSupabaseMutation(
@@ -1589,46 +1611,33 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
             .from('products')
             .update(p)
             .eq('id', idNum)
-            .select('id, name');
+            .select('id, name, p_k, barcode, barcodes');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
             return { data: updateData[0], error: null };
           }
         }
 
-        // 2. Try matching by p_k if SKU is numeric
-        if (skuNum !== null) {
-          const { data: updateData, error: updateErr } = await supabase
-            .from('products')
-            .update(p)
-            .eq('p_k', skuNum)
-            .select('id, name');
-
-          if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
-            return { data: updateData[0], error: null };
-          }
-        }
-
-        // 3. Try matching by barcode if available
+        // 2. Try matching by barcode if available
         if (barcodeStr) {
           const { data: updateData, error: updateErr } = await supabase
             .from('products')
             .update(p)
             .eq('barcode', barcodeStr)
-            .select('id, name');
+            .select('id, name, p_k, barcode, barcodes');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
             return { data: updateData[0], error: null };
           }
         }
 
-        // 4. Fallback: match by product name
+        // 3. Fallback: match by product name
         if (product.name) {
           const { data: updateData, error: updateErr } = await supabase
             .from('products')
             .update(p)
             .eq('name', product.name)
-            .select('id, name');
+            .select('id, name, p_k, barcode, barcodes');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
             return { data: updateData[0], error: null };
@@ -1638,29 +1647,34 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
           }
         }
 
-        // 5. If no row was found to update, insert as new product to avoid blocking the sync queue
+        // 4. If no row was found to update, insert as new product to avoid blocking the sync queue
         const insertPayload: any = { ...p };
         if (idNum !== null && idNum <= 2147483647) {
           insertPayload.id = idNum;
-        }
-        if (skuNum !== null) {
-          insertPayload.p_k = skuNum;
         }
         delete insertPayload.updated_at;
 
         const { data: insertData, error: insertErr } = await supabase
           .from('products')
           .insert([insertPayload])
-          .select('id, name');
+          .select('id, name, p_k, barcode, barcodes');
 
         if (!insertErr && Array.isArray(insertData) && insertData.length > 0) {
           return { data: insertData[0], error: null };
         }
 
-        return { data: { id: idNum || skuNum, name: product.name }, error: null };
+        return { data: { id: idNum || product.id, name: product.name }, error: null };
       },
       payload
     );
+
+    // Always update local Dexie cache immediately
+    try {
+      await db.products.put(product);
+    } catch (dexieErr) {
+      console.warn('[updateProductInSupabase] Dexie cache put warning:', dexieErr);
+    }
+
     if (error) return { success: false, error };
     return { success: true, data: data ? mapDbProductToProduct(data) : product };
   } catch (err: any) {

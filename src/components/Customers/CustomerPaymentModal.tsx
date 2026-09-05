@@ -115,21 +115,22 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
     const q = customerSearch.trim();
 
     return customers.filter((c) => {
-      // 1. Tab filter
-      if (filterTab === 'indebted' && (c.currentDebt || 0) <= 0) return false;
-      if (filterTab === 'installments' && (!c.monthlyInstallmentAmount || c.monthlyInstallmentAmount <= 0)) return false;
-
-      // 2. Search query filter
+      // 1. Search query filter (when query is typed, search across ALL customers regardless of tab)
       if (q) {
         const matchName = matchesArabicQuery(c.name, q);
-        const matchPhone = (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) || (c.phone || '').includes(q);
+        const matchPhone = matchesArabicQuery(c.phone, q);
         const matchAddress = matchesArabicQuery(c.address, q);
         const matchNotes = matchesArabicQuery(c.notes, q);
-        const matchId = String(c.id) === q;
+        const matchEmail = matchesArabicQuery(c.email, q);
+        const matchId = String(c.id) === q || matchesArabicQuery(String(c.id), q);
 
-        if (!matchName && !matchPhone && !matchAddress && !matchNotes && !matchId) {
+        if (!matchName && !matchPhone && !matchAddress && !matchNotes && !matchEmail && !matchId) {
           return false;
         }
+      } else {
+        // 2. Tab filter (applied when search input is empty)
+        if (filterTab === 'indebted' && (c.currentDebt || 0) <= 0) return false;
+        if (filterTab === 'installments' && (!c.monthlyInstallmentAmount || c.monthlyInstallmentAmount <= 0)) return false;
       }
 
       return true;
@@ -147,7 +148,7 @@ export const CustomerPaymentModal: React.FC<CustomerPaymentModalProps> = ({
   const handleSelectCustomer = (c: Customer) => {
     setSelectedCustId(c.id);
     setIsSearchOpen(false);
-    setCustomerSearch('');
+    setCustomerSearch(c.name);
   };
 
   const handlePayFull = () => {

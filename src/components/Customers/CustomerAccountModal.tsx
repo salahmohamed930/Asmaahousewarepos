@@ -31,6 +31,7 @@ import {
 import { ReceiptModal } from '../Register/ReceiptModal';
 import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
 import { CustomerStatementReceiptModal } from './CustomerStatementReceiptModal';
+import { matchesArabicQuery } from '../../utils/textUtils';
 
 interface CustomerAccountModalProps {
   customer: Customer;
@@ -206,16 +207,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
   // Filtered statement entries (Chronological reverse for view - newest first)
   const filteredStatementEntries = useMemo(() => {
-    const q = statementSearch.trim().toLowerCase();
+    const q = statementSearch.trim();
     // Start with newest entries on top for display
     const reversed = [...statementEntries].reverse();
     if (!q) return reversed;
     return reversed.filter(entry => {
-      const matchReceipt = (entry.receiptNumber || '').toLowerCase().includes(q);
-      const matchDesc = (entry.description || '').toLowerCase().includes(q);
-      const matchDate = (entry.timestamp || '').toLowerCase().includes(q);
-      const matchAssociate = (entry.associateName || '').toLowerCase().includes(q);
-      return matchReceipt || matchDesc || matchDate || matchAssociate;
+      const matchReceipt = matchesArabicQuery(entry.receiptNumber, q);
+      const matchDesc = matchesArabicQuery(entry.description, q);
+      const matchDate = matchesArabicQuery(entry.timestamp, q);
+      const matchAssociate = matchesArabicQuery(entry.associateName, q);
+      const matchAmount = matchesArabicQuery(String(entry.amount || ''), q) || matchesArabicQuery(String(entry.deferredAmount || ''), q);
+      return matchReceipt || matchDesc || matchDate || matchAssociate || matchAmount;
     });
   }, [statementEntries, statementSearch]);
 
@@ -228,16 +230,17 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
   // Filtered invoices by search query
   const filteredInvoices = useMemo(() => {
-    const q = invoiceSearch.trim().toLowerCase();
+    const q = invoiceSearch.trim();
     if (!q) return invoices;
     return invoices.filter(tx => {
-      const matchReceipt = (tx.receiptNumber || '').toLowerCase().includes(q);
-      const matchAssociate = (tx.primaryAssociateName || '').toLowerCase().includes(q);
-      const matchStatus = (tx.status || '').toLowerCase().includes(q);
-      const matchItem = tx.items.some(item => (item.productName || (item as any).product?.name || '').toLowerCase().includes(q));
-      const matchDate = (tx.timestamp || '').toLowerCase().includes(q);
-      const matchNotes = (tx.notes || '').toLowerCase().includes(q);
-      return matchReceipt || matchAssociate || matchStatus || matchItem || matchDate || matchNotes;
+      const matchReceipt = matchesArabicQuery(tx.receiptNumber, q);
+      const matchAssociate = matchesArabicQuery(tx.primaryAssociateName, q);
+      const matchStatus = matchesArabicQuery(tx.status, q);
+      const matchItem = tx.items.some(item => matchesArabicQuery(item.productName || (item as any).product?.name, q));
+      const matchDate = matchesArabicQuery(tx.timestamp, q);
+      const matchNotes = matchesArabicQuery(tx.notes, q);
+      const matchAmount = matchesArabicQuery(String(tx.grandTotal || tx.subtotal || ''), q);
+      return matchReceipt || matchAssociate || matchStatus || matchItem || matchDate || matchNotes || matchAmount;
     });
   }, [invoices, invoiceSearch]);
 
@@ -250,14 +253,15 @@ export const CustomerAccountModal: React.FC<CustomerAccountModalProps> = ({
 
   // Filtered payments by search query
   const filteredPayments = useMemo(() => {
-    const q = paymentSearch.trim().toLowerCase();
+    const q = paymentSearch.trim();
     if (!q) return payments;
     return payments.filter(p => {
-      const matchReceipt = (p.receiptNumber || '').toLowerCase().includes(q);
-      const matchAssociate = (p.primaryAssociateName || '').toLowerCase().includes(q);
-      const matchNotes = (p.notes || '').toLowerCase().includes(q);
-      const matchMethod = (p.paymentMethod || '').toLowerCase().includes(q);
-      return matchReceipt || matchAssociate || matchNotes || matchMethod;
+      const matchReceipt = matchesArabicQuery(p.receiptNumber, q);
+      const matchAssociate = matchesArabicQuery(p.primaryAssociateName, q);
+      const matchNotes = matchesArabicQuery(p.notes, q);
+      const matchMethod = matchesArabicQuery(p.paymentMethod, q);
+      const matchAmount = matchesArabicQuery(String(p.amountPaid || p.grandTotal || ''), q);
+      return matchReceipt || matchAssociate || matchNotes || matchMethod || matchAmount;
     });
   }, [payments, paymentSearch]);
 

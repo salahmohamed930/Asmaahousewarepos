@@ -41,7 +41,7 @@ export const CustomersView: React.FC = () => {
   } = usePOS();
 
   const [search, setSearch] = useState('');
-  const [debtFilter, setDebtFilter] = useState<'all' | 'indebted' | 'clear' | 'credit_eligible'>('all');
+  const [debtFilter, setDebtFilter] = useState<'all' | 'indebted' | 'installments' | 'clear' | 'credit_eligible'>('all');
   const [assocFilter, setAssocFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<
     'debt_desc' | 'spent_desc' | 'points_desc' | 'points_asc' | 'last_payment_desc' | 'last_payment_asc' | 'name_asc'
@@ -154,29 +154,36 @@ export const CustomersView: React.FC = () => {
   const creditEligibleCount = useMemo(() => customers.filter((c) => c.isCreditEligible).length, [customers]);
   const totalSpentSum = useMemo(() => customers.reduce((acc, c) => acc + (c.totalSpent || 0), 0), [customers]);
 
+  const installmentCustomersCount = useMemo(() => customers.filter((c) => (c.monthlyInstallmentAmount || 0) > 0).length, [customers]);
+
   // Filtering & Sorting Logic
   const filteredAndSortedCustomers = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
 
     const result = customers.filter((c) => {
-      // 1. Text Search (Name, Phone, Email, Address, Notes)
+      // 1. Text Search (Name, Phone, Email, Address, Notes, ID)
       if (q) {
         const matchSearch =
           matchesArabicQuery(c.name, q) ||
-          (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
-          (c.phone || '').includes(q) ||
-          (c.email || '').toLowerCase().includes(q) ||
+          matchesArabicQuery(c.phone, q) ||
+          matchesArabicQuery(c.email, q) ||
           matchesArabicQuery(c.address, q) ||
           matchesArabicQuery(c.notes, q) ||
-          String(c.id) === q;
+          String(c.id) === q ||
+          matchesArabicQuery(String(c.id), q);
 
         if (!matchSearch) return false;
+      } else {
+        // 2. Debt & Installment Filter (applied when search term is empty or specific filter active)
+        if (debtFilter === 'indebted' && (c.currentDebt || 0) <= 0) return false;
+        if (debtFilter === 'installments' && (!c.monthlyInstallmentAmount || c.monthlyInstallmentAmount <= 0)) return false;
+        if (debtFilter === 'clear' && (c.currentDebt || 0) > 0) return false;
+        if (debtFilter === 'credit_eligible' && !c.isCreditEligible) return false;
       }
 
-      // 2. Debt Filter
-      if (debtFilter === 'indebted' && (c.currentDebt || 0) <= 0) return false;
-      if (debtFilter === 'clear' && (c.currentDebt || 0) > 0) return false;
-      if (debtFilter === 'credit_eligible' && !c.isCreditEligible) return false;
+      // If debtFilter is explicitly set to 'installments' or 'indebted' and search is typed, respect specific tab if non-'all'
+      if (q && debtFilter === 'installments' && (!c.monthlyInstallmentAmount || c.monthlyInstallmentAmount <= 0)) return false;
+      if (q && debtFilter === 'indebted' && (c.currentDebt || 0) <= 0) return false;
 
       // 3. Preferred Associate Filter
       if (assocFilter !== 'all' && c.preferredAssociateId !== assocFilter) return false;
@@ -396,6 +403,18 @@ export const CustomersView: React.FC = () => {
             >
               <span>عليهم مديونيات</span>
               <span className="bg-stone-900 px-1.5 py-0.2 rounded-md font-mono text-[10px]">{indebtedCustomers.length}</span>
+            </button>
+
+            <button
+              onClick={() => setDebtFilter('installments')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 space-x-reverse ${
+                debtFilter === 'installments'
+                  ? 'bg-amber-600 text-white shadow font-black'
+                  : 'bg-stone-950 text-amber-400 border border-stone-800 hover:bg-stone-800'
+              }`}
+            >
+              <span>أصحاب أقساط</span>
+              <span className="bg-stone-900 px-1.5 py-0.2 rounded-md font-mono text-[10px]">{installmentCustomersCount}</span>
             </button>
 
             <button

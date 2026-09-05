@@ -227,6 +227,22 @@ export interface ProfitMargin {
   installment: number;
 }
 
+export interface LabelCustomizationSettings {
+  storeNameFontSize?: number;      // px
+  storeNameFontWeight?: 'normal' | 'bold' | 'bolder' | '900';
+  
+  productNameFontSize?: number;    // px
+  productNameFontWeight?: 'normal' | 'bold' | 'bolder' | '900';
+
+  priceFontSize?: number;          // px
+  priceFontWeight?: 'normal' | 'bold' | 'bolder' | '900';
+
+  barcodeCodeFontSize?: number;    // px
+  barcodeCodeFontWeight?: 'normal' | 'bold' | 'bolder' | '900';
+
+  barcodeHeight?: number;          // px
+}
+
 export interface PrintSettings {
   headerText: string;
   address?: string;
@@ -247,6 +263,9 @@ export interface PrintSettings {
   barcodeCopies?: number;
   invoicePaperSize?: '80mm' | '58mm' | 'A4' | 'A5';
   barcodePaperSize?: '38x25mm' | '40x25mm' | '50x25mm' | '50x30mm' | 'custom';
+
+  // Label Customization Settings
+  labelCustomization?: LabelCustomizationSettings;
 }
 
 export type ShortcutActionId =

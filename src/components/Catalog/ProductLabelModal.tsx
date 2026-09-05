@@ -93,168 +93,198 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
   // Dimension helpers
   const getLabelConfig = () => {
+    let baseConfig;
     switch (labelPreset) {
       case '1.5x1_horizontal': // 38mm x 25mm (1.5" x 1")
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '38mm 25mm',
           width: '38mm',
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 17,
+          barcodeHeight: 16,
           barcodeWidth: 1.4,
-          fontSizeHeader: '8.5px',
-          fontSizeTitle: '10px',
-          fontSizePrice: '11px',
-          fontSizeBarcode: 8.5,
+          fontSizeHeader: '10px',
+          fontSizeTitle: '11.5px',
+          fontSizePrice: '14.5px',
+          fontSizeBarcode: 9,
           labelName: '1.5 × 1 بوصة (38mm × 25mm) - أفقي شائع',
         };
+        break;
       case '1x1.5_vertical': // 25mm x 38mm (1" x 1.5")
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '25mm 38mm',
           width: '25mm',
           height: '38mm',
           widthMm: 25,
           heightMm: 38,
-          barcodeHeight: 24,
+          barcodeHeight: 22,
           barcodeWidth: 1.25,
-          fontSizeHeader: '8.5px',
-          fontSizeTitle: '9.5px',
-          fontSizePrice: '11px',
-          fontSizeBarcode: 8.5,
+          fontSizeHeader: '10px',
+          fontSizeTitle: '11px',
+          fontSizePrice: '14.5px',
+          fontSizeBarcode: 9,
           labelName: '1 × 1.5 بوصة (25mm × 38mm) - رأسي / طولي',
         };
+        break;
       case '40x25':
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '40mm 25mm',
           width: '40mm',
           height: '25mm',
           widthMm: 40,
           heightMm: 25,
-          barcodeHeight: 18,
+          barcodeHeight: 17,
           barcodeWidth: 1.45,
-          fontSizeHeader: '9px',
-          fontSizeTitle: '10.5px',
-          fontSizePrice: '11.5px',
-          fontSizeBarcode: 9,
+          fontSizeHeader: '10.5px',
+          fontSizeTitle: '12px',
+          fontSizePrice: '15px',
+          fontSizeBarcode: 9.5,
           labelName: 'رول حراري 40mm × 25mm',
         };
+        break;
       case '40x30':
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '40mm 30mm',
           width: '40mm',
           height: '30mm',
           widthMm: 40,
           heightMm: 30,
-          barcodeHeight: 22,
+          barcodeHeight: 20,
           barcodeWidth: 1.5,
-          fontSizeHeader: '9.5px',
-          fontSizeTitle: '11px',
-          fontSizePrice: '12px',
-          fontSizeBarcode: 9.5,
+          fontSizeHeader: '11px',
+          fontSizeTitle: '12.5px',
+          fontSizePrice: '16px',
+          fontSizeBarcode: 10,
           labelName: 'رول حراري 40mm × 30mm',
         };
+        break;
       case '2x1': // 50mm x 25mm
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '50mm 25mm',
           width: '50mm',
           height: '25mm',
           widthMm: 50,
           heightMm: 25,
-          barcodeHeight: 19,
+          barcodeHeight: 18,
           barcodeWidth: 1.65,
-          fontSizeHeader: '9.5px',
-          fontSizeTitle: '11px',
-          fontSizePrice: '12.5px',
-          fontSizeBarcode: 9.5,
+          fontSizeHeader: '11px',
+          fontSizeTitle: '12.5px',
+          fontSizePrice: '16px',
+          fontSizeBarcode: 10,
           labelName: '2 × 1 بوصة (50mm × 25mm)',
         };
+        break;
       case '50x30':
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '50mm 30mm',
           width: '50mm',
           height: '30mm',
           widthMm: 50,
           heightMm: 30,
-          barcodeHeight: 24,
+          barcodeHeight: 22,
           barcodeWidth: 1.7,
-          fontSizeHeader: '10px',
-          fontSizeTitle: '12px',
-          fontSizePrice: '13px',
-          fontSizeBarcode: 10,
+          fontSizeHeader: '11.5px',
+          fontSizeTitle: '13.5px',
+          fontSizePrice: '17px',
+          fontSizeBarcode: 10.5,
           labelName: 'رول حراري 50mm × 30mm',
         };
+        break;
       case 'custom':
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: `${customWidthMm}mm ${customHeightMm}mm`,
           width: `${customWidthMm}mm`,
           height: `${customHeightMm}mm`,
           widthMm: customWidthMm,
           heightMm: customHeightMm,
-          barcodeHeight: Math.max(16, barcodeHeightScale),
+          barcodeHeight: Math.max(14, barcodeHeightScale),
           barcodeWidth: Math.max(1.2, (customWidthMm / 38) * 1.4),
-          fontSizeHeader: customHeightMm < 26 ? '8.5px' : '9.5px',
-          fontSizeTitle: customHeightMm < 26 ? '10px' : '11.5px',
-          fontSizePrice: customHeightMm < 26 ? '11.5px' : '13px',
-          fontSizeBarcode: customHeightMm < 26 ? 8.5 : 9.5,
+          fontSizeHeader: customHeightMm < 26 ? '10px' : '12px',
+          fontSizeTitle: customHeightMm < 26 ? '11.5px' : '13.5px',
+          fontSizePrice: customHeightMm < 26 ? '14.5px' : '17px',
+          fontSizeBarcode: customHeightMm < 26 ? 9 : 10.5,
           labelName: `مقاس مخصص (${customWidthMm}mm × ${customHeightMm}mm)`,
         };
+        break;
       case 'sheet_a4_3col':
-        return {
+        baseConfig = {
           mode: 'sheet' as PrintMode,
           pageCssSize: 'A4 portrait',
           width: '100%',
           height: '30mm',
           widthMm: 65,
           heightMm: 30,
-          barcodeHeight: 22,
+          barcodeHeight: 20,
           barcodeWidth: 1.5,
-          fontSizeHeader: '9.5px',
-          fontSizeTitle: '12px',
-          fontSizePrice: '13px',
-          fontSizeBarcode: 9.5,
+          fontSizeHeader: '11px',
+          fontSizeTitle: '13px',
+          fontSizePrice: '16px',
+          fontSizeBarcode: 10,
           labelName: 'ورق A4 مقسم (3 أعمدة - 65mm × 30mm)',
         };
+        break;
       case 'sheet_a4_2col':
-        return {
+        baseConfig = {
           mode: 'sheet' as PrintMode,
           pageCssSize: 'A4 portrait',
           width: '100%',
           height: '40mm',
           widthMm: 95,
           heightMm: 40,
-          barcodeHeight: 28,
+          barcodeHeight: 26,
           barcodeWidth: 1.8,
-          fontSizeHeader: '11px',
-          fontSizeTitle: '13px',
-          fontSizePrice: '14px',
-          fontSizeBarcode: 10.5,
+          fontSizeHeader: '12.5px',
+          fontSizeTitle: '14.5px',
+          fontSizePrice: '18px',
+          fontSizeBarcode: 11,
           labelName: 'ورق A4 مقسم (عمودين - 95mm × 40mm)',
         };
+        break;
       default:
-        return {
+        baseConfig = {
           mode: 'thermal' as PrintMode,
           pageCssSize: '38mm 25mm',
           width: '38mm',
           height: '25mm',
           widthMm: 38,
           heightMm: 25,
-          barcodeHeight: 17,
+          barcodeHeight: 16,
           barcodeWidth: 1.4,
-          fontSizeHeader: '8.5px',
-          fontSizeTitle: '10px',
-          fontSizePrice: '11px',
-          fontSizeBarcode: 7.5,
+          fontSizeHeader: '10px',
+          fontSizeTitle: '11.5px',
+          fontSizePrice: '14.5px',
+          fontSizeBarcode: 9,
           labelName: '1.5 × 1 بوصة (38mm × 25mm)',
         };
+        break;
     }
+
+    const custom = settings?.printSettings?.labelCustomization;
+
+    return {
+      ...baseConfig,
+      fontSizeHeader: custom?.storeNameFontSize ? `${custom.storeNameFontSize}px` : baseConfig.fontSizeHeader,
+      fontWeightHeader: custom?.storeNameFontWeight || '900',
+
+      fontSizeTitle: custom?.productNameFontSize ? `${custom.productNameFontSize}px` : baseConfig.fontSizeTitle,
+      fontWeightTitle: custom?.productNameFontWeight || '900',
+
+      fontSizePrice: custom?.priceFontSize ? `${custom.priceFontSize}px` : baseConfig.fontSizePrice,
+      fontWeightPrice: custom?.priceFontWeight || '900',
+
+      fontSizeBarcode: custom?.barcodeCodeFontSize !== undefined ? custom.barcodeCodeFontSize : baseConfig.fontSizeBarcode,
+      fontWeightBarcode: custom?.barcodeCodeFontWeight || '900',
+
+      barcodeHeight: custom?.barcodeHeight !== undefined ? custom.barcodeHeight : baseConfig.barcodeHeight,
+    };
   };
 
   const config = getLabelConfig();
@@ -845,7 +875,13 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 {/* Store Header (Optional) */}
                 {showStoreName && (
                   <div className="w-full border-b border-black/30 pb-0.5">
-                    <h5 className="font-black tracking-wide text-black text-[9.5px] leading-tight truncate">
+                    <h5
+                      className="tracking-wide text-black leading-tight truncate"
+                      style={{
+                        fontSize: config.fontSizeHeader,
+                        fontWeight: config.fontWeightHeader === 'normal' ? 400 : config.fontWeightHeader === 'bold' ? 700 : 900,
+                      }}
+                    >
                       {storeName}
                     </h5>
                   </div>
@@ -853,7 +889,13 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
 
                 {/* Product Name */}
                 <div className="w-full px-0.5 pt-0.5">
-                  <h4 className="font-black text-black leading-tight text-[11px] line-clamp-1">
+                  <h4
+                    className="text-black leading-tight line-clamp-1"
+                    style={{
+                      fontSize: config.fontSizeTitle,
+                      fontWeight: config.fontWeightTitle === 'normal' ? 400 : config.fontWeightTitle === 'bold' ? 700 : 900,
+                    }}
+                  >
                     {previewProduct.name}
                   </h4>
                 </div>
@@ -869,8 +911,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1 }}
+                      className="font-mono tracking-wider text-black text-center select-none block leading-none -mt-2.5"
+                      style={{
+                        fontSize: `${config.fontSizeBarcode}px`,
+                        lineHeight: 1,
+                        fontWeight: config.fontWeightBarcode === 'normal' ? 400 : config.fontWeightBarcode === 'bold' ? 700 : 900,
+                      }}
                     >
                       {previewProduct.sku || previewProduct.barcode || '000000'}
                     </span>
@@ -878,15 +924,26 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices: Exact match to user photo */}
-                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5">
-                  <div className="text-[12px] font-black text-black">
+                <div className="w-full flex flex-col items-center justify-center text-black leading-tight space-y-0.5 pb-0.5">
+                  <div
+                    style={{
+                      fontSize: config.fontSizePrice,
+                      fontWeight: config.fontWeightPrice === 'normal' ? 400 : config.fontWeightPrice === 'bold' ? 700 : 900,
+                    }}
+                  >
                     <span>السعر : </span>
                     <span className="font-mono mx-1">{formatStickerPrice(previewProduct.priceCash)}</span>
                     <span>ج</span>
                   </div>
 
                   {showInstallmentPrice && (previewProduct.priceInstallment !== undefined && previewProduct.priceInstallment !== null) && (
-                    <div className="text-[11px] font-mono font-black text-black">
+                    <div
+                      className="font-mono text-black"
+                      style={{
+                        fontSize: `calc(${config.fontSizePrice} - 2px)`,
+                        fontWeight: config.fontWeightPrice === 'normal' ? 400 : config.fontWeightPrice === 'bold' ? 700 : 900,
+                      }}
+                    >
                       #{formatStickerPrice(previewProduct.priceInstallment)}
                     </div>
                   )}
@@ -949,16 +1006,22 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               >
                 {showStoreName && (
                   <div
-                    className="font-black border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
-                    style={{ fontSize: config.fontSizeHeader, fontWeight: 900 }}
+                    className="border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
+                    style={{
+                      fontSize: config.fontSizeHeader,
+                      fontWeight: config.fontWeightHeader === 'normal' ? 400 : config.fontWeightHeader === 'bold' ? 700 : 900,
+                    }}
                   >
                     {storeName}
                   </div>
                 )}
 
                 <div
-                  className="font-black line-clamp-1 leading-tight w-full px-0.5"
-                  style={{ fontSize: config.fontSizeTitle, fontWeight: 900 }}
+                  className="line-clamp-1 leading-tight w-full px-0.5"
+                  style={{
+                    fontSize: config.fontSizeTitle,
+                    fontWeight: config.fontWeightTitle === 'normal' ? 400 : config.fontWeightTitle === 'bold' ? 700 : 900,
+                  }}
                 >
                   {item.product.name}
                 </div>
@@ -974,8 +1037,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1, fontWeight: 900 }}
+                      className="font-mono tracking-wider text-black text-center select-none block leading-none -mt-2.5"
+                      style={{
+                        fontSize: `${config.fontSizeBarcode}px`,
+                        lineHeight: 1,
+                        fontWeight: config.fontWeightBarcode === 'normal' ? 400 : config.fontWeightBarcode === 'bold' ? 700 : 900,
+                      }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
                     </span>
@@ -983,17 +1050,25 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices: Exact match to user photo */}
-                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5" style={{ fontWeight: 900 }}>
-                  <div style={{ fontSize: config.fontSizePrice, fontWeight: 900 }}>
+                <div className="w-full flex flex-col items-center justify-center text-black leading-tight space-y-0.5 pb-0.5">
+                  <div
+                    style={{
+                      fontSize: config.fontSizePrice,
+                      fontWeight: config.fontWeightPrice === 'normal' ? 400 : config.fontWeightPrice === 'bold' ? 700 : 900,
+                    }}
+                  >
                     <span>السعر : </span>
-                    <span className="font-mono mx-1" style={{ fontWeight: 900 }}>{formatStickerPrice(item.product.priceCash)}</span>
+                    <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
                     <span>ج</span>
                   </div>
 
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
-                      className="font-mono font-black text-black"
-                      style={{ fontSize: `calc(${config.fontSizePrice} - 1px)`, fontWeight: 900 }}
+                      className="font-mono text-black"
+                      style={{
+                        fontSize: `calc(${config.fontSizePrice} - 2px)`,
+                        fontWeight: config.fontWeightPrice === 'normal' ? 400 : config.fontWeightPrice === 'bold' ? 700 : 900,
+                      }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}
                     </div>
@@ -1023,16 +1098,22 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
               >
                 {showStoreName && (
                   <div
-                    className="font-black border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
-                    style={{ fontSize: config.fontSizeHeader, fontWeight: 900 }}
+                    className="border-b border-black/30 pb-0.5 uppercase leading-none w-full truncate"
+                    style={{
+                      fontSize: config.fontSizeHeader,
+                      fontWeight: config.fontWeightHeader === 'normal' ? 400 : config.fontWeightHeader === 'bold' ? 700 : 900,
+                    }}
                   >
                     {storeName}
                   </div>
                 )}
 
                 <div
-                  className="font-black line-clamp-1 leading-tight w-full px-0.5"
-                  style={{ fontSize: config.fontSizeTitle, fontWeight: 900 }}
+                  className="line-clamp-1 leading-tight w-full px-0.5"
+                  style={{
+                    fontSize: config.fontSizeTitle,
+                    fontWeight: config.fontWeightTitle === 'normal' ? 400 : config.fontWeightTitle === 'bold' ? 700 : 900,
+                  }}
                 >
                   {item.product.name}
                 </div>
@@ -1048,8 +1129,12 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                   />
                   {showItemCode && (
                     <span
-                      className="font-mono font-black tracking-wider text-black text-center select-none block leading-none -mt-2.5"
-                      style={{ fontSize: `${config.fontSizeBarcode}px`, lineHeight: 1, fontWeight: 900 }}
+                      className="font-mono tracking-wider text-black text-center select-none block leading-none -mt-2.5"
+                      style={{
+                        fontSize: `${config.fontSizeBarcode}px`,
+                        lineHeight: 1,
+                        fontWeight: config.fontWeightBarcode === 'normal' ? 400 : config.fontWeightBarcode === 'bold' ? 700 : 900,
+                      }}
                     >
                       {item.product.sku || item.product.barcode || '000000'}
                     </span>
@@ -1057,17 +1142,25 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
                 </div>
 
                 {/* Prices */}
-                <div className="w-full flex flex-col items-center justify-center font-black text-black leading-tight space-y-0.5 pb-0.5" style={{ fontWeight: 900 }}>
-                  <div style={{ fontSize: config.fontSizePrice, fontWeight: 900 }}>
+                <div className="w-full flex flex-col items-center justify-center text-black leading-tight space-y-0.5 pb-0.5">
+                  <div
+                    style={{
+                      fontSize: config.fontSizePrice,
+                      fontWeight: config.fontWeightPrice === 'normal' ? 400 : config.fontWeightPrice === 'bold' ? 700 : 900,
+                    }}
+                  >
                     <span>السعر : </span>
-                    <span className="font-mono mx-1" style={{ fontWeight: 900 }}>{formatStickerPrice(item.product.priceCash)}</span>
+                    <span className="font-mono mx-1">{formatStickerPrice(item.product.priceCash)}</span>
                     <span>ج</span>
                   </div>
 
                   {showInstallmentPrice && (item.product.priceInstallment !== undefined && item.product.priceInstallment !== null) && (
                     <div
-                      className="font-mono font-black text-black"
-                      style={{ fontSize: `calc(${config.fontSizePrice} - 2px)`, fontWeight: 900 }}
+                      className="font-mono text-black"
+                      style={{
+                        fontSize: `calc(${config.fontSizePrice} - 2px)`,
+                        fontWeight: config.fontWeightPrice === 'normal' ? 400 : config.fontWeightPrice === 'bold' ? 700 : 900,
+                      }}
                     >
                       #{formatStickerPrice(item.product.priceInstallment)}
                     </div>

@@ -11,7 +11,8 @@ import {
   DEFAULT_SHORTCUT_KEYS,
   SHORTCUT_ACTION_LABELS,
 } from '../../data/initialData';
-import { ShortcutActionId } from '../../types';
+import { ShortcutActionId, LabelCustomizationSettings } from '../../types';
+import { BarcodeItem } from '../Common/BarcodeItem';
 import {
   Sun,
   Moon,
@@ -42,11 +43,13 @@ import {
   ChevronLeft,
   Store,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 
 export type SettingsTabId =
   | 'printing'
   | 'receipt'
+  | 'label_design'
   | 'margins'
   | 'categories'
   | 'shortcuts'
@@ -368,6 +371,59 @@ export const SettingsView: React.FC = () => {
     }));
   };
 
+  const handleLabelCustomizationChange = (
+    key: keyof LabelCustomizationSettings,
+    value: any
+  ) => {
+    updateSettings((prev) => ({
+      ...prev,
+      printSettings: {
+        ...prev.printSettings,
+        labelCustomization: {
+          ...(prev.printSettings.labelCustomization || {}),
+          [key]: value,
+        },
+      },
+    }));
+  };
+
+  const handleResetLabelCustomization = () => {
+    updateSettings((prev) => ({
+      ...prev,
+      printSettings: {
+        ...prev.printSettings,
+        labelCustomization: {
+          storeNameFontSize: 10,
+          storeNameFontWeight: '900',
+          productNameFontSize: 13,
+          productNameFontWeight: '900',
+          priceFontSize: 15,
+          priceFontWeight: '900',
+          barcodeCodeFontSize: 9,
+          barcodeCodeFontWeight: '900',
+          barcodeHeight: 16,
+        },
+      },
+    }));
+    triggerSuccess('تم إعادة ضبط خطوط ملصق الأسعار إلى القيم الافتراضية');
+  };
+
+  const labelCustomization: LabelCustomizationSettings = {
+    storeNameFontSize: settings.printSettings.labelCustomization?.storeNameFontSize ?? 10,
+    storeNameFontWeight: settings.printSettings.labelCustomization?.storeNameFontWeight ?? '900',
+
+    productNameFontSize: settings.printSettings.labelCustomization?.productNameFontSize ?? 13,
+    productNameFontWeight: settings.printSettings.labelCustomization?.productNameFontWeight ?? '900',
+
+    priceFontSize: settings.printSettings.labelCustomization?.priceFontSize ?? 15,
+    priceFontWeight: settings.printSettings.labelCustomization?.priceFontWeight ?? '900',
+
+    barcodeCodeFontSize: settings.printSettings.labelCustomization?.barcodeCodeFontSize ?? 9,
+    barcodeCodeFontWeight: settings.printSettings.labelCustomization?.barcodeCodeFontWeight ?? '900',
+
+    barcodeHeight: settings.printSettings.labelCustomization?.barcodeHeight ?? 16,
+  };
+
   // 8. Keyboard Shortcuts (F1 - F12) Handlers
   const activeShortcutMap = {
     ...DEFAULT_SHORTCUT_KEYS,
@@ -425,6 +481,14 @@ export const SettingsView: React.FC = () => {
       label: 'تصميم وشكل الفاتورة',
       icon: FileText,
       description: 'ترويسة المتجر، العنوان، الهواتف، ورمز QR',
+    },
+    {
+      id: 'label_design',
+      label: 'تخصيص ملصق الأسعار (الاستيكر)',
+      icon: Tag,
+      description: 'حجم وثقل الخط لكل خانة بالملصق على حدة',
+      badge: 'تخصيص الخطوط',
+      badgeColor: 'bg-amber-950 text-amber-300 border border-amber-800',
     },
     {
       id: 'margins',
@@ -949,6 +1013,15 @@ export const SettingsView: React.FC = () => {
                         : 'اختبار طابعة الباركود (Test Barcode Printer)'}
                     </span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('label_design')}
+                    className="w-full py-2 bg-stone-800 hover:bg-stone-750 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                    <span>تعديل أحجام وخطوط ملصق الأسعار (Customize Price Label Typography)</span>
+                  </button>
                 </div>
 
               </div>
@@ -1105,7 +1178,385 @@ export const SettingsView: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 3: PROFIT MARGINS & PRICING */}
+          {/* TAB 3: PRICE LABEL CUSTOMIZATION */}
+          {activeTab === 'label_design' && (
+            <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md space-y-6">
+              <div className="pb-4 border-b border-stone-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                  <h2 className="text-sm font-black text-amber-500 flex items-center gap-2">
+                    <Tag className="w-4 h-4" />
+                    <span>تخصيص خطوط وأحجام ملصق الأسعار والباركود</span>
+                  </h2>
+                  <p className="text-xs text-stone-400 mt-1">
+                    التحكم الكامل في حجم الخط (Font Size) وثقل الخط (Font Weight) لكل خانة بشكل مستقل للطباعة بدقة عالية.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleResetLabelCustomization}
+                  className="px-3 py-1.5 bg-stone-800 hover:bg-stone-750 text-stone-300 rounded-xl text-xs font-bold border border-stone-700 transition-all flex items-center gap-1.5 shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>إعادة الخطوط للافتراضي</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Controls Panel */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* 1. Store Header Controls */}
+                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-200 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        <span>1. اسم المحل / المتجر (Store Header):</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-amber-400">
+                        {labelCustomization.storeNameFontSize}px
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">حجم الخط (px):</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="6"
+                            max="24"
+                            step="0.5"
+                            value={labelCustomization.storeNameFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('storeNameFontSize', parseFloat(e.target.value))}
+                            className="w-full accent-amber-500 bg-stone-900 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="6"
+                            max="24"
+                            step="0.5"
+                            value={labelCustomization.storeNameFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('storeNameFontSize', Math.max(6, parseFloat(e.target.value) || 6))}
+                            className="w-16 bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-bold text-center text-stone-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">ثقل الخط (Font Weight):</label>
+                        <select
+                          value={labelCustomization.storeNameFontWeight}
+                          onChange={(e) => handleLabelCustomizationChange('storeNameFontWeight', e.target.value as any)}
+                          className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1.5 text-xs font-bold text-stone-100"
+                        >
+                          <option value="900">أسود عريض جداً (Black - 900)</option>
+                          <option value="bold">عريض (Bold - 700)</option>
+                          <option value="normal">عادي (Normal - 400)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Product Name Controls */}
+                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-200 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        <span>2. اسم الصنف / المنتج (Product Title):</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-amber-400">
+                        {labelCustomization.productNameFontSize}px
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">حجم الخط (px):</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="6"
+                            max="26"
+                            step="0.5"
+                            value={labelCustomization.productNameFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('productNameFontSize', parseFloat(e.target.value))}
+                            className="w-full accent-amber-500 bg-stone-900 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="6"
+                            max="26"
+                            step="0.5"
+                            value={labelCustomization.productNameFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('productNameFontSize', Math.max(6, parseFloat(e.target.value) || 6))}
+                            className="w-16 bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-bold text-center text-stone-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">ثقل الخط (Font Weight):</label>
+                        <select
+                          value={labelCustomization.productNameFontWeight}
+                          onChange={(e) => handleLabelCustomizationChange('productNameFontWeight', e.target.value as any)}
+                          className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1.5 text-xs font-bold text-stone-100"
+                        >
+                          <option value="900">أسود عريض جداً (Black - 900)</option>
+                          <option value="bold">عريض (Bold - 700)</option>
+                          <option value="normal">عادي (Normal - 400)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Price Controls */}
+                  <div className="bg-stone-950 border border-amber-900/40 p-4 rounded-xl space-y-2 ring-1 ring-amber-500/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span>3. سعر الصنف (Price Field):</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-amber-400">
+                        {labelCustomization.priceFontSize}px
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">حجم خط السعر (px):</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="8"
+                            max="32"
+                            step="0.5"
+                            value={labelCustomization.priceFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('priceFontSize', parseFloat(e.target.value))}
+                            className="w-full accent-amber-500 bg-stone-900 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="8"
+                            max="32"
+                            step="0.5"
+                            value={labelCustomization.priceFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('priceFontSize', Math.max(8, parseFloat(e.target.value) || 8))}
+                            className="w-16 bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-bold text-center text-amber-300"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">ثقل خط السعر (Font Weight):</label>
+                        <select
+                          value={labelCustomization.priceFontWeight}
+                          onChange={(e) => handleLabelCustomizationChange('priceFontWeight', e.target.value as any)}
+                          className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1.5 text-xs font-bold text-stone-100"
+                        >
+                          <option value="900">أسود عريض جداً (Black - 900)</option>
+                          <option value="bold">عريض (Bold - 700)</option>
+                          <option value="normal">عادي (Normal - 400)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Barcode Code Controls */}
+                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-200 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        <span>4. رقم الباركود / الكود (Barcode Number):</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-amber-400">
+                        {labelCustomization.barcodeCodeFontSize}px
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">حجم خط الكود (px):</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="5"
+                            max="18"
+                            step="0.5"
+                            value={labelCustomization.barcodeCodeFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('barcodeCodeFontSize', parseFloat(e.target.value))}
+                            className="w-full accent-amber-500 bg-stone-900 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="5"
+                            max="18"
+                            step="0.5"
+                            value={labelCustomization.barcodeCodeFontSize}
+                            onChange={(e) => handleLabelCustomizationChange('barcodeCodeFontSize', Math.max(5, parseFloat(e.target.value) || 5))}
+                            className="w-16 bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-bold text-center text-stone-100"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-stone-400 mb-1 font-bold">ثقل خط الكود (Font Weight):</label>
+                        <select
+                          value={labelCustomization.barcodeCodeFontWeight}
+                          onChange={(e) => handleLabelCustomizationChange('barcodeCodeFontWeight', e.target.value as any)}
+                          className="w-full bg-stone-900 border border-stone-800 rounded-lg px-2 py-1.5 text-xs font-bold text-stone-100"
+                        >
+                          <option value="900">أسود عريض جداً (Black - 900)</option>
+                          <option value="bold">عريض (Bold - 700)</option>
+                          <option value="normal">عادي (Normal - 400)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Barcode Height Control */}
+                  <div className="bg-stone-950 border border-stone-800 p-4 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-200 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span>5. ارتفاع رسم خطوط الباركود (Barcode Height):</span>
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-amber-400">
+                        {labelCustomization.barcodeHeight}px
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-stone-400 mb-1 font-bold">ارتفاع الرسم (px):</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="8"
+                          max="40"
+                          step="1"
+                          value={labelCustomization.barcodeHeight}
+                          onChange={(e) => handleLabelCustomizationChange('barcodeHeight', parseInt(e.target.value))}
+                          className="w-full accent-amber-500 bg-stone-900 cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min="8"
+                          max="40"
+                          value={labelCustomization.barcodeHeight}
+                          onChange={(e) => handleLabelCustomizationChange('barcodeHeight', Math.max(8, parseInt(e.target.value) || 8))}
+                          className="w-16 bg-stone-900 border border-stone-800 rounded-lg px-2 py-1 text-xs font-bold text-center text-stone-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Interactive Sticker Preview Box */}
+                <div className="lg:col-span-5 flex flex-col items-center justify-start space-y-3 bg-stone-950 p-5 rounded-2xl border border-stone-800">
+                  <div className="w-full flex items-center justify-between pb-2 border-b border-stone-850">
+                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <Eye className="w-4 h-4" />
+                      <span>معاينة الاستيكر الحية والمباشرة</span>
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-mono">38mm × 25mm</span>
+                  </div>
+
+                  <p className="text-[11px] text-stone-400 text-center leading-tight">
+                    تتغير الأبعاد والأحجام أمامك فوراً أثناء تعديل أي قيمة:
+                  </p>
+
+                  {/* Realistic Label Card */}
+                  <div className="p-4 bg-stone-900 rounded-2xl border border-stone-800 shadow-xl flex items-center justify-center w-full my-2">
+                    <div
+                      className="bg-white text-black rounded p-2 shadow-2xl border border-stone-300 flex flex-col justify-between items-center text-center select-none overflow-hidden box-border"
+                      style={{
+                        width: '210px',
+                        height: '140px',
+                      }}
+                    >
+                      {/* Header */}
+                      <div className="w-full border-b border-black/30 pb-0.5">
+                        <h5
+                          className="tracking-wide text-black leading-tight truncate text-center"
+                          style={{
+                            fontSize: `${labelCustomization.storeNameFontSize}px`,
+                            fontWeight: labelCustomization.storeNameFontWeight === 'normal' ? 400 : labelCustomization.storeNameFontWeight === 'bold' ? 700 : 900,
+                          }}
+                        >
+                          {settings.printSettings.headerText || 'أسماء للأدوات المنزليه'}
+                        </h5>
+                      </div>
+
+                      {/* Title */}
+                      <div className="w-full px-0.5 pt-0.5">
+                        <h4
+                          className="text-black leading-tight line-clamp-1 text-center"
+                          style={{
+                            fontSize: `${labelCustomization.productNameFontSize}px`,
+                            fontWeight: labelCustomization.productNameFontWeight === 'normal' ? 400 : labelCustomization.productNameFontWeight === 'bold' ? 700 : 900,
+                          }}
+                        >
+                          طقم حلة صاج 5 قطع تورنيدو
+                        </h4>
+                      </div>
+
+                      {/* Barcode & Code */}
+                      <div className="w-full my-0 py-0 flex flex-col items-center justify-center space-y-0">
+                        <BarcodeItem
+                          value="2026001122"
+                          height={labelCustomization.barcodeHeight}
+                          width={1.4}
+                          fontSize={labelCustomization.barcodeCodeFontSize}
+                          displayValue={false}
+                        />
+                        <span
+                          className="font-mono tracking-wider text-black text-center select-none block leading-none -mt-2"
+                          style={{
+                            fontSize: `${labelCustomization.barcodeCodeFontSize}px`,
+                            lineHeight: 1,
+                            fontWeight: labelCustomization.barcodeCodeFontWeight === 'normal' ? 400 : labelCustomization.barcodeCodeFontWeight === 'bold' ? 700 : 900,
+                          }}
+                        >
+                          2026001122
+                        </span>
+                      </div>
+
+                      {/* Price */}
+                      <div className="w-full flex flex-col items-center justify-center text-black leading-tight space-y-0.5 pb-0.5">
+                        <div
+                          style={{
+                            fontSize: `${labelCustomization.priceFontSize}px`,
+                            fontWeight: labelCustomization.priceFontWeight === 'normal' ? 400 : labelCustomization.priceFontWeight === 'bold' ? 700 : 900,
+                          }}
+                        >
+                          <span>السعر : </span>
+                          <span className="font-mono mx-1">1,250.0</span>
+                          <span>ج</span>
+                        </div>
+                        <div
+                          className="font-mono text-black"
+                          style={{
+                            fontSize: `calc(${labelCustomization.priceFontSize}px - 2px)`,
+                            fontWeight: labelCustomization.priceFontWeight === 'normal' ? 400 : labelCustomization.priceFontWeight === 'bold' ? 700 : 900,
+                          }}
+                        >
+                          #1,450.0
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-stone-900 p-3 rounded-xl border border-stone-800 text-[11px] text-stone-300 space-y-1">
+                    <p className="font-bold text-amber-400">💡 معلومة هامة للطباعة الممتازة:</p>
+                    <p>
+                      تطبق هذه الخطوط والأحجام فوراً على جميع طابعات الباركود الحرارية وعلى نافذة المعاينة والطباعة المباشرة.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: PROFIT MARGINS & PRICING */}
           {activeTab === 'margins' && (
             <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md space-y-5">
               <div className="pb-3 border-b border-stone-800">

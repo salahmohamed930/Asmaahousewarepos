@@ -433,10 +433,6 @@ export function mapProductToDbPayload(product: Product): any {
     updated_at: new Date().toISOString(),
   };
 
-  if (product.barcode) {
-    payload.barcode = String(product.barcode).trim();
-  }
-
   if (product.sku && !isNaN(Number(product.sku))) {
     payload.p_k = Number(product.sku);
   }
@@ -1571,7 +1567,7 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
     const { data, error } = await safeSupabaseMutation(
       'products',
       async (p) => {
-        const res = await supabase.from('products').insert([p]).select('id, name, p_k, barcode, barcodes');
+        const res = await supabase.from('products').insert([p]).select('id, name');
         if (res.error) return res;
         return { data: (res.data && res.data.length > 0) ? res.data[0] : { id: p.id, name: p.name }, error: null };
       },
@@ -1600,7 +1596,7 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
     delete payload.created_at;
 
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
-    const barcodeStr = product.barcode ? String(product.barcode).trim() : null;
+    const skuNum = (product.sku && !isNaN(Number(product.sku))) ? Number(product.sku) : null;
 
     const { data, error } = await safeSupabaseMutation(
       'products',
@@ -1611,20 +1607,30 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
             .from('products')
             .update(p)
             .eq('id', idNum)
-            .select('id, name, p_k, barcode, barcodes');
+            .select('id, name');
+
+          if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
+            return { data: updateData[0], error: null };
+          }
+        } else if (product.id) {
+          const { data: updateData, error: updateErr } = await supabase
+            .from('products')
+            .update(p)
+            .eq('id', product.id)
+            .select('id, name');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
             return { data: updateData[0], error: null };
           }
         }
 
-        // 2. Try matching by barcode if available
-        if (barcodeStr) {
+        // 2. Try matching by p_k if numeric SKU is available
+        if (skuNum !== null) {
           const { data: updateData, error: updateErr } = await supabase
             .from('products')
             .update(p)
-            .eq('barcode', barcodeStr)
-            .select('id, name, p_k, barcode, barcodes');
+            .eq('p_k', skuNum)
+            .select('id, name');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
             return { data: updateData[0], error: null };
@@ -1637,7 +1643,7 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
             .from('products')
             .update(p)
             .eq('name', product.name)
-            .select('id, name, p_k, barcode, barcodes');
+            .select('id, name');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {
             return { data: updateData[0], error: null };
@@ -1657,7 +1663,7 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
         const { data: insertData, error: insertErr } = await supabase
           .from('products')
           .insert([insertPayload])
-          .select('id, name, p_k, barcode, barcodes');
+          .select('id, name');
 
         if (!insertErr && Array.isArray(insertData) && insertData.length > 0) {
           return { data: insertData[0], error: null };

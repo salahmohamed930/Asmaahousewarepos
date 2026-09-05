@@ -537,8 +537,7 @@ export async function checkProductCodeConflict(
         return Boolean(
           p.sku?.toLowerCase() === cleanLower ||
           p.barcode?.toLowerCase() === cleanLower ||
-          (Array.isArray(p.barcodes) && p.barcodes.some((b) => b?.toLowerCase() === cleanLower)) ||
-          (!isNaN(Number(clean)) && String(p.id) === clean)
+          (Array.isArray(p.barcodes) && p.barcodes.some((b) => b?.toLowerCase() === cleanLower))
         );
       })
       .first();
@@ -569,7 +568,6 @@ export async function checkProductCodeConflict(
       const num = Number(cleanSearch);
       if (num <= 2147483647) {
         terms.push(`p_k.eq.${num}`);
-        terms.push(`id.eq.${num}`);
       }
     }
 

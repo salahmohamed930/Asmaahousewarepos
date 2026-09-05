@@ -39,7 +39,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
   );
   const sellerName = primaryAssoc ? primaryAssoc.name : (transaction.primaryAssociateName || 'Admin');
 
-  const itemsSubtotal = transaction.items.reduce((sum, item) => {
+  const itemsSubtotal = (transaction.items || []).reduce((sum, item) => {
     return sum + (item.unitPrice * item.quantity);
   }, 0);
 
@@ -53,7 +53,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
 
   const grandTotal = transaction.grandTotal || (totalBeforeDiscount - discountTotal);
   const totalAfterDiscount = grandTotal;
-  const isReturn = transaction.status === 'مسترجعة' || transaction.items.some((i) => i.quantity < 0);
+  const isReturn = transaction.status === 'مسترجعة' || (transaction.items || []).some((i) => i.quantity < 0);
 
   // Find linked customer to get overall current debt
   const customer = customers.find(
@@ -389,7 +389,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                   </tr>
                 </thead>
                 <tbody className="font-black">
-                  {transaction.items.map((item, idx) => {
+                  {(transaction.items || []).map((item, idx) => {
                     const itemDiscount = item.discountAmount !== undefined
                       ? item.discountAmount
                       : Math.max(0, (item.unitPrice * item.quantity) - item.totalPrice);

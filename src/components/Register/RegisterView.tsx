@@ -156,7 +156,7 @@ export const RegisterView: React.FC = () => {
 
   // User invoice days access permission
   const userInvoiceAccess: InvoiceDaysAccess =
-    currentAssociate?.invoiceDaysAccess || (currentAssociate?.role === 'مدير الفرع' ? 'all' : 'today');
+    currentAssociate?.invoiceDaysAccess || 'all';
   const userInvoiceCustomDays = currentAssociate?.invoiceCustomDaysLimit || 1;
 
   // History search & filters state

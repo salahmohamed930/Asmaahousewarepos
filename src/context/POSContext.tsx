@@ -926,7 +926,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setEditingTransaction(tx);
 
-    const reconstructedCart: CartItem[] = tx.items.map((item) => {
+    const reconstructedCart: CartItem[] = (tx.items || []).map((item) => {
       const foundProd = products.find((p) => p.id === item.productId);
       const prod: Product = foundProd || {
         id: item.productId,
@@ -1275,7 +1275,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (foundTx.originalCart && foundTx.originalCart.length > 0) {
       setCart(foundTx.originalCart);
     } else {
-      const reconstructed: CartItem[] = foundTx.items.map((item) => {
+      const reconstructed: CartItem[] = (foundTx.items || []).map((item) => {
         const prod = products.find((p) => p.id === item.productId) || {
           id: item.productId,
           name: item.productName,
@@ -1359,7 +1359,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetTx = transactions.find((t) => t.id === transactionId);
     if (targetTx) {
       if (targetTx.status === 'مكتملة') {
-        for (const item of targetTx.items) {
+        for (const item of (targetTx.items || [])) {
           const p = products.find((prod) => prod.id === item.productId);
           if (p) {
             const restoredProd = { ...p, stock: p.stock + item.quantity };
@@ -1392,7 +1392,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetTx = transactions.find((t) => t.id === transactionId && t.status === 'مكتملة');
     if (!targetTx) return;
 
-    for (const item of targetTx.items) {
+    for (const item of (targetTx.items || [])) {
       const p = products.find((prod) => prod.id === item.productId);
       if (p) {
         const restored = { ...p, stock: p.stock + item.quantity };

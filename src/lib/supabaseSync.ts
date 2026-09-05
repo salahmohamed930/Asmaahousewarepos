@@ -328,6 +328,23 @@ export async function safeSupabaseMutation(
       continue;
     }
 
+    // Handle unique constraint violations (e.g. products_p_k_key)
+    if (errMsg.includes('products_p_k_key') || (errMsg.includes('duplicate key') && errMsg.includes('p_k'))) {
+      if (currentPayload && currentPayload.p_k !== undefined) {
+        console.warn(`[SUPABASE ADAPTER] Table '${tableName}' hit p_k unique constraint. Stripping p_k and retrying...`);
+        delete currentPayload.p_k;
+        continue;
+      }
+    }
+
+    if (errMsg.includes('duplicate key') && errMsg.includes('id')) {
+      if (currentPayload && currentPayload.id !== undefined) {
+        console.warn(`[SUPABASE ADAPTER] Table '${tableName}' hit id unique constraint. Stripping id and retrying...`);
+        delete currentPayload.id;
+        continue;
+      }
+    }
+
     return res;
   }
 
@@ -396,7 +413,6 @@ export function mapProductToDbPayload(product: Product): any {
     stock_quantity: Number(product.stock || 0),
     description: product.description || '',
     barcodes: product.barcodes || (product.barcode ? [product.barcode] : []),
-    updated_at: new Date().toISOString(),
   };
 
   if (product.sku && !isNaN(Number(product.sku))) {
@@ -614,7 +630,29 @@ export function mapExpenseToDbPayload(expense: POSExpense): any {
 export function resolveTransactionTimestamp(t: any): string {
   if (!t) return new Date().toISOString();
 
-  // 1. If t.id encodes the exact epoch timestamp (e.g. tx_1785536131663 created via Date.now())
+  // 1. Check explicit original timestamp first (the actual sale creation timestamp)
+  if (t.timestamp) {
+    const d = new Date(t.timestamp);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 2. Check created_at (standard Supabase creation column)
+  if (t.created_at) {
+    const d = new Date(t.created_at);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 3. Check date or transaction_date
+  if (t.date) {
+    const d = new Date(t.date);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  if (t.transaction_date) {
+    const d = new Date(t.transaction_date);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 4. If t.id encodes the exact epoch timestamp (e.g. tx_1785536131663 created via Date.now())
   if (typeof t.id === 'string') {
     const match = t.id.match(/\d{10,13}/);
     if (match) {
@@ -627,31 +665,9 @@ export function resolveTransactionTimestamp(t: any): string {
     }
   }
 
-  // 2. Check updated_at (which is the actual column in Supabase transactions table)
+  // 5. Fallback to updated_at if no original creation time is available
   if (t.updated_at) {
     const d = new Date(t.updated_at);
-    if (!isNaN(d.getTime())) return d.toISOString();
-  }
-
-  // 3. Check created_at (standard Supabase column)
-  if (t.created_at) {
-    const d = new Date(t.created_at);
-    if (!isNaN(d.getTime())) return d.toISOString();
-  }
-
-  // 4. Check explicit timestamp
-  if (t.timestamp) {
-    const d = new Date(t.timestamp);
-    if (!isNaN(d.getTime())) return d.toISOString();
-  }
-
-  // 5. Check date or transaction_date
-  if (t.date) {
-    const d = new Date(t.date);
-    if (!isNaN(d.getTime())) return d.toISOString();
-  }
-  if (t.transaction_date) {
-    const d = new Date(t.transaction_date);
     if (!isNaN(d.getTime())) return d.toISOString();
   }
 
@@ -798,41 +814,42 @@ async function fetchSelectiveFromSupabase(
   let hasMore = true;
 
   const schemaCfg = TABLE_SCHEMAS[tableName];
-  const timeCol = schemaCfg?.updatedTimeCol || 'updated_at';
-  const timeColMissing = isColumnMissing(tableName, timeCol);
-  const selectCols = getCleanSelectColumns(tableName, columns);
+  let timeCol = schemaCfg?.updatedTimeCol || 'updated_at';
 
   while (hasMore) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
 
-    let query = supabase.from(tableName).select(selectCols).range(from, to);
+    let data: any[] | null = null;
+    let queryError: any = null;
+    let attempt = 0;
+    const maxAttempts = 15;
 
-    // Apply Delta Sync filter if lastSyncTimestamp is present AND timeCol is not marked as missing
-    if (lastSyncTimestamp && !timeColMissing) {
-      query = query.gt(timeCol, lastSyncTimestamp);
-    } else if (lastSyncTimestamp && timeColMissing) {
-      console.log(
-        `[SUPABASE DELTA SYNC] Table '${tableName}' lacks column '${timeCol}'. Performing clean Full Sync instead.`
-      );
-    }
+    while (attempt < maxAttempts) {
+      attempt++;
+      const timeColMissing = isColumnMissing(tableName, timeCol);
+      const selectCols = getCleanSelectColumns(tableName, columns);
 
-    if (orderColumn && !isColumnMissing(tableName, orderColumn)) {
-      query = query.order(orderColumn, { ascending: true, nullsFirst: false });
-    }
+      let query = supabase.from(tableName).select(selectCols).range(from, to);
 
-    let { data, error, status } = await query;
+      // Apply Delta Sync filter if lastSyncTimestamp is present AND timeCol is not marked as missing
+      if (lastSyncTimestamp && !timeColMissing) {
+        query = query.gt(timeCol, lastSyncTimestamp);
+      }
 
-    console.log(
-      `[SUPABASE QUERY] Table: '${tableName}' | Range: ${from}-${to} | Cols: ${selectCols.length > 30 ? selectCols.substring(0, 30) + '...' : selectCols} | Filter: ${
-        lastSyncTimestamp && !timeColMissing ? 'DELTA (> ' + lastSyncTimestamp + ')' : 'FULL'
-      } | Status: ${status || (error ? 'Error' : '200 OK')} | Records: ${data?.length || 0}${
-        error ? ` | Error: ${error.message}` : ''
-      }`
-    );
+      if (orderColumn && !isColumnMissing(tableName, orderColumn)) {
+        query = query.order(orderColumn, { ascending: true, nullsFirst: false });
+      }
 
-    if (error) {
-      const errMsg = error.message || '';
+      const res = await query;
+      data = res.data;
+      queryError = res.error;
+
+      if (!queryError) {
+        break;
+      }
+
+      const errMsg = queryError.message || '';
       const missingColMatch =
         errMsg.match(/Could not find the '([^']+)' column/i) ||
         errMsg.match(/column [^\s\.]+\.([^\s]+) does not exist/i) ||
@@ -842,36 +859,36 @@ async function fetchSelectiveFromSupabase(
       if (missingColMatch && missingColMatch[1]) {
         const colName = missingColMatch[1];
         markColumnMissing(tableName, colName);
-        const retryCols = getCleanSelectColumns(tableName, columns);
         console.warn(
-          `[SUPABASE SYNC ADAPTER] Table '${tableName}' lacks column '${colName}'. Retrying with clean columns '${retryCols}'...`
+          `[SUPABASE SYNC ADAPTER] Table '${tableName}' lacks column '${colName}'. Retrying with updated schema (attempt ${attempt})...`
         );
-        let retryQuery = supabase.from(tableName).select(retryCols).range(from, to);
-        if (lastSyncTimestamp && !isColumnMissing(tableName, timeCol)) {
-          retryQuery = retryQuery.gt(timeCol, lastSyncTimestamp);
-        }
-        const retryRes = await retryQuery;
-        if (retryRes.error) {
-          return { data: [], error: retryRes.error };
-        }
-        data = retryRes.data || [];
-        hasMore = false;
-      } else {
-        console.warn(
-          `[SUPABASE QUERY RECOVERY] Query failed on table '${tableName}' (${errMsg}). Retrying with fallback select...`
-        );
-        let fallbackQuery = supabase.from(tableName).select(selectCols).range(from, to);
-        if (lastSyncTimestamp && !timeColMissing) {
-          fallbackQuery = fallbackQuery.gt(timeCol, lastSyncTimestamp);
-        }
-        const fallbackRes = await fallbackQuery;
-
-        if (fallbackRes.error) {
-          return { data: [], error: fallbackRes.error };
-        }
-        data = fallbackRes.data || [];
-        hasMore = false;
+        continue;
       }
+
+      // If timeCol caused an error in filter
+      if (lastSyncTimestamp && !timeColMissing && (errMsg.includes(timeCol) || errMsg.includes('gt') || errMsg.includes('filter'))) {
+        markColumnMissing(tableName, timeCol);
+        console.warn(`[SUPABASE SYNC ADAPTER] Table '${tableName}' filter on '${timeCol}' failed. Switching to full fetch...`);
+        continue;
+      }
+
+      // If specific column select failed, try '*' fallback
+      if (columns !== '*') {
+        console.warn(`[SUPABASE QUERY RECOVERY] Specific select on '${tableName}' failed (${errMsg}). Falling back to select('*')...`);
+        const fallbackRes = await supabase.from(tableName).select('*').range(from, to);
+        if (!fallbackRes.error) {
+          data = fallbackRes.data;
+          queryError = null;
+          break;
+        }
+      }
+
+      break;
+    }
+
+    if (queryError) {
+      console.error(`[SUPABASE QUERY FAILED] Table '${tableName}' failed after ${attempt} attempts:`, queryError);
+      return { data: allRows, error: queryError };
     }
 
     if (data && data.length > 0) {
@@ -1107,10 +1124,26 @@ async function performDeltaSyncInternal(): Promise<{
       const chunkSize = 50;
       for (let i = 0; i < changedTxIds.length; i += chunkSize) {
         const chunk = changedTxIds.slice(i, i + chunkSize);
-        const { data: chunkItems } = await supabase
-          .from('transaction_items')
-          .select(itemCols)
-          .in('transaction_id', chunk);
+        let chunkItems: any[] | null = null;
+        try {
+          const { data, error } = await supabase
+            .from('transaction_items')
+            .select(itemCols)
+            .in('transaction_id', chunk);
+          if (!error && data) {
+            chunkItems = data;
+          } else {
+            const fb = await supabase.from('transaction_items').select('*').in('transaction_id', chunk);
+            chunkItems = fb.data || [];
+          }
+        } catch {
+          try {
+            const fb = await supabase.from('transaction_items').select('*').in('transaction_id', chunk);
+            chunkItems = fb.data || [];
+          } catch {
+            chunkItems = [];
+          }
+        }
 
         if (chunkItems && chunkItems.length > 0) {
           chunkItems.forEach((item: any) => {
@@ -1139,11 +1172,31 @@ async function performDeltaSyncInternal(): Promise<{
           deletedTxIds.push(id);
         } else {
           const resolvedTime = resolveTransactionTimestamp(t);
+          let resolvedItems = itemsByTx[id];
+          if (!resolvedItems || resolvedItems.length === 0) {
+            if (Array.isArray(t.items) && t.items.length > 0) {
+              resolvedItems = t.items;
+            } else if (Array.isArray(t.original_cart) && t.original_cart.length > 0) {
+              resolvedItems = t.original_cart.map((c: any) => ({
+                productId: String(c.productId || c.id || ''),
+                productName: c.productName || c.name || 'منتج',
+                sku: c.sku || '',
+                quantity: Number(c.quantity || 1),
+                priceTier: c.priceTier || 'cash',
+                unitPrice: Number(c.unitPrice || c.price || 0),
+                totalPrice: Number(c.totalPrice || (c.quantity || 1) * (c.price || 0)),
+                assignedAssociateId: c.assignedAssociateId,
+              }));
+            } else {
+              resolvedItems = [];
+            }
+          }
+
           activeTxs.push({
             id,
             receiptNumber: t.receipt_number || `RCP-${id}`,
             timestamp: resolvedTime,
-            items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
+            items: resolvedItems,
             subtotal: Number(t.subtotal || 0),
             discountTotal: Number(t.discount_total || 0),
             taxTotal: Number(t.tax_total || 0),
@@ -1457,6 +1510,11 @@ export async function fetchProductsFromSupabase(): Promise<{ data: Product[]; er
 export async function insertProductToSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
   try {
     const payload = mapProductToDbPayload(product);
+    delete payload.updated_at;
+    if (payload.id && (isNaN(Number(payload.id)) || Number(payload.id) > 2147483647)) {
+      delete payload.id;
+    }
+
     const { data, error } = await safeSupabaseMutation(
       'products',
       async (p) => await supabase.from('products').insert([p]).select('id, name').single(),
@@ -1472,14 +1530,62 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
 export async function updateProductInSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
   try {
     const payload = mapProductToDbPayload(product);
+    // Never update primary/immutable keys on update payload
+    delete payload.id;
+    delete payload.created_at;
+    delete payload.updated_at;
+    delete payload.p_k; // p_k is an immutable unique sequential code in Supabase
+
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
+    const skuNum = (product.sku && !isNaN(Number(product.sku))) ? Number(product.sku) : null;
+
     const { data, error } = await safeSupabaseMutation(
       'products',
       async (p) => {
-        let query = supabase.from('products').update(p);
-        if (idNum !== null) query = query.eq('id', idNum);
-        else query = query.eq('name', product.name);
-        return await query.select('id, name').single();
+        // 1. Try matching by numeric ID if available
+        if (idNum !== null) {
+          const { data: updateData, error: updateErr } = await supabase
+            .from('products')
+            .update(p)
+            .eq('id', idNum)
+            .select('id, name')
+            .maybeSingle();
+
+          if (!updateErr && updateData) {
+            return { data: updateData, error: null };
+          }
+        }
+
+        // 2. Try matching by p_k if SKU is numeric
+        if (skuNum !== null) {
+          const { data: updateData, error: updateErr } = await supabase
+            .from('products')
+            .update(p)
+            .eq('p_k', skuNum)
+            .select('id, name')
+            .maybeSingle();
+
+          if (!updateErr && updateData) {
+            return { data: updateData, error: null };
+          }
+        }
+
+        // 3. Fallback: match by product name
+        if (product.name) {
+          const { data: updateData, error: updateErr } = await supabase
+            .from('products')
+            .update(p)
+            .eq('name', product.name)
+            .select('id, name')
+            .maybeSingle();
+
+          if (!updateErr && updateData) {
+            return { data: updateData, error: null };
+          }
+          if (updateErr) return { data: null, error: updateErr };
+        }
+
+        return { data: { id: idNum || skuNum, name: product.name }, error: null };
       },
       payload
     );
@@ -1717,11 +1823,31 @@ export async function fetchTransactionsFromSupabase(): Promise<{ data: Transacti
     const txs: Transaction[] = (txRes.data || []).map((t: any) => {
       const id = String(t.id);
       const resolvedTime = resolveTransactionTimestamp(t);
+      let resolvedItems = itemsByTx[id];
+      if (!resolvedItems || resolvedItems.length === 0) {
+        if (Array.isArray(t.items) && t.items.length > 0) {
+          resolvedItems = t.items;
+        } else if (Array.isArray(t.original_cart) && t.original_cart.length > 0) {
+          resolvedItems = t.original_cart.map((c: any) => ({
+            productId: String(c.productId || c.id || ''),
+            productName: c.productName || c.name || 'منتج',
+            sku: c.sku || '',
+            quantity: Number(c.quantity || 1),
+            priceTier: c.priceTier || 'cash',
+            unitPrice: Number(c.unitPrice || c.price || 0),
+            totalPrice: Number(c.totalPrice || (c.quantity || 1) * (c.price || 0)),
+            assignedAssociateId: c.assignedAssociateId,
+          }));
+        } else {
+          resolvedItems = [];
+        }
+      }
+
       return {
         id,
         receiptNumber: t.receipt_number || `RCP-${id}`,
         timestamp: resolvedTime,
-        items: itemsByTx[id] || (Array.isArray(t.items) ? t.items : []),
+        items: resolvedItems,
         subtotal: Number(t.subtotal || 0),
         discountTotal: Number(t.discount_total || 0),
         taxTotal: Number(t.tax_total || 0),

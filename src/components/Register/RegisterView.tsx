@@ -190,6 +190,12 @@ export const RegisterView: React.FC = () => {
     }
   }, [userInvoiceAccess]);
 
+  useEffect(() => {
+    if (editingTransaction) {
+      setViewMode('create');
+    }
+  }, [editingTransaction]);
+
   // Register / Creation State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
@@ -746,6 +752,11 @@ export const RegisterView: React.FC = () => {
               <button
                 onClick={async () => {
                   try {
+                    if (editingTransaction) {
+                      const confirmCancel = window.confirm(`أنت تقوم حالياً بتعديل الفاتورة رقم #${editingTransaction.receiptNumber}. هل تريد إلغاء التعديل وبدء فاتورة جديدة؟`);
+                      if (!confirmCancel) return;
+                      cancelEditingTransaction();
+                    }
                     await startNewInvoice();
                     setViewMode('create');
                   } catch (e: any) {
@@ -1532,6 +1543,11 @@ export const RegisterView: React.FC = () => {
                   <button
                     onClick={async () => {
                       try {
+                        if (editingTransaction) {
+                          const confirmCancel = window.confirm(`أنت تقوم حالياً بتعديل الفاتورة رقم #${editingTransaction.receiptNumber}. هل تريد إلغاء التعديل وبدء فاتورة جديدة؟`);
+                          if (!confirmCancel) return;
+                          cancelEditingTransaction();
+                        }
                         await startNewInvoice();
                       } catch (e: any) {
                         alert(`خطأ: ${e.message}`);

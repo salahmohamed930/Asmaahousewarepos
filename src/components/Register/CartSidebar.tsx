@@ -14,6 +14,9 @@ import {
   CreditCard,
   Clock,
   DollarSign,
+  Percent,
+  Tag,
+  Check,
 } from 'lucide-react';
 import SplitAssociateModal from './SplitAssociateModal';
 import { CustomerPaymentModal } from '../Customers/CustomerPaymentModal';
@@ -42,6 +45,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     updateCartItemAssociate,
     removeFromCart,
     clearCart,
+    invoiceDiscount,
+    setInvoiceDiscount,
+    getInvoiceDiscountAmount,
     holdCart,
     discardHeldCart,
     getCartItemDiscountAmount,
@@ -63,6 +69,11 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [showAddCustomerForm, setShowAddCustomerForm] = useState(false);
+
+  // Global invoice discount modal/editor state
+  const [showDiscountEditor, setShowDiscountEditor] = useState(false);
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [discountValueInput, setDiscountValueInput] = useState<string>('');
 
   // Seller PIN state - starts EMPTY by default as requested!
   const [sellerPinInput, setSellerPinInput] = useState('');
@@ -87,7 +98,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
   // Totals calculations
   let subtotal = 0;
-  let discountTotal = 0;
+  let itemsDiscountTotal = 0;
 
   cart.forEach((item) => {
     // Determine active unit price based on global price tier
@@ -101,12 +112,66 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     const originalLinePrice = unitPrice * item.quantity;
     const itemDiscount = getCartItemDiscountAmount(item);
     subtotal += originalLinePrice;
-    discountTotal += itemDiscount;
+    itemsDiscountTotal += itemDiscount;
   });
 
-  const netSubtotal = subtotal - discountTotal;
+  const subtotalAfterItems = Math.max(0, subtotal - itemsDiscountTotal);
+  const invoiceDiscountAmount = getInvoiceDiscountAmount(subtotalAfterItems, invoiceDiscount);
+  const discountTotal = itemsDiscountTotal + invoiceDiscountAmount;
+  const netSubtotal = Math.max(0, subtotal - discountTotal);
   const taxTotal = Math.round(netSubtotal * taxRate * 100) / 100;
   const grandTotal = Math.round((netSubtotal + taxTotal) * 100) / 100;
+
+  // Calculate live preview deduction for the discount editor
+  const previewVal = parseFloat(discountValueInput) || 0;
+  const previewDeduction =
+    discountType === 'percentage'
+      ? Math.round(subtotalAfterItems * (Math.min(100, Math.max(0, previewVal)) / 100) * 100) / 100
+      : Math.min(subtotalAfterItems, Math.max(0, previewVal));
+
+  const handleOpenDiscountEditor = () => {
+    if (!canApplyDiscount) {
+      alert('عفواً، يتطلب تطبيق الخصم صلاحية مدير النظام أو صلاحية الخصم.');
+      return;
+    }
+    if (invoiceDiscount) {
+      setDiscountType(invoiceDiscount.type);
+      setDiscountValueInput(String(invoiceDiscount.value));
+    } else {
+      setDiscountType('percentage');
+      setDiscountValueInput('');
+    }
+    setShowDiscountEditor(true);
+  };
+
+  const handleApplyInvoiceDiscount = () => {
+    const val = parseFloat(discountValueInput);
+    if (isNaN(val) || val <= 0) {
+      setInvoiceDiscount(null);
+      setShowDiscountEditor(false);
+      return;
+    }
+
+    const maxVal = discountType === 'percentage' ? 100 : subtotalAfterItems;
+    const clamped = Math.min(maxVal, Math.max(0, val));
+    const calculatedAmt =
+      discountType === 'percentage'
+        ? Math.round((subtotalAfterItems * (clamped / 100)) * 100) / 100
+        : clamped;
+
+    setInvoiceDiscount({
+      type: discountType,
+      value: clamped,
+      amount: calculatedAmt,
+    });
+    setShowDiscountEditor(false);
+  };
+
+  const handleRemoveInvoiceDiscount = () => {
+    setInvoiceDiscount(null);
+    setDiscountValueInput('');
+    setShowDiscountEditor(false);
+  };
 
   // Filtered customer search (by name, phone, address)
   const filteredCustomers = customers.filter((c) => {
@@ -557,15 +622,205 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
         {/* ======================================================== */}
         <div className="p-3 bg-stone-950 border-t border-stone-800 space-y-2">
           
-          <div className="space-y-1 text-[11px] text-stone-400">
+          {/* Discount Editor Panel (Inline) */}
+          {showDiscountEditor && (
+            <div className="p-3 bg-stone-900 border border-amber-500/70 rounded-2xl space-y-2.5 shadow-xl text-stone-100">
+              <div className="flex items-center justify-between pb-1 border-b border-stone-800">
+                <div className="flex items-center space-x-1.5 space-x-reverse font-extrabold text-xs text-amber-400">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>تطبيق خصم على إجمالي الفاتورة</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDiscountEditor(false)}
+                  className="text-stone-400 hover:text-stone-200 p-0.5 rounded-lg transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Mode Selector (Percentage vs Fixed) */}
+              <div className="grid grid-cols-2 gap-1.5 p-0.5 bg-stone-950 rounded-xl border border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('percentage')}
+                  className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1 space-x-reverse ${
+                    discountType === 'percentage'
+                      ? 'bg-amber-600 text-white shadow-md'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <Percent className="w-3.5 h-3.5" />
+                  <span>نسبة مئوية (%)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('fixed')}
+                  className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1 space-x-reverse ${
+                    discountType === 'fixed'
+                      ? 'bg-amber-600 text-white shadow-md'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  <span>مبلغ مالي (ج.م)</span>
+                </button>
+              </div>
+
+              {/* Value Input */}
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <input
+                    type="number"
+                    step={discountType === 'percentage' ? '1' : '0.5'}
+                    min="0"
+                    max={discountType === 'percentage' ? 100 : subtotalAfterItems}
+                    value={discountValueInput}
+                    onChange={(e) => setDiscountValueInput(e.target.value)}
+                    placeholder={discountType === 'percentage' ? 'أدخل النسبة المئوية (مثلاً 10)' : 'أدخل المبلغ المالي (مثلاً 50)'}
+                    autoFocus
+                    className="w-full py-1.5 px-3 bg-stone-950 border border-stone-700 rounded-xl text-xs font-mono font-bold text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
+                    {discountType === 'percentage' ? '%' : 'ج.م'}
+                  </span>
+                </div>
+
+                {/* Quick Preset Buttons */}
+                <div className="flex flex-wrap gap-1">
+                  {discountType === 'percentage' ? (
+                    [5, 10, 15, 20, 25, 50].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setDiscountValueInput(String(pct))}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition-colors ${
+                          discountValueInput === String(pct)
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))
+                  ) : (
+                    [10, 20, 50, 100, 200].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setDiscountValueInput(String(amt))}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition-colors ${
+                          discountValueInput === String(amt)
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
+                        }`}
+                      >
+                        {amt} ج.م
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Deduction Preview Note */}
+                {Boolean(parseFloat(discountValueInput)) && (
+                  <div className="p-1.5 bg-emerald-950/50 border border-emerald-800/60 rounded-xl text-[11px] text-emerald-300 flex justify-between items-center font-bold">
+                    <span>قيمة الخصم المقتطع:</span>
+                    <span className="font-mono text-emerald-200">
+                      -{(previewDeduction || 0).toLocaleString()} ج.م
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-1.5 space-x-reverse pt-1">
+                <button
+                  type="button"
+                  onClick={handleApplyInvoiceDiscount}
+                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition-colors shadow flex items-center justify-center space-x-1 space-x-reverse"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>تطبيق الخصم</span>
+                </button>
+                {invoiceDiscount && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveInvoiceDiscount}
+                    className="px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 rounded-xl text-xs font-bold transition-colors"
+                  >
+                    إلغاء الخصم
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowDiscountEditor(false)}
+                  className="px-2.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-xl text-xs font-bold transition-colors"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5 text-[11px] text-stone-400">
             <div className="flex justify-between">
               <span>الإجمالي قبل الخصم (الأصناف: {cart.reduce((a, c) => a + c.quantity, 0)})</span>
               <span className="font-mono text-stone-200 font-bold">{(subtotal || 0).toLocaleString()} ج.م</span>
             </div>
 
-            {discountTotal > 0 && (
+            {itemsDiscountTotal > 0 && (
               <div className="flex justify-between text-emerald-400 font-bold">
-                <span>إجمالي الخصم</span>
+                <span>خصم الأصناف المطبقة</span>
+                <span className="font-mono">-{(itemsDiscountTotal || 0).toLocaleString()} ج.م</span>
+              </div>
+            )}
+
+            {/* Global Invoice Discount Row or Add Button */}
+            {invoiceDiscount && invoiceDiscount.value > 0 ? (
+              <div className="flex items-center justify-between p-1.5 bg-emerald-950/40 border border-emerald-700/60 rounded-xl text-emerald-300 font-bold text-xs">
+                <div className="flex items-center space-x-1.5 space-x-reverse">
+                  <Tag className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>
+                    خصم إجمالي الفاتورة ({invoiceDiscount.type === 'percentage' ? `${invoiceDiscount.value}%` : 'مبلغ مالي'}):
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <span className="font-mono text-emerald-300">
+                    -{(invoiceDiscountAmount || 0).toLocaleString()} ج.م
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleOpenDiscountEditor}
+                    className="p-1 text-stone-400 hover:text-stone-100 hover:bg-stone-800 rounded transition-colors"
+                    title="تعديل قيمة الخصم"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveInvoiceDiscount}
+                    className="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-950/50 rounded transition-colors"
+                    title="إزالة خصم الفاتورة"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenDiscountEditor}
+                disabled={cart.length === 0}
+                className="w-full py-1 px-2.5 bg-stone-900 hover:bg-stone-850 active:scale-[0.99] border border-dashed border-stone-700 hover:border-amber-500 text-stone-300 hover:text-amber-300 rounded-xl text-[11px] font-bold flex items-center justify-center space-x-1.5 space-x-reverse transition-all disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Tag className="w-3 h-3 text-amber-400" />
+                <span>+ خصم على إجمالي الفاتورة (مبلغ مالي أو نسبة %)</span>
+              </button>
+            )}
+
+            {discountTotal > 0 && itemsDiscountTotal > 0 && invoiceDiscount && invoiceDiscount.value > 0 && (
+              <div className="flex justify-between text-emerald-300 font-bold border-t border-dashed border-stone-800 pt-1">
+                <span>صافي مجموع الخصومات</span>
                 <span className="font-mono">-{(discountTotal || 0).toLocaleString()} ج.م</span>
               </div>
             )}

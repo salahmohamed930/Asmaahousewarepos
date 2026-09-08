@@ -43,6 +43,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
     return sum + (item.unitPrice * item.quantity);
   }, 0);
 
+  const itemsDiscountTotal = (transaction.items || []).reduce((sum, item) => {
+    return sum + (item.discountAmount || 0);
+  }, 0);
+
   const discountTotal = transaction.discountTotal !== undefined
     ? transaction.discountTotal
     : Math.max(0, itemsSubtotal - (transaction.grandTotal || 0));
@@ -449,11 +453,36 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
                 <span className="font-extrabold">الإجمالي قبل الخصم : </span>
                 <span className="font-mono font-black">{formatPrice(totalBeforeDiscount)}</span>
               </div>
-              {discountTotal > 0 && (
-                <div>
-                  <span className="font-extrabold">الخصم : </span>
-                  <span className="font-mono font-black">{formatPrice(discountTotal)}</span>
-                </div>
+              {transaction.invoiceDiscount && transaction.invoiceDiscount.value > 0 ? (
+                <>
+                  {itemsDiscountTotal > 0 && (
+                    <div>
+                      <span className="font-extrabold">خصم الأصناف : </span>
+                      <span className="font-mono font-black">{formatPrice(itemsDiscountTotal)}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-extrabold">
+                      خصم إجمالي الفاتورة ({transaction.invoiceDiscount.type === 'percentage' ? `${transaction.invoiceDiscount.value}%` : 'مبلغ مالي'}) :{' '}
+                    </span>
+                    <span className="font-mono font-black">
+                      {formatPrice(transaction.invoiceDiscount.amount ?? (discountTotal - itemsDiscountTotal))}
+                    </span>
+                  </div>
+                  {itemsDiscountTotal > 0 && (
+                    <div>
+                      <span className="font-extrabold">إجمالي الخصم : </span>
+                      <span className="font-mono font-black">{formatPrice(discountTotal)}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                discountTotal > 0 && (
+                  <div>
+                    <span className="font-extrabold">الخصم : </span>
+                    <span className="font-mono font-black">{formatPrice(discountTotal)}</span>
+                  </div>
+                )
               )}
               <div>
                 <span className="font-extrabold">الإجمالي بعد الخصم : </span>

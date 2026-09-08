@@ -18,6 +18,7 @@ import {
   ProductDiscount,
   POSExpense,
   Permission,
+  InvoiceDiscount,
 } from '../types';
 import { DEFAULT_ADMIN_ASSOCIATE, DEFAULT_SHORTCUT_KEYS } from '../data/initialData';
 import {
@@ -75,6 +76,9 @@ interface POSContextType {
   updateCartItemAssociate: (productId: string, associateId?: string) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
+  invoiceDiscount: InvoiceDiscount | null;
+  setInvoiceDiscount: (discount: InvoiceDiscount | null) => void;
+  getInvoiceDiscountAmount: (subtotalAfterItems?: number, discount?: InvoiceDiscount | null) => number;
   getCartItemDiscountAmount: (item: CartItem) => number;
   getCartItemDiscountPercent: (item: CartItem) => number;
   addDiscount: (discount: ProductDiscount) => Promise<void>;
@@ -88,7 +92,7 @@ interface POSContextType {
   startEditingTransaction: (tx: Transaction) => boolean;
   cancelEditingTransaction: () => void;
   saveEditedTransaction: (
-    paymentMethod: PaymentMethod,
+    paymentMethod?: PaymentMethod,
     discountTotalOverride?: number,
     paymentDetails?: string,
     notes?: string,
@@ -208,6 +212,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Local UI State
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [invoiceDiscount, setInvoiceDiscount] = useState<InvoiceDiscount | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [splitAssociates, setSplitAssociates] = useState<SplitAssociate[]>([]);
   const [activeHeldTransactionId, setActiveHeldTransactionId] = useState<string | null>(null);
@@ -667,6 +672,30 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSplitAssociates([]);
     setActiveHeldTransactionId(null);
     setEditingTransaction(null);
+    setInvoiceDiscount(null);
+  };
+
+  const getInvoiceDiscountAmount = (subtotalAfterItems?: number, discount = invoiceDiscount): number => {
+    if (!discount || !discount.value || discount.value <= 0) return 0;
+
+    let baseAmount = subtotalAfterItems;
+    if (baseAmount === undefined) {
+      let sub = 0;
+      let itemsDisc = 0;
+      cart.forEach((item) => {
+        const uPrice = getItemUnitPrice(item);
+        sub += uPrice * item.quantity;
+        itemsDisc += getCartItemDiscountAmount(item);
+      });
+      baseAmount = Math.max(0, sub - itemsDisc);
+    }
+
+    if (discount.type === 'percentage') {
+      const pct = Math.max(0, Math.min(100, discount.value));
+      return Math.round((baseAmount * (pct / 100)) * 100) / 100;
+    } else {
+      return Math.min(baseAmount, Math.max(0, discount.value));
+    }
   };
 
   // Universal Global Function Key Shortcuts Listener (F1 - F12) across any page
@@ -995,6 +1024,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedCustomer(null);
     setSplitAssociates([]);
     setActiveHeldTransactionId(null);
+    setInvoiceDiscount(null);
   };
 
   const startEditingTransaction = (tx: Transaction): boolean => {
@@ -1007,6 +1037,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // If this transaction is currently held ('معلقة'), restore it to the cart directly
     if (tx.status === 'معلقة') {
       restoreHeldTransaction(tx.id);
+      setEditingTransaction(tx);
       return true;
     }
 
@@ -1067,12 +1098,17 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setSplitAssociates(tx.splitAssociates || []);
+    if (tx.invoiceDiscount) {
+      setInvoiceDiscount(tx.invoiceDiscount);
+    } else {
+      setInvoiceDiscount(null);
+    }
     setActiveTab('register');
     return true;
   };
 
   const saveEditedTransaction = async (
-    paymentMethod: PaymentMethod,
+    paymentMethod?: PaymentMethod,
     discountTotalOverride = 0,
     paymentDetails = '',
     notes = '',
@@ -1085,7 +1121,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let subtotal = 0;
-    let discountTotal = 0;
+    let itemsDiscountTotal = 0;
 
     const transactionItems: TransactionItem[] = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
@@ -1094,7 +1130,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
 
       subtotal += lineOriginalTotal;
-      discountTotal += lineDiscount;
+      itemsDiscountTotal += lineDiscount;
 
       return {
         productId: item.product.id,
@@ -1112,20 +1148,80 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    if (discountTotalOverride > 0) discountTotal = discountTotalOverride;
+    const subtotalAfterItems = Math.max(0, subtotal - itemsDiscountTotal);
+    const invDiscountAmount = getInvoiceDiscountAmount(subtotalAfterItems, invoiceDiscount);
+    const calculatedDiscountTotal = itemsDiscountTotal + invDiscountAmount;
+    const discountTotal = discountTotalOverride > 0 ? discountTotalOverride : calculatedDiscountTotal;
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
     const primaryAssocId = currentAssociate?.id || editingTransaction.primaryAssociateId || 'system';
     const primaryAssocName = currentAssociate?.name || editingTransaction.primaryAssociateName || 'النظام';
+    const finalMethod = paymentMethod || editingTransaction.paymentMethod || 'كاش';
+
+    // 1. Adjust inventory stock based on difference between old and new item quantities
+    const oldItemsMap = new Map<string, number>();
+    (editingTransaction.items || []).forEach((item) => {
+      oldItemsMap.set(item.productId, (oldItemsMap.get(item.productId) || 0) + item.quantity);
+    });
+
+    const newItemsMap = new Map<string, number>();
+    transactionItems.forEach((item) => {
+      newItemsMap.set(item.productId, (newItemsMap.get(item.productId) || 0) + item.quantity);
+    });
+
+    const allProductIds = new Set([...oldItemsMap.keys(), ...newItemsMap.keys()]);
+    for (const prodId of allProductIds) {
+      const oldQty = oldItemsMap.get(prodId) || 0;
+      const newQty = newItemsMap.get(prodId) || 0;
+      const delta = newQty - oldQty;
+      if (delta !== 0) {
+        const prod = products.find((p) => p.id === prodId);
+        if (prod) {
+          const updatedProd = { ...prod, stock: Math.max(0, prod.stock - delta) };
+          await db.products.put(updatedProd);
+          await addToPendingQueue('products', 'UPDATE', updatedProd);
+          setProducts((prev) => prev.map((p) => (p.id === prod.id ? updatedProd : p)));
+        }
+      }
+    }
+
+    // 2. Adjust customer debt and metrics if applicable
+    if (selectedCustomer) {
+      const oldDeferred = editingTransaction.amountDeferred || 0;
+      const finalPaid = amountPaid !== undefined ? amountPaid : (editingTransaction.amountPaid !== undefined ? editingTransaction.amountPaid : grandTotal);
+      const finalDeferred = amountDeferred !== undefined ? amountDeferred : (editingTransaction.amountDeferred !== undefined ? editingTransaction.amountDeferred : 0);
+      const debtDelta = finalDeferred - oldDeferred;
+      const spentDelta = grandTotal - (editingTransaction.grandTotal || 0);
+
+      const ratio = settings.loyaltyPointsRatio || 10;
+      const oldPoints = Math.floor((editingTransaction.grandTotal || 0) / ratio);
+      const newPoints = Math.floor(grandTotal / ratio);
+      const pointsDelta = newPoints - oldPoints;
+
+      const updatedCust: Customer = {
+        ...selectedCustomer,
+        totalSpent: Math.max(0, (selectedCustomer.totalSpent || 0) + spentDelta),
+        loyaltyPoints: Math.max(0, (selectedCustomer.loyaltyPoints || 0) + pointsDelta),
+        currentDebt: Math.max(0, (selectedCustomer.currentDebt || 0) + debtDelta),
+      };
+      await db.customers.put(updatedCust);
+      await addToPendingQueue('customers', 'UPDATE', updatedCust);
+      setCustomers((prev) => prev.map((c) => (c.id === updatedCust.id ? updatedCust : c)));
+    }
 
     const updatedTx: Transaction = {
       ...editingTransaction,
       items: transactionItems,
       subtotal,
       discountTotal,
+      invoiceDiscount: invoiceDiscount && invoiceDiscount.value > 0 ? {
+        type: invoiceDiscount.type,
+        value: invoiceDiscount.value,
+        amount: invDiscountAmount,
+      } : undefined,
       taxTotal: 0,
       grandTotal,
-      paymentMethod,
+      paymentMethod: finalMethod,
       paymentDetails: paymentDetails || editingTransaction.paymentDetails,
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
@@ -1133,9 +1229,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       primaryAssociateName: primaryAssocName,
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       notes: notes || editingTransaction.notes || 'تم تعديل الفاتورة بنجاح',
-      amountPaid: amountPaid !== undefined ? amountPaid : grandTotal,
-      amountDeferred: amountDeferred !== undefined ? amountDeferred : 0,
-      splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : undefined,
+      amountPaid: amountPaid !== undefined ? amountPaid : (editingTransaction.amountPaid !== undefined ? editingTransaction.amountPaid : grandTotal),
+      amountDeferred: amountDeferred !== undefined ? amountDeferred : (editingTransaction.amountDeferred !== undefined ? editingTransaction.amountDeferred : 0),
+      splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : editingTransaction.splitPayments,
+      updated_at: new Date().toISOString(),
     };
 
     await updateTransaction(updatedTx);
@@ -1154,12 +1251,26 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amountDeferred?: number,
     splitPayments?: SplitPaymentItem[]
   ): Promise<Transaction> => {
+    // CRITICAL: If an invoice is currently being edited, always delegate to saveEditedTransaction
+    // to update the existing invoice in-place rather than creating a duplicate new invoice!
+    if (editingTransaction) {
+      return await saveEditedTransaction(
+        paymentMethod,
+        discountTotalOverride,
+        paymentDetails,
+        notes,
+        amountPaid,
+        amountDeferred,
+        splitPayments
+      );
+    }
+
     if (cart.length === 0) {
       throw new Error('السلة فارغة. يرجى إضافة عناصر أولاً.');
     }
 
     let subtotal = 0;
-    let discountTotal = 0;
+    let itemsDiscountTotal = 0;
 
     const transactionItems: TransactionItem[] = cart.map((item) => {
       const unitPrice = getItemUnitPrice(item);
@@ -1168,7 +1279,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const lineNetTotal = Math.max(0, lineOriginalTotal - lineDiscount);
 
       subtotal += lineOriginalTotal;
-      discountTotal += lineDiscount;
+      itemsDiscountTotal += lineDiscount;
 
       return {
         productId: item.product.id,
@@ -1186,7 +1297,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    if (discountTotalOverride > 0) discountTotal = discountTotalOverride;
+    const subtotalAfterItems = Math.max(0, subtotal - itemsDiscountTotal);
+    const invDiscountAmount = getInvoiceDiscountAmount(subtotalAfterItems, invoiceDiscount);
+    const calculatedDiscountTotal = itemsDiscountTotal + invDiscountAmount;
+    const discountTotal = discountTotalOverride > 0 ? discountTotalOverride : calculatedDiscountTotal;
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
     const primaryAssocId = currentAssociate?.id || 'system';
@@ -1219,14 +1333,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    const receiptNumber = `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
+    const existingHeldTx = activeHeldTransactionId ? transactions.find((t) => t.id === activeHeldTransactionId) : null;
+    const receiptNumber = existingHeldTx?.receiptNumber || `RCP-ASM-${Math.floor(10000 + Math.random() * 90000)}`;
     const newTransaction: Transaction = {
       id: activeHeldTransactionId || `tx_${Date.now()}`,
       receiptNumber,
-      timestamp: new Date().toISOString(),
+      timestamp: existingHeldTx?.timestamp || new Date().toISOString(),
       items: transactionItems,
       subtotal,
       discountTotal,
+      invoiceDiscount: invoiceDiscount && invoiceDiscount.value > 0 ? {
+        type: invoiceDiscount.type,
+        value: invoiceDiscount.value,
+        amount: invDiscountAmount,
+      } : undefined,
       taxTotal: 0,
       grandTotal,
       paymentMethod,
@@ -1302,7 +1422,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (cart.length === 0) throw new Error('السلة فارغة. يرجى إضافة عناصر قبل التعليق.');
 
     const subtotal = cart.reduce((sum, item) => sum + getItemUnitPrice(item) * item.quantity, 0);
-    const discountTotal = cart.reduce((sum, item) => sum + getCartItemDiscountAmount(item), 0);
+    const itemsDiscount = cart.reduce((sum, item) => sum + getCartItemDiscountAmount(item), 0);
+    const subtotalAfterItems = Math.max(0, subtotal - itemsDiscount);
+    const invDiscountAmount = getInvoiceDiscountAmount(subtotalAfterItems, invoiceDiscount);
+    const discountTotal = itemsDiscount + invDiscountAmount;
     const grandTotal = Math.max(0, subtotal - discountTotal);
 
     const transactionItems: TransactionItem[] = cart.map((item) => ({
@@ -1327,6 +1450,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       items: transactionItems,
       subtotal,
       discountTotal,
+      invoiceDiscount: invoiceDiscount && invoiceDiscount.value > 0 ? {
+        type: invoiceDiscount.type,
+        value: invoiceDiscount.value,
+        amount: invDiscountAmount,
+      } : undefined,
       taxTotal: 0,
       grandTotal,
       paymentMethod: 'كاش',
@@ -1393,6 +1521,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setSplitAssociates(foundTx.splitAssociates || []);
+    if (foundTx.invoiceDiscount) {
+      setInvoiceDiscount(foundTx.invoiceDiscount);
+    } else {
+      setInvoiceDiscount(null);
+    }
     setActiveHeldTransactionId(transactionId);
     setEditingTransaction(null);
     setActiveTab('register');
@@ -1670,6 +1803,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCartItemAssociate,
         removeFromCart,
         clearCart,
+        invoiceDiscount,
+        setInvoiceDiscount,
+        getInvoiceDiscountAmount,
         getCartItemDiscountAmount,
         getCartItemDiscountPercent,
         addDiscount,

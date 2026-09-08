@@ -163,6 +163,12 @@ export interface SplitPaymentItem {
   amount: number;
 }
 
+export interface InvoiceDiscount {
+  type: 'percentage' | 'fixed';
+  value: number; // قيمة الخصم: نسبة مئوية (مثل 10 لـ 10%) أو مبلغ مالي (مثل 50 لـ 50 ج.م)
+  amount?: number; // المبلغ المحسوب بالجنيه المصري المخصوم فعلياً
+}
+
 export interface Transaction {
   id: string;
   receiptNumber: string;
@@ -170,6 +176,7 @@ export interface Transaction {
   items: TransactionItem[];
   subtotal: number;
   discountTotal: number;
+  invoiceDiscount?: InvoiceDiscount;
   taxTotal: number;
   grandTotal: number;
   paymentMethod: PaymentMethod;

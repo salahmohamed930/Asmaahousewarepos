@@ -545,7 +545,14 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                 </div>
 
                 <div className="flex justify-between items-center text-stone-400">
-                  <span>الخصم الممنوح:</span>
+                  <div>
+                    <span>الخصم الممنوح:</span>
+                    {editedTx.invoiceDiscount && (
+                      <span className="text-[10px] text-amber-400 block font-sans">
+                        (خصم إجمالي: {editedTx.invoiceDiscount.type === 'percentage' ? `${editedTx.invoiceDiscount.value}%` : `${editedTx.invoiceDiscount.value.toLocaleString()} ج.م`})
+                      </span>
+                    )}
+                  </div>
                   {isEditing && canEditInvoice ? (
                     <input
                       type="number"

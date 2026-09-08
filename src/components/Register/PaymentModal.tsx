@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { PaymentMethod, Transaction } from '../../types';
 import {
@@ -12,6 +12,9 @@ import {
   HeartHandshake,
   Receipt,
   Sparkles,
+  Tag,
+  Percent,
+  Edit,
 } from 'lucide-react';
 
 interface PaymentModalProps {
@@ -21,8 +24,29 @@ interface PaymentModalProps {
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { cart, currentAssociate, splitAssociates, selectedCustomer, taxRate, globalPriceTier, completeTransaction, getCartItemDiscountAmount, settings } =
-    usePOS();
+  const {
+    cart,
+    currentAssociate,
+    splitAssociates,
+    selectedCustomer,
+    taxRate,
+    globalPriceTier,
+    completeTransaction,
+    saveEditedTransaction,
+    editingTransaction,
+    getCartItemDiscountAmount,
+    invoiceDiscount,
+    setInvoiceDiscount,
+    getInvoiceDiscountAmount,
+    hasPermission,
+    settings,
+  } = usePOS();
+
+  const canApplyDiscount = hasPermission('apply_discount');
+
+  const [showDiscountEdit, setShowDiscountEdit] = useState(false);
+  const [modalDiscountType, setModalDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [modalDiscountVal, setModalDiscountVal] = useState<string>('');
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('كاش');
   const [cashTendered, setCashTendered] = useState<string>('');
@@ -42,6 +66,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     'نقاط ولاء': '',
   });
 
+  useEffect(() => {
+    if (isOpen) {
+      setPaymentError('');
+      if (editingTransaction) {
+        setPaymentMethod(editingTransaction.paymentMethod || 'كاش');
+        const defaultCash = editingTransaction.amountPaid !== undefined 
+          ? editingTransaction.amountPaid 
+          : (editingTransaction.grandTotal || 0);
+        setCashTendered(defaultCash > 0 ? defaultCash.toString() : '');
+        if (editingTransaction.amountDeferred && editingTransaction.amountDeferred > 0) {
+          setIsPartialPayment(true);
+          setPartialPaidAmount((editingTransaction.amountPaid || 0).toString());
+        } else {
+          setIsPartialPayment(false);
+          setPartialPaidAmount('');
+        }
+      } else {
+        setPaymentMethod('كاش');
+        setCashTendered('');
+        setIsPartialPayment(false);
+        setPartialPaidAmount('');
+      }
+    }
+  }, [isOpen, editingTransaction]);
+
   if (!isOpen || !currentAssociate) return null;
 
   // Helper to determine the unit price of a cart item based on current settings
@@ -56,15 +105,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
 
   // Calculate Cart Totals
   let subtotal = 0;
-  let discountTotal = 0;
+  let itemsDiscountTotal = 0;
 
   cart.forEach((item) => {
     const unitPrice = getItemUnitPrice(item);
     const lineTotal = unitPrice * item.quantity;
     const lineDisc = getCartItemDiscountAmount(item);
     subtotal += lineTotal;
-    discountTotal += lineDisc;
+    itemsDiscountTotal += lineDisc;
   });
+
+  const subtotalAfterItems = Math.max(0, subtotal - itemsDiscountTotal);
+  const invoiceDiscountAmount = getInvoiceDiscountAmount(subtotalAfterItems, invoiceDiscount);
+  const discountTotal = itemsDiscountTotal + invoiceDiscountAmount;
 
   const isReturn = cart.some((item) => item.quantity < 0);
   const netSubtotal = isReturn ? (subtotal - discountTotal) : Math.max(0, subtotal - discountTotal);
@@ -153,6 +206,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   };
 
   const handleProcessPayment = () => {
+    let effectiveTender = tenderNumber;
+    const requiredCash = isPartialPayment ? paidAmount : grandTotal;
+    if (editingTransaction && effectiveTender === 0 && paymentMethod === 'كاش') {
+      effectiveTender = requiredCash;
+    }
+
     if (isSplitPayment) {
       const splitCash = parseFloat(splitAmounts['كاش']) || 0;
       const splitCard = parseFloat(splitAmounts['فيزا / كارت']) || 0;
@@ -238,9 +297,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
       }
 
       // Cash Validation
-      const requiredCash = isPartialPayment ? paidAmount : grandTotal;
-      if (!isReturn && paymentMethod === 'كاش' && tenderNumber < requiredCash) {
-        setPaymentError(`المبلغ المدفوع (${tenderNumber.toLocaleString()} ج.م) أقل من المبلغ المطلوب (${requiredCash.toLocaleString()} ج.م).`);
+      if (!isReturn && paymentMethod === 'كاش' && effectiveTender < requiredCash) {
+        setPaymentError(`المبلغ المدفوع (${effectiveTender.toLocaleString()} ج.م) أقل من المبلغ المطلوب (${requiredCash.toLocaleString()} ج.م).`);
         return;
       }
 
@@ -279,7 +337,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           if (paymentMethod === 'فيزا / كارت') {
             details = 'بطاقة دفع فيزا رقم ' + Math.floor(1000 + Math.random() * 9000);
           } else if (paymentMethod === 'كاش') {
-            details = `المستلم: ${tenderNumber.toLocaleString()} ج.م | الباقي: ${changeDue.toLocaleString()} ج.م`;
+            const finalCashShown = effectiveTender > 0 ? effectiveTender : grandTotal;
+            const finalChange = Math.max(0, finalCashShown - targetRequiredAmount);
+            details = `المستلم: ${finalCashShown.toLocaleString()} ج.م | الباقي: ${finalChange.toLocaleString()} ج.م`;
           } else if (paymentMethod === 'محفظة إلكترونية') {
             details = 'دفع إلكتروني عبر الهاتف الذكي NFC';
           } else if (paymentMethod === 'آجل / حساب جملة') {
@@ -296,7 +356,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           }
         }
 
-        const completedTx = await completeTransaction(finalMethod, 0, details, '', paidAmount, deferredAmount, finalSplitArray);
+        let completedTx: Transaction;
+        if (editingTransaction) {
+          completedTx = await saveEditedTransaction(finalMethod, 0, details, '', paidAmount, deferredAmount, finalSplitArray);
+        } else {
+          completedTx = await completeTransaction(finalMethod, 0, details, '', paidAmount, deferredAmount, finalSplitArray);
+        }
         setIsProcessing(false);
         onSuccess(completedTx);
       } catch (err: any) {
@@ -322,18 +387,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
         {/* Title */}
         <div className="flex items-center space-x-3 space-x-reverse mb-6">
           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
-            isReturn 
+            editingTransaction
+              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+              : isReturn 
               ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
               : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
           }`}>
-            <DollarSign className="w-6 h-6" />
+            {editingTransaction ? <Edit className="w-6 h-6" /> : <DollarSign className="w-6 h-6" />}
           </div>
           <div>
             <h2 className="text-xl font-bold tracking-tight">
-              {isReturn ? 'إتمام المرتجع وصرف المبلغ المسترد' : 'إتمام الدفع وتحصيل الفاتورة'}
+              {editingTransaction
+                ? `تعديل الفاتورة رقم #${editingTransaction.receiptNumber}`
+                : isReturn
+                ? 'إتمام المرتجع وصرف المبلغ المسترد'
+                : 'إتمام الدفع وتحصيل الفاتورة'}
             </h2>
             <p className="text-xs text-stone-400">
-              نقطة بيع #01 • البائع المسؤول: {currentAssociate?.name || 'غير محدد'}
+              {editingTransaction
+                ? 'تحديث بيانات الفاتورة الأصلية وحفظ التعديلات في النظام'
+                : `نقطة بيع #01 • البائع المسؤول: ${currentAssociate?.name || 'غير محدد'}`}
             </p>
           </div>
         </div>
@@ -346,9 +419,146 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
               <span className="font-mono text-stone-200">{(subtotal || 0).toLocaleString()} ج.م</span>
             </div>
 
-            {discountTotal > 0 && (
+            {itemsDiscountTotal > 0 && (
               <div className="flex justify-between text-emerald-400 font-bold">
-                <span>إجمالي الخصومات المطبقة</span>
+                <span>خصم الأصناف المطبقة</span>
+                <span className="font-mono">-{(itemsDiscountTotal || 0).toLocaleString()} ج.م</span>
+              </div>
+            )}
+
+            {invoiceDiscount && invoiceDiscount.value > 0 && (
+              <div className="flex justify-between items-center text-emerald-400 font-bold">
+                <div className="flex items-center space-x-1 space-x-reverse">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>
+                    خصم إجمالي الفاتورة ({invoiceDiscount.type === 'percentage' ? `${invoiceDiscount.value}%` : 'مبلغ مالي'})
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 space-x-reverse">
+                  <span className="font-mono">-{(invoiceDiscountAmount || 0).toLocaleString()} ج.م</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalDiscountType(invoiceDiscount.type);
+                      setModalDiscountVal(String(invoiceDiscount.value));
+                      setShowDiscountEdit(!showDiscountEdit);
+                    }}
+                    className="p-0.5 text-stone-400 hover:text-stone-100 transition-colors"
+                    title="تعديل خصم الفاتورة"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceDiscount(null)}
+                    className="p-0.5 text-rose-400 hover:text-rose-300 transition-colors"
+                    title="حذف خصم الفاتورة"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Discount Trigger / Inline Form */}
+            {canApplyDiscount && (
+              <div>
+                {!showDiscountEdit && (!invoiceDiscount || invoiceDiscount.value <= 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalDiscountType('percentage');
+                      setModalDiscountVal('');
+                      setShowDiscountEdit(true);
+                    }}
+                    className="mt-1 text-[11px] text-amber-400 hover:text-amber-300 flex items-center space-x-1 space-x-reverse font-bold"
+                  >
+                    <Tag className="w-3 h-3" />
+                    <span>+ تطبيق خصم إضافي على إجمالي الفاتورة (% أو مبلغ)</span>
+                  </button>
+                )}
+
+                {showDiscountEdit && (
+                  <div className="mt-2 p-2.5 bg-stone-900 border border-amber-600/70 rounded-xl space-y-2 text-stone-100">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-amber-400">
+                      <span>خصم على الفاتورة</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDiscountEdit(false)}
+                        className="text-stone-400 hover:text-stone-200"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center space-x-2 space-x-reverse">
+                      <div className="flex bg-stone-950 rounded-lg p-0.5 border border-stone-800 text-[10px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setModalDiscountType('percentage')}
+                          className={`px-2 py-1 rounded ${
+                            modalDiscountType === 'percentage' ? 'bg-amber-600 text-white' : 'text-stone-400'
+                          }`}
+                        >
+                          % نسبة
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalDiscountType('fixed')}
+                          className={`px-2 py-1 rounded ${
+                            modalDiscountType === 'fixed' ? 'bg-amber-600 text-white' : 'text-stone-400'
+                          }`}
+                        >
+                          ج.م مبلغ
+                        </button>
+                      </div>
+
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max={modalDiscountType === 'percentage' ? 100 : subtotalAfterItems}
+                          value={modalDiscountVal}
+                          onChange={(e) => setModalDiscountVal(e.target.value)}
+                          placeholder={modalDiscountType === 'percentage' ? 'النسبة' : 'المبلغ'}
+                          className="w-full py-1 px-2.5 bg-stone-950 border border-stone-700 rounded-lg text-xs font-mono font-bold text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = parseFloat(modalDiscountVal);
+                          if (isNaN(val) || val <= 0) {
+                            setInvoiceDiscount(null);
+                          } else {
+                            const maxVal = modalDiscountType === 'percentage' ? 100 : subtotalAfterItems;
+                            const clamped = Math.min(maxVal, Math.max(0, val));
+                            const calculatedAmt =
+                              modalDiscountType === 'percentage'
+                                ? Math.round((subtotalAfterItems * (clamped / 100)) * 100) / 100
+                                : clamped;
+                            setInvoiceDiscount({
+                              type: modalDiscountType,
+                              value: clamped,
+                              amount: calculatedAmt,
+                            });
+                          }
+                          setShowDiscountEdit(false);
+                        }}
+                        className="py-1 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-colors"
+                      >
+                        تطبيق
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {discountTotal > 0 && itemsDiscountTotal > 0 && invoiceDiscount && invoiceDiscount.value > 0 && (
+              <div className="flex justify-between text-emerald-300 font-bold border-t border-dashed border-stone-800 pt-1">
+                <span>إجمالي كافة الخصومات</span>
                 <span className="font-mono">-{(discountTotal || 0).toLocaleString()} ج.م</span>
               </div>
             )}
@@ -810,7 +1020,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             <>
               <CheckCircle2 className="w-5 h-5" />
               <span>
-                {isReturn
+                {editingTransaction
+                  ? `حفظ تعديلات الفاتورة (${(grandTotal || 0).toLocaleString()} ج.م)`
+                  : isReturn
                   ? `تأكيد المرتجع وصرف المبلغ المسترد (${Math.abs(grandTotal || 0).toLocaleString()} ج.م)`
                   : deferredAmount > 0 
                     ? `تأكيد المعاملة (مدفوع: ${(paidAmount || 0).toLocaleString()} ج.م | آجل: ${(deferredAmount || 0).toLocaleString()} ج.م)`

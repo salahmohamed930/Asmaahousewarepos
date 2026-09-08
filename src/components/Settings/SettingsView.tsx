@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { getSupabaseKeys } from '../../lib/supabase';
 import { 
@@ -44,6 +44,11 @@ import {
   Store,
   RefreshCw,
   Eye,
+  Pencil,
+  X,
+  Layers,
+  ArrowRightLeft,
+  ScanSearch,
 } from 'lucide-react';
 
 export type SettingsTabId =
@@ -62,6 +67,10 @@ export const SettingsView: React.FC = () => {
     settings, 
     updateSettings, 
     products, 
+    addCategory,
+    renameCategory,
+    deleteCategory,
+    syncCategoriesFromProducts,
     dbStatus, 
     testDbConnection,
     transactions,
@@ -81,6 +90,18 @@ export const SettingsView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>('printing');
   const [newCategory, setNewCategory] = useState('');
+  const [editingCatName, setEditingCatName] = useState<string | null>(null);
+  const [editedNewName, setEditedNewName] = useState<string>('');
+  const [isRenamingCat, setIsRenamingCat] = useState(false);
+  const [catSearchTerm, setCatSearchTerm] = useState('');
+  const [catFilterMode, setCatFilterMode] = useState<'all' | 'used' | 'empty'>('all');
+  const [isSyncingCats, setIsSyncingCats] = useState(false);
+
+  // Deletion with reassign modal state
+  const [catToDelete, setCatToDelete] = useState<{ name: string; count: number } | null>(null);
+  const [reassignTargetCat, setReassignTargetCat] = useState<string>('');
+  const [isDeletingCat, setIsDeletingCat] = useState(false);
+
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [diagnosticResult, setDiagnosticResult] = useState<{ success?: boolean; msg?: string } | null>(null);
@@ -315,48 +336,155 @@ export const SettingsView: React.FC = () => {
     triggerSuccess(`تمت إعادة تعيين نسب ربح قسم "${category}" إلى النسب الافتراضية`);
   };
 
-  // 5. Add new category
-  const handleAddCategory = (e: React.FormEvent) => {
+  // 5. Category Management Memos & Handlers
+  const productCountsByCategory = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of products || []) {
+      const cat = p.category?.trim();
+      if (cat) {
+        counts[cat] = (counts[cat] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [products]);
+
+  // Discover categories that exist in products but are NOT in settings.categories
+  const unmanagedProductCategories = useMemo(() => {
+    const productCats = Object.keys(productCountsByCategory);
+    return productCats.filter((cat) => !settings.categories.includes(cat));
+  }, [productCountsByCategory, settings.categories]);
+
+  // Displayed categories based on search & filter
+  const displayedCategories = useMemo(() => {
+    return settings.categories.filter((cat) => {
+      const matchesSearch = !catSearchTerm.trim() || cat.toLowerCase().includes(catSearchTerm.trim().toLowerCase());
+      if (!matchesSearch) return false;
+
+      const count = productCountsByCategory[cat] || 0;
+      if (catFilterMode === 'used') return count > 0;
+      if (catFilterMode === 'empty') return count === 0;
+      return true;
+    });
+  }, [settings.categories, catSearchTerm, catFilterMode, productCountsByCategory]);
+
+  // Add new category
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCat = newCategory.trim();
     if (!cleanCat) return;
 
     if (settings.categories.includes(cleanCat)) {
-      alert('هذا القسم موجود بالفعل!');
+      alert('هذا القسم موجود بالفعل في قائمة الأقسام المعتمدة!');
       return;
     }
 
-    updateSettings((prev) => ({
-      ...prev,
-      categories: [...prev.categories, cleanCat],
-    }));
+    await addCategory(cleanCat);
     setNewCategory('');
-    triggerSuccess(`تم إضافة قسم جديد: "${cleanCat}"`);
+    triggerSuccess(`تم إضافة واعتماد قسم جديد: "${cleanCat}"`);
   };
 
-  // 6. Delete category
-  const handleDeleteCategory = (cat: string) => {
-    const count = products.filter((p) => p.category === cat).length;
-    if (count > 0) {
-      alert(`لا يمكن حذف هذا القسم لأنه يحتوي على عدد (${count}) من المنتجات المضافة. قم بتغيير قسم المنتجات أولاً.`);
+  // Sync/Read categories from products
+  const handleSyncCategories = async () => {
+    setIsSyncingCats(true);
+    try {
+      const res = await syncCategoriesFromProducts();
+      if (res.addedCategories.length > 0) {
+        triggerSuccess(
+          `تم اكتشاف واعتماد (${res.addedCategories.length}) أقسام جديدة مسجلة في الأصناف: ${res.addedCategories.join('، ')}`
+        );
+      } else {
+        triggerSuccess(`تم فحص الأصناف بنجاح. جميع الأقسام الموجودة بالأصناف مسجلة ومعتمدة (${res.totalCategories} قسم).`);
+      }
+    } catch (err: any) {
+      alert(`حدث خطأ أثناء فحص أقسام الأصناف: ${err?.message || 'خطأ'}`);
+    } finally {
+      setIsSyncingCats(false);
+    }
+  };
+
+  // Start / Cancel Edit Category
+  const handleStartEditCategory = (cat: string) => {
+    setEditingCatName(cat);
+    setEditedNewName(cat);
+  };
+
+  const handleCancelEditCategory = () => {
+    setEditingCatName(null);
+    setEditedNewName('');
+  };
+
+  // Save edited category and cascade to all matching products
+  const handleSaveEditedCategory = async (oldCat: string) => {
+    const cleanNew = editedNewName.trim();
+    if (!cleanNew) {
+      alert('يرجى كتابة اسم صحيح للقسم');
+      return;
+    }
+    if (cleanNew === oldCat) {
+      setEditingCatName(null);
       return;
     }
 
-    if (confirm(`هل أنت متأكد من حذف قسم "${cat}"؟`)) {
-      updateSettings((prev) => {
-        const nextCats = prev.categories.filter((c) => c !== cat);
-        const nextMargins = { ...prev.profitMargins.categories };
-        delete nextMargins[cat];
-        return {
-          ...prev,
-          categories: nextCats,
-          profitMargins: {
-            ...prev.profitMargins,
-            categories: nextMargins,
-          },
-        };
-      });
-      triggerSuccess(`تم حذف قسم "${cat}" بنجاح`);
+    if (settings.categories.includes(cleanNew)) {
+      const proceed = window.confirm(
+        `القسم "${cleanNew}" موجود بالفعل.\n\nهل ترغب في دمج قسم "${oldCat}" مع قسم "${cleanNew}"؟\nسيتم تحديث جميع الأصناف المسجلة في "${oldCat}" لتصبح تابعة للقسم "${cleanNew}".`
+      );
+      if (!proceed) return;
+    }
+
+    setIsRenamingCat(true);
+    try {
+      const res = await renameCategory(oldCat, cleanNew);
+      if (res.success) {
+        triggerSuccess(
+          `تم تعديل اسم القسم إلى "${cleanNew}" بنجاح، وتحديث (${res.updatedProductsCount}) صنف مرتبط به تلقائياً!`
+        );
+        setEditingCatName(null);
+        setEditedNewName('');
+      }
+    } catch (err: any) {
+      alert(`فشل تعديل اسم القسم: ${err?.message || 'خطأ غير متوقع'}`);
+    } finally {
+      setIsRenamingCat(false);
+    }
+  };
+
+  // Delete category or prompt reassign
+  const handleRequestDeleteCategory = (cat: string) => {
+    const count = productCountsByCategory[cat] || 0;
+    if (count === 0) {
+      if (confirm(`هل أنت متأكد من حذف قسم "${cat}"؟`)) {
+        deleteCategory(cat).then(() => {
+          triggerSuccess(`تم حذف قسم "${cat}" بنجاح`);
+        });
+      }
+    } else {
+      const otherCats = settings.categories.filter((c) => c !== cat);
+      setReassignTargetCat(otherCats[0] || 'عام / بدون قسم');
+      setCatToDelete({ name: cat, count });
+    }
+  };
+
+  const handleConfirmDeleteWithReassign = async () => {
+    if (!catToDelete) return;
+    if (!reassignTargetCat) {
+      alert('يرجى اختيار القسم البديل لنقل الأصناف إليه');
+      return;
+    }
+
+    setIsDeletingCat(true);
+    try {
+      const res = await deleteCategory(catToDelete.name, reassignTargetCat);
+      if (res.success) {
+        triggerSuccess(
+          `تم نقل عدد (${res.reassignedProductsCount}) صنف إلى قسم "${reassignTargetCat}" وحذف قسم "${catToDelete.name}" بنجاح!`
+        );
+        setCatToDelete(null);
+      }
+    } catch (err: any) {
+      alert(`تعذر حذف القسم: ${err?.message || 'خطأ'}`);
+    } finally {
+      setIsDeletingCat(false);
     }
   };
 
@@ -1715,70 +1843,367 @@ export const SettingsView: React.FC = () => {
 
           {/* TAB 4: PRODUCT CATEGORIES */}
           {activeTab === 'categories' && (
-            <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md space-y-5">
-              <div className="pb-3 border-b border-stone-800">
-                <h2 className="text-sm font-black text-amber-500 flex items-center gap-2">
-                  <FolderPlus className="w-4 h-4" />
-                  <span>إضافة وإدارة أقسام المنتجات (Categories)</span>
-                </h2>
-                <p className="text-xs text-stone-400 mt-1">
-                  أضف أقساماً جديدة لتنظيم الأصناف، أو احذف الأقسام غير المستخدمة حالياً.
-                </p>
+            <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md space-y-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-800">
+                <div>
+                  <h2 className="text-sm font-black text-amber-500 flex items-center gap-2">
+                    <FolderPlus className="w-4 h-4" />
+                    <span>إضافة وإدارة أقسام المنتجات (Categories)</span>
+                  </h2>
+                  <p className="text-xs text-stone-400 mt-1">
+                    إضافة أقسام جديدة، قراءة وفحص الأقسام المسجلة في الأصناف، تعديل وتسمية الأقسام مع التحديث التلقائي لكافة الأصناف المرتبطة.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSyncCategories}
+                  disabled={isSyncingCats}
+                  className="px-3.5 py-2 bg-stone-950 border border-amber-500/30 hover:border-amber-500 text-amber-400 hover:text-amber-300 rounded-xl text-xs font-black transition-all flex items-center gap-2 shrink-0 shadow-sm disabled:opacity-50"
+                  title="فحص الأصناف وقراءة أي أقسام غير مسجلة واعتمادها"
+                >
+                  <ScanSearch className={`w-4 h-4 ${isSyncingCats ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingCats ? 'جارٍ الفحص...' : 'قراءة وفحص أقسام الأصناف'}</span>
+                </button>
+              </div>
+
+              {/* Smart Alert for Unmanaged Categories in Products */}
+              {unmanagedProductCategories.length > 0 && (
+                <div className="bg-gradient-to-r from-amber-950/40 to-stone-950 border border-amber-500/40 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs font-black text-amber-400">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>تم العثور على ({unmanagedProductCategories.length}) أقسام مسجلة في الأصناف غير معتمدة بالقائمة:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {unmanagedProductCategories.map((c) => (
+                        <span key={`unmanaged_${c}`} className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-lg text-[10px] font-bold">
+                          {c} ({productCountsByCategory[c]} صنف)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSyncCategories}
+                    disabled={isSyncingCats}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-black transition-colors shrink-0 shadow flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>اعتماد واستيراد الأقسام الآن</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Statistics Overview */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-stone-950 border border-stone-800/80 p-3 rounded-xl">
+                  <span className="text-[10px] text-stone-500 font-bold block">الأقسام المعتمدة</span>
+                  <span className="text-base font-black text-stone-100 font-mono mt-0.5 block">
+                    {settings.categories.length}
+                  </span>
+                </div>
+                <div className="bg-stone-950 border border-stone-800/80 p-3 rounded-xl">
+                  <span className="text-[10px] text-stone-500 font-bold block">أقسام مستخدمة فعلياً</span>
+                  <span className="text-base font-black text-emerald-400 font-mono mt-0.5 block">
+                    {Object.keys(productCountsByCategory).length}
+                  </span>
+                </div>
+                <div className="bg-stone-950 border border-stone-800/80 p-3 rounded-xl">
+                  <span className="text-[10px] text-stone-500 font-bold block">أصناف مصنفة بالمخزن</span>
+                  <span className="text-base font-black text-amber-400 font-mono mt-0.5 block">
+                    {(products || []).filter((p) => p.category?.trim()).length}
+                  </span>
+                </div>
+                <div className="bg-stone-950 border border-stone-800/80 p-3 rounded-xl">
+                  <span className="text-[10px] text-stone-500 font-bold block">أقسام خالية (0 صنف)</span>
+                  <span className="text-base font-black text-stone-400 font-mono mt-0.5 block">
+                    {settings.categories.filter((c) => !productCountsByCategory[c]).length}
+                  </span>
+                </div>
               </div>
 
               {/* Add category form */}
-              <form onSubmit={handleAddCategory} className="flex gap-2">
-                <input
-                  type="text"
-                  required
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  placeholder="مثال: أدوات المطبخ الذكية، مستلزمات الحمام..."
-                  className="flex-1 bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black transition-colors flex items-center gap-1.5 shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>إضافة قسم جديد</span>
-                </button>
-              </form>
+              <div className="bg-stone-950 border border-stone-800/80 p-3.5 rounded-xl space-y-2">
+                <label className="text-xs font-bold text-stone-300 block">إضافة قسم جديد إلى النظام:</label>
+                <form onSubmit={handleAddCategory} className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    placeholder="اكتب اسم القسم الجديد (مثال: أدوات المطبخ الذكية، مستلزمات الشاي والقهوة...)"
+                    className="flex-1 bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>إضافة القسم</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Search & Filter Controls */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2">
+                {/* Search */}
+                <div className="relative flex-1">
+                  <Search className="w-3.5 h-3.5 text-stone-500 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={catSearchTerm}
+                    onChange={(e) => setCatSearchTerm(e.target.value)}
+                    placeholder="ابحث عن قسم..."
+                    className="w-full bg-stone-950 border border-stone-800 rounded-xl pr-8 pl-3 py-1.5 text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Filter chips */}
+                <div className="flex items-center gap-1 bg-stone-950 border border-stone-800 p-1 rounded-xl shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setCatFilterMode('all')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                      catFilterMode === 'all'
+                        ? 'bg-amber-500/20 text-amber-300 font-black'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    الكل ({settings.categories.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCatFilterMode('used')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                      catFilterMode === 'used'
+                        ? 'bg-emerald-500/20 text-emerald-300 font-black'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    مستخدمة فقط ({Object.keys(productCountsByCategory).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCatFilterMode('empty')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                      catFilterMode === 'empty'
+                        ? 'bg-stone-800 text-stone-200 font-black'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    خالية ({settings.categories.filter((c) => !productCountsByCategory[c]).length})
+                  </button>
+                </div>
+              </div>
 
               {/* Categories list */}
               <div className="space-y-2">
-                <div className="text-xs font-bold text-stone-400">
-                  الأقسام الحالية المعتمدة ({settings.categories.length} قسم):
+                <div className="flex items-center justify-between text-xs font-bold text-stone-400">
+                  <span>الأقسام المعروضة ({displayedCategories.length} قسم):</span>
+                  {catSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setCatSearchTerm('')}
+                      className="text-amber-500 hover:underline text-[11px]"
+                    >
+                      مسح البحث
+                    </button>
+                  )}
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                  {settings.categories.map((cat) => {
-                    const productCount = products.filter((p) => p.category === cat).length;
-                    return (
-                      <div
-                        key={cat}
-                        className="flex items-center justify-between bg-stone-950 border border-stone-800 p-3 rounded-xl text-xs"
-                      >
-                        <div>
-                          <div className="font-bold text-stone-200">{cat}</div>
-                          <div className="text-[10px] text-stone-500 mt-0.5">
-                            {productCount} صنف مسجل
+                {displayedCategories.length === 0 ? (
+                  <div className="p-8 text-center bg-stone-950 border border-stone-800/60 rounded-xl text-stone-500 text-xs">
+                    لا توجد أقسام تطابق معايير البحث الحالية.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {displayedCategories.map((cat) => {
+                      const productCount = productCountsByCategory[cat] || 0;
+                      const hasCustomMargin = !!settings.profitMargins.categories[cat];
+                      const isEditing = editingCatName === cat;
+
+                      if (isEditing) {
+                        return (
+                          <div
+                            key={`editing_${cat}`}
+                            className="bg-stone-950 border-2 border-amber-500 p-3 rounded-xl text-xs space-y-2.5 shadow-lg animate-in fade-in"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-black text-amber-400 flex items-center gap-1">
+                                <Pencil className="w-3 h-3" />
+                                <span>تعديل اسم القسم:</span>
+                              </span>
+                              <span className="text-[10px] text-stone-400 font-bold">
+                                {productCount} صنف مرتبط
+                              </span>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={editedNewName}
+                              onChange={(e) => setEditedNewName(e.target.value)}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveEditedCategory(cat);
+                                } else if (e.key === 'Escape') {
+                                  handleCancelEditCategory();
+                                }
+                              }}
+                              className="w-full bg-stone-900 border border-stone-700 rounded-lg px-2.5 py-1.5 text-stone-100 text-xs font-black focus:outline-none focus:border-amber-400"
+                            />
+
+                            <p className="text-[10px] text-amber-300/80 leading-relaxed">
+                              💡 سيتم تلقائياً تحديث اسم القسم في جميع الأصناف المرتبطة ({productCount} صنف) في قاعدة البيانات والمزامنة.
+                            </p>
+
+                            <div className="flex items-center justify-end gap-1.5 pt-1">
+                              <button
+                                type="button"
+                                onClick={handleCancelEditCategory}
+                                disabled={isRenamingCat}
+                                className="px-2.5 py-1 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-stone-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>إلغاء</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEditedCategory(cat)}
+                                disabled={isRenamingCat}
+                                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-black transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>{isRenamingCat ? 'جارٍ الحفظ...' : 'حفظ التعديل'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={cat}
+                          className="flex items-center justify-between bg-stone-950 border border-stone-800 hover:border-stone-700 p-3 rounded-xl text-xs transition-colors group"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1 pr-1">
+                            <div className="font-black text-stone-200 truncate flex items-center gap-1.5">
+                              <span>{cat}</span>
+                              {hasCustomMargin && (
+                                <span className="px-1.5 py-0.2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold">
+                                  هامش مخصص
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  productCount > 0
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : 'bg-stone-900 text-stone-500 border border-stone-800'
+                                }`}
+                              >
+                                {productCount > 0 ? `${productCount} صنف مسجل` : 'خالي (0 صنف)'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Edit category name button */}
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditCategory(cat)}
+                              className="text-stone-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-stone-900 transition-colors"
+                              title="تعديل اسم هذا القسم وتحديث الأصناف المرتبطة"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Delete category button */}
+                            <button
+                              type="button"
+                              onClick={() => handleRequestDeleteCategory(cat)}
+                              className="text-stone-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-stone-900 transition-colors"
+                              title={productCount > 0 ? 'نقل الأصناف وحذف القسم' : 'حذف هذا القسم'}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(cat)}
-                          className="text-stone-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-stone-900 transition-colors"
-                          title="حذف هذا القسم"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
+
+              {/* Reassign & Delete Modal */}
+              {catToDelete && (
+                <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+                        <ArrowRightLeft className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-stone-100">
+                          نقل أصناف وحذف قسم: "{catToDelete.name}"
+                        </h3>
+                        <p className="text-xs text-stone-400 mt-1">
+                          هذا القسم يحتوي حالياً على <span className="text-amber-400 font-bold">({catToDelete.count})</span> صنف مسجل. لنقل هذه الأصناف إلى قسم آخر قبل حذف هذا القسم:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-300 mb-1.5">
+                        اختر القسم البديل لنقل الأصناف إليه:
+                      </label>
+                      <select
+                        value={reassignTargetCat}
+                        onChange={(e) => setReassignTargetCat(e.target.value)}
+                        className="w-full bg-stone-950 border border-stone-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-amber-400 font-bold focus:outline-none"
+                      >
+                        {settings.categories
+                          .filter((c) => c !== catToDelete.name)
+                          .map((c) => (
+                            <option key={`reassign_${c}`} value={c}>
+                              {c} ({productCountsByCategory[c] || 0} صنف حالي)
+                            </option>
+                          ))}
+                        <option value="عام / بدون قسم">عام / بدون قسم</option>
+                      </select>
+                    </div>
+
+                    <div className="p-3 bg-stone-950 border border-stone-800 rounded-xl text-[11px] text-stone-400 space-y-1">
+                      <p>• سيتم تعديل قسم جميع الـ {catToDelete.count} صنف إلى القسم المحدد أعلاه.</p>
+                      <p>• سيتم حذف قسم "{catToDelete.name}" نهائياً من إعدادات الأقسام.</p>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                      <button
+                        type="button"
+                        onClick={() => setCatToDelete(null)}
+                        disabled={isDeletingCat}
+                        className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-xl text-xs font-bold transition-colors"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmDeleteWithReassign}
+                        disabled={isDeletingCat}
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black transition-colors flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{isDeletingCat ? 'جارٍ النقل والحذف...' : 'تأكيد النقل وحذف القسم'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

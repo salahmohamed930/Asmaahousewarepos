@@ -423,16 +423,25 @@ export async function getProductById(id: string): Promise<Product | null> {
  */
 export async function getCategories(): Promise<string[]> {
   try {
-    const { data, error } = await supabase.from('products').select('category');
-    if (error || !data) return ['الكل'];
-    const cats = Array.from(
+    const localProds = await db.products.toArray().catch(() => []);
+    const localCats = (localProds || []).map((p) => p.category?.trim()).filter(Boolean);
+
+    let remoteCats: string[] = [];
+    try {
+      const { data, error } = await supabase.from('products').select('category');
+      if (!error && data) {
+        remoteCats = data.map((row: any) => row.category?.trim()).filter(Boolean);
+      }
+    } catch {
+      // offline fallback
+    }
+
+    const allCats = Array.from(
       new Set(
-        data
-          .map((row: any) => row.category?.trim())
-          .filter((cat: any): cat is string => Boolean(cat && cat !== 'الكل'))
+        [...localCats, ...remoteCats].filter((cat): cat is string => Boolean(cat && cat !== 'الكل'))
       )
     );
-    return ['الكل', ...cats];
+    return ['الكل', ...allCats];
   } catch {
     return ['الكل'];
   }

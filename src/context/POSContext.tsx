@@ -134,6 +134,10 @@ interface POSContextType {
   bulkDeleteProducts: (productIds: string[]) => Promise<void>;
   clearAllProducts: () => Promise<void>;
   bulkUpdateProducts: (productIds: string[], updates: Partial<Product>) => Promise<void>;
+  addCategory: (categoryName: string) => Promise<boolean>;
+  renameCategory: (oldName: string, newName: string) => Promise<{ success: boolean; updatedProductsCount: number }>;
+  deleteCategory: (categoryName: string, reassignToCategory?: string) => Promise<{ success: boolean; reassignedProductsCount: number }>;
+  syncCategoriesFromProducts: () => Promise<{ addedCategories: string[]; totalCategories: number; existingCategoriesCount: number }>;
   addCustomer: (cust: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>) => Promise<Customer>;
   updateCustomer: (cust: Customer) => Promise<void>;
   deleteCustomer: (customerId: string) => Promise<void>;
@@ -832,6 +836,161 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     await loadFromLocal();
     processPendingSyncQueue();
+  };
+
+  const addCategory = async (categoryName: string): Promise<boolean> => {
+    const clean = categoryName.trim();
+    if (!clean) return false;
+    if (settings.categories.includes(clean)) return true;
+
+    setSettings((prev) => ({
+      ...prev,
+      categories: [...prev.categories, clean],
+    }));
+    return true;
+  };
+
+  const renameCategory = async (
+    oldCategory: string,
+    newCategory: string
+  ): Promise<{ success: boolean; updatedProductsCount: number }> => {
+    const cleanOld = oldCategory.trim();
+    const cleanNew = newCategory.trim();
+    if (!cleanOld || !cleanNew) return { success: false, updatedProductsCount: 0 };
+    if (cleanOld === cleanNew) return { success: true, updatedProductsCount: 0 };
+
+    // 1. Update settings
+    setSettings((prev) => {
+      let nextCats = prev.categories.map((c) => (c === cleanOld ? cleanNew : c));
+      nextCats = Array.from(new Set(nextCats));
+
+      const nextMargins = { ...prev.profitMargins.categories };
+      if (nextMargins[cleanOld]) {
+        nextMargins[cleanNew] = nextMargins[cleanOld];
+        delete nextMargins[cleanOld];
+      }
+
+      return {
+        ...prev,
+        categories: nextCats,
+        profitMargins: {
+          ...prev.profitMargins,
+          categories: nextMargins,
+        },
+      };
+    });
+
+    // 2. Cascade rename to all products matching oldCategory
+    const matchingProducts = products.filter((p) => p.category === cleanOld);
+    let count = 0;
+    for (const prod of matchingProducts) {
+      const updatedProd: Product = { ...prod, category: cleanNew };
+      await db.products.put(updatedProd);
+      await addToPendingQueue('products', 'UPDATE', updatedProd);
+      count++;
+    }
+
+    if (count > 0) {
+      setProducts((prev) =>
+        prev.map((p) => (p.category === cleanOld ? { ...p, category: cleanNew } : p))
+      );
+      processPendingSyncQueue();
+    }
+
+    return { success: true, updatedProductsCount: count };
+  };
+
+  const deleteCategory = async (
+    categoryName: string,
+    reassignToCategory?: string
+  ): Promise<{ success: boolean; reassignedProductsCount: number }> => {
+    const cleanCat = categoryName.trim();
+    if (!cleanCat) return { success: false, reassignedProductsCount: 0 };
+
+    const matchingProducts = products.filter((p) => p.category === cleanCat);
+    let reassignedCount = 0;
+
+    if (matchingProducts.length > 0) {
+      if (!reassignToCategory) {
+        throw new Error(
+          `القسم يحتوي على ${matchingProducts.length} صنف مسجل. يرجى اختيار قسم بديل لنقل الأصناف إليه أو تعديلها أولاً.`
+        );
+      }
+      const cleanTarget = reassignToCategory.trim();
+      for (const prod of matchingProducts) {
+        const updatedProd: Product = { ...prod, category: cleanTarget };
+        await db.products.put(updatedProd);
+        await addToPendingQueue('products', 'UPDATE', updatedProd);
+        reassignedCount++;
+      }
+      setProducts((prev) =>
+        prev.map((p) => (p.category === cleanCat ? { ...p, category: cleanTarget } : p))
+      );
+      processPendingSyncQueue();
+    }
+
+    // Update settings
+    setSettings((prev) => {
+      const nextCats = prev.categories.filter((c) => c !== cleanCat);
+      const nextMargins = { ...prev.profitMargins.categories };
+      delete nextMargins[cleanCat];
+      return {
+        ...prev,
+        categories: nextCats,
+        profitMargins: {
+          ...prev.profitMargins,
+          categories: nextMargins,
+        },
+      };
+    });
+
+    return { success: true, reassignedProductsCount: reassignedCount };
+  };
+
+  const syncCategoriesFromProducts = async (): Promise<{
+    addedCategories: string[];
+    totalCategories: number;
+    existingCategoriesCount: number;
+  }> => {
+    const localProds = await db.products.toArray().catch(() => products);
+    const allProds = localProds.length > 0 ? localProds : products;
+
+    const distinctProductCats = Array.from(
+      new Set(
+        allProds
+          .map((p) => p.category?.trim())
+          .filter((cat): cat is string => Boolean(cat && cat !== 'الكل'))
+      )
+    );
+
+    const existingCatsSet = new Set(settings.categories);
+    const newlyDiscovered: string[] = [];
+
+    for (const cat of distinctProductCats) {
+      if (!existingCatsSet.has(cat)) {
+        newlyDiscovered.push(cat);
+        existingCatsSet.add(cat);
+      }
+    }
+
+    if (newlyDiscovered.length > 0) {
+      const updatedList = [...settings.categories, ...newlyDiscovered];
+      setSettings((prev) => ({
+        ...prev,
+        categories: updatedList,
+      }));
+      return {
+        addedCategories: newlyDiscovered,
+        totalCategories: updatedList.length,
+        existingCategoriesCount: settings.categories.length,
+      };
+    }
+
+    return {
+      addedCategories: [],
+      totalCategories: settings.categories.length,
+      existingCategoriesCount: settings.categories.length,
+    };
   };
 
   const addCustomer = async (custData: Omit<Customer, 'id' | 'totalSpent' | 'loyaltyPoints'>): Promise<Customer> => {
@@ -1832,6 +1991,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bulkDeleteProducts,
         clearAllProducts,
         bulkUpdateProducts,
+        addCategory,
+        renameCategory,
+        deleteCategory,
+        syncCategoriesFromProducts,
         addCustomer,
         updateCustomer,
         deleteCustomer,

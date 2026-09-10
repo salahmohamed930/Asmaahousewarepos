@@ -30,7 +30,9 @@ import {
 import CartSidebar from './CartSidebar';
 import PaymentModal from './PaymentModal';
 import ReceiptModal from './ReceiptModal';
+import { ReturnInvoiceModal } from './ReturnInvoiceModal';
 import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
+import { matchesArabicQuery } from '../../utils/textUtils';
 
 export const RegisterView: React.FC = () => {
   const {
@@ -100,6 +102,7 @@ export const RegisterView: React.FC = () => {
   const [confirmDeleteTxId, setConfirmDeleteTxId] = useState<string | null>(null);
   const [confirmClearAllHeld, setConfirmClearAllHeld] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'held' | 'completed' | 'voided' | 'refunded'>('all');
+  const [returningTransaction, setReturningTransaction] = useState<Transaction | null>(null);
 
   const handleLocalAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -414,7 +417,10 @@ export const RegisterView: React.FC = () => {
       const cleanReceiptNo = receiptNo.replace(/^(#|inv-|inv)/i, '').trim();
 
       const matchId = txId.includes(q) || receiptNo.includes(q) || (Boolean(cleanQ) && cleanReceiptNo.includes(cleanQ));
-      const matchCustName = Boolean(tx.customerName && String(tx.customerName).toLowerCase().includes(q));
+      const matchCustName = Boolean(
+        tx.customerName &&
+        (String(tx.customerName).toLowerCase().includes(q) || matchesArabicQuery(tx.customerName, rawQ))
+      );
 
       // Customer Phone match
       let matchCustPhone = false;
@@ -1246,6 +1252,10 @@ export const RegisterView: React.FC = () => {
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-stone-950 text-amber-400 border border-amber-500/40">
                                 مسترجعة ↩
                               </span>
+                            ) : tx.isPartiallyReturned ? (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800/80">
+                                مرتجع جزئي ↩
+                              </span>
                             ) : (
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
                                 مكتملة ✓
@@ -1316,15 +1326,11 @@ export const RegisterView: React.FC = () => {
                                     <Printer className="w-3.5 h-3.5" />
                                     <span>طباعة</span>
                                   </button>
-                                  {tx.status === 'مكتملة' && canReturn && (
+                                  {(tx.status === 'مكتملة' || tx.isPartiallyReturned) && tx.status !== 'مسترجعة' && canReturn && (
                                     <button
-                                      onClick={() => {
-                                        if (confirm(`هل أنت متأكد من رغبتك في عمل مرتجع للفاتورة رقم #${tx.receiptNumber}؟ سيتم إرجاع المنتجات للمخزن وتحديث مديونية العميل والبيع.`)) {
-                                          returnTransaction(tx.id);
-                                        }
-                                      }}
-                                      className="px-2.5 py-1 bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-800/40 font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-colors"
-                                      title="عمل مرتجع لهذه الفاتورة"
+                                      onClick={() => setReturningTransaction(tx)}
+                                      className="px-2.5 py-1 bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-800/40 font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-all shadow-sm active:scale-95"
+                                      title="عمل مرتجع لأصناف هذه الفاتورة وتحديد الكميات المسترجعة"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       <span>مرتجع</span>
@@ -1834,6 +1840,20 @@ export const RegisterView: React.FC = () => {
       <ReceiptModal
         transaction={completedTransaction}
         onClose={() => setCompletedTransaction(null)}
+      />
+
+      {/* Selective Return Invoice Modal */}
+      <ReturnInvoiceModal
+        isOpen={!!returningTransaction}
+        transaction={returningTransaction}
+        onClose={() => setReturningTransaction(null)}
+        onConfirmReturn={async (returnedItems) => {
+          if (!returningTransaction) return;
+          const returnReceipt = await returnTransaction(returningTransaction.id, returnedItems);
+          if (returnReceipt) {
+            setCompletedTransaction(returnReceipt);
+          }
+        }}
       />
 
       {/* Add Expense Modal */}

@@ -136,6 +136,13 @@ export const LoginScreen: React.FC = () => {
         return;
       }
 
+      // Check if employee has login account privileges
+      if (matched.accountType === 'seller_only' || matched.accountType === 'neither') {
+        setErrorMsg('هذا الموظف مسجل كـ (كود بائع فقط أو بدون حساب) وليس لديه صلاحية تسجيل الدخول للنظام.');
+        setLoading(false);
+        return;
+      }
+
       // Verify password (separate from PIN)
       const exactPassword = String(matched.password || '').trim();
       const fallbackPin = String(matched.pin || '').trim();

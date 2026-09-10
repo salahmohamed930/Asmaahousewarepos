@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import {
   FileText,
@@ -30,9 +30,11 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const {
     cart,
     currentAssociate,
+    activeInvoiceSeller,
+    setActiveInvoiceSeller,
+    availableSellers,
     associates,
     quickSwitchByPin,
-    setCurrentAssociate,
     customers,
     selectedCustomer,
     setSelectedCustomer,
@@ -85,11 +87,14 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const handleOpenAddCustomerForm = () => {
     const q = customerSearch.trim();
     if (q) {
-      const containsDigits = /\d/.test(q);
-      if (containsDigits || q.length >= 7) {
+      const digitsOnly = q.replace(/\D/g, '');
+      // If query consists mostly of digits or starts with phone digits, prefill phone; otherwise prefill name
+      if (digitsOnly.length >= 6 || /^[0-9+]+$/.test(q)) {
         setNewCustPhone(q);
+        setNewCustName('');
       } else {
         setNewCustName(q);
+        setNewCustPhone('');
       }
     }
     setShowAddCustomerForm(true);
@@ -173,17 +178,57 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     setShowDiscountEditor(false);
   };
 
-  // Filtered customer search (by name, phone, address)
-  const filteredCustomers = customers.filter((c) => {
-    const q = customerSearch.trim();
-    if (!q) return true;
-    return (
-      matchesArabicQuery(c.name, q) ||
-      (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
-      (c.phone || '').includes(q) ||
-      matchesArabicQuery(c.address, q)
-    );
-  });
+  // Filtered customer search (by name, phone, address, notes)
+  const filteredCustomers = useMemo(() => {
+    const rawQ = customerSearch.trim();
+    if (!rawQ) {
+      return customers.slice(0, 50);
+    }
+
+    const queryDigits = rawQ.replace(/\D/g, '');
+    const hasQueryDigits = queryDigits.length >= 2;
+
+    const matched = customers.filter((c) => {
+      // 1. Search by customer name (Arabic-aware search: handles أ/إ/آ, ة/ه, ى/ي, tashkeel, multi-word)
+      if (matchesArabicQuery(c.name, rawQ)) return true;
+
+      // 2. Search by phone (ONLY if query contains digits or matches raw phone)
+      if (hasQueryDigits) {
+        const phoneDigits = (c.phone || '').replace(/\D/g, '');
+        if (phoneDigits.includes(queryDigits)) return true;
+      }
+      if (c.phone && c.phone.includes(rawQ)) return true;
+
+      // 3. Search by address / notes / email
+      if (matchesArabicQuery(c.address, rawQ)) return true;
+      if (matchesArabicQuery(c.notes, rawQ)) return true;
+      if (c.email && c.email.toLowerCase().includes(rawQ.toLowerCase())) return true;
+
+      // 4. Search by customer ID if numeric query
+      if (queryDigits.length > 0 && String(c.id) === queryDigits) return true;
+
+      return false;
+    });
+
+    // Rank results so matching customer names appear prominently at the top
+    const normQ = rawQ.toLowerCase().replace(/[\u064B-\u065F\u0670]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+    return matched.sort((a, b) => {
+      const normA = (a.name || '').toLowerCase().replace(/[\u064B-\u065F\u0670]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+      const normB = (b.name || '').toLowerCase().replace(/[\u064B-\u065F\u0670]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+
+      const aStarts = normA.startsWith(normQ);
+      const bStarts = normB.startsWith(normQ);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+
+      const aIncludes = normA.includes(normQ);
+      const bIncludes = normB.includes(normQ);
+      if (aIncludes && !bIncludes) return -1;
+      if (!aIncludes && bIncludes) return 1;
+
+      return (a.name || '').localeCompare(b.name || '', 'ar');
+    });
+  }, [customers, customerSearch]);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -243,19 +288,19 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
           <div className="bg-stone-900 border border-stone-850 p-2 rounded-xl flex items-center justify-between gap-2">
             <div className="flex items-center space-x-1.5 space-x-reverse">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="text-[10px] font-extrabold text-stone-300">البائع النشط للمبيعات:</span>
+              <span className="text-[10px] font-extrabold text-stone-300">البائع المسؤول عن الفاتورة:</span>
             </div>
             <select
-              value={currentAssociate?.id || ''}
+              value={activeInvoiceSeller?.id || ''}
               onChange={(e) => {
-                const selected = associates.find((a) => a.id === e.target.value);
+                const selected = availableSellers.find((a) => a.id === e.target.value);
                 if (selected) {
-                  setCurrentAssociate(selected);
+                  setActiveInvoiceSeller(selected);
                 }
               }}
               className="bg-stone-950 border border-stone-800 text-[11px] font-black text-amber-300 rounded-lg px-2.5 py-1 focus:outline-none focus:border-amber-500"
             >
-              {associates.map((a) => (
+              {availableSellers.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name} (كود: {a.pin})
                 </option>
@@ -358,11 +403,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                   <form onSubmit={handleCreateCustomer} className="mt-1.5 p-2.5 bg-stone-950 border border-amber-500/30 rounded-xl space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-bold text-amber-400">إضافة عميل جديد لقاعدة البيانات:</p>
-                      {newCustPhone && (
+                      {newCustPhone ? (
                         <span className="text-[9px] bg-amber-500/10 text-amber-300 font-mono px-1.5 py-0.5 rounded border border-amber-500/20">
                           تم نقل الهاتف: {newCustPhone}
                         </span>
-                      )}
+                      ) : newCustName ? (
+                        <span className="text-[9px] bg-amber-500/10 text-amber-300 font-sans px-1.5 py-0.5 rounded border border-amber-500/20">
+                          تم نقل الاسم: {newCustName}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
                       <input
@@ -421,7 +470,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                           onClick={handleOpenAddCustomerForm}
                           className="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all block mx-auto"
                         >
-                          + إضافة عميل جديد {customerSearch ? `(برقم: ${customerSearch})` : ''}
+                          + إضافة عميل جديد {customerSearch ? (/\d/.test(customerSearch) ? `(برقم: ${customerSearch})` : `(باسم: ${customerSearch})`) : ''}
                         </button>
                       </div>
                     ) : (
@@ -584,15 +633,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                         {/* 5. البائع */}
                         <td className="py-1.5 px-1 text-center">
                           <select
-                            value={item.assignedAssociateId || currentAssociate?.id || ''}
+                            value={item.assignedAssociateId || activeInvoiceSeller?.id || currentAssociate?.id || ''}
                             onChange={(e) =>
                               updateCartItemAssociate(item.product.id, e.target.value)
                             }
                             className="bg-stone-950 border border-stone-800 text-[9px] font-bold text-amber-300 rounded-md px-1.5 py-0.5 focus:outline-none focus:border-amber-500"
                           >
-                            {associates.map((a) => (
+                            {availableSellers.map((a) => (
                               <option key={a.id} value={a.id}>
-                                كود: {a.pin}
+                                {a.name} (كود: {a.pin})
                               </option>
                             ))}
                           </select>

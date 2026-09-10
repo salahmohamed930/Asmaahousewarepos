@@ -193,7 +193,7 @@ export const TABLE_SCHEMAS: Record<string, TableSchemaConfig> = {
 };
 
 export const TABLE_SELECT_COLUMNS: Record<string, string> = {
-  products: 'id, name, p_k, barcodes, alternative_barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, created_at, is_deleted',
+  products: 'id, name, p_k, barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, created_at, is_deleted',
   customers: 'id, name, phone, email, address, notes, current_debt, total_spent, loyalty_points, tier, is_credit_eligible, credit_limit, monthly_installment_amount, updated_at, is_deleted',
   suppliers: 'id, name, company_name, phone, email, address, notes, category, tax_number, current_balance, updated_at, is_deleted',
   supplier_transactions: 'id, supplier_id, type, amount, date, notes, invoice_number, payment_method, updated_at, is_deleted',
@@ -369,26 +369,19 @@ export function mapDbProductToProduct(p: any): Product {
       ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
 
-  if (Array.isArray(p.alternative_barcodes)) {
-    for (const b of p.alternative_barcodes) {
-      const s = String(b).trim();
-      if (s && !allBarcodes.includes(s)) {
-        allBarcodes.push(s);
-      }
-    }
-  }
-
-  // Primary barcode: direct barcode column -> first item in barcodes array -> p.sku -> p.p_k -> safeId
+  // Primary barcode: direct barcode column -> first item in barcodes array -> p.sku -> safeId
+  // (NOTE: p_k is strictly a serial number, never used as a barcode or queried/modified)
   const primaryBarcode = (p.barcode ? String(p.barcode) : null)
     || (allBarcodes.length > 0 ? allBarcodes[0] : null)
     || (p.sku ? String(p.sku) : null)
-    || (p.p_k ? String(p.p_k) : null)
     || safeId
     || '000000';
 
   // SKU / Item Code ("كود الصنف"):
-  // Check p.sku -> p.p_k (the standard item code in database) -> safeId
-  const resolvedSku = String(p.sku ?? p.p_k ?? safeId ?? 'SKU-000');
+  const resolvedSku = String(p.sku ?? safeId ?? 'SKU-000');
+
+  // p_k is strictly the product serial sequence number (read-only)
+  const parsedPk = (p.p_k !== null && p.p_k !== undefined && !isNaN(Number(p.p_k))) ? Number(p.p_k) : undefined;
 
   return {
     id: safeId,
@@ -404,6 +397,7 @@ export function mapDbProductToProduct(p: any): Product {
     image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
     description: p.description || '',
     barcodes: allBarcodes.length > 0 ? allBarcodes : (primaryBarcode ? [primaryBarcode] : []),
+    p_k: parsedPk,
   };
 }
 
@@ -429,13 +423,13 @@ export function mapProductToDbPayload(product: Product): any {
     stock_quantity: Number(product.stock || 0),
     description: product.description || '',
     barcodes: allBarcodes,
-    alternative_barcodes: allBarcodes.slice(1),
     updated_at: new Date().toISOString(),
   };
 
-  if (product.sku && !isNaN(Number(product.sku))) {
-    payload.p_k = Number(product.sku);
-  }
+  // DO NOT write or modify p_k or alternative_barcodes!
+  // p_k is an auto-generated serial sequence number in the database
+  delete payload.p_k;
+  delete payload.alternative_barcodes;
 
   if (product.id && !isNaN(Number(product.id))) {
     payload.id = Number(product.id);
@@ -777,13 +771,23 @@ export function mapDbAssociateToAssociate(a: any): Associate {
 
   let invoiceDaysAccess: any = a.invoice_days_access || a.invoiceDaysAccess;
   let invoiceCustomDaysLimit = Number(a.invoice_custom_days_limit ?? a.invoiceCustomDaysLimit ?? 0) || undefined;
+  let accountType: any = a.account_type || a.accountType;
 
-  if (!invoiceDaysAccess && Array.isArray(a.permissions)) {
-    const permDays = a.permissions.find((p: string) => typeof p === 'string' && p.startsWith('invoice_days:'));
-    if (permDays) {
-      const parts = permDays.replace('invoice_days:', '').split(':');
-      invoiceDaysAccess = parts[0];
-      if (parts[1]) invoiceCustomDaysLimit = parseInt(parts[1], 10) || undefined;
+  if (Array.isArray(a.permissions)) {
+    if (!invoiceDaysAccess) {
+      const permDays = a.permissions.find((p: string) => typeof p === 'string' && p.startsWith('invoice_days:'));
+      if (permDays) {
+        const parts = permDays.replace('invoice_days:', '').split(':');
+        invoiceDaysAccess = parts[0];
+        if (parts[1]) invoiceCustomDaysLimit = parseInt(parts[1], 10) || undefined;
+      }
+    }
+
+    if (!accountType) {
+      const permType = a.permissions.find((p: string) => typeof p === 'string' && p.startsWith('account_type:'));
+      if (permType) {
+        accountType = permType.replace('account_type:', '');
+      }
     }
   }
 
@@ -791,9 +795,13 @@ export function mapDbAssociateToAssociate(a: any): Associate {
     invoiceDaysAccess = (a.role === 'مدير الفرع') ? 'all' : 'today';
   }
 
-  // Filter out system tags like invoice_days:* from user-facing permissions array
+  if (!accountType) {
+    accountType = 'both';
+  }
+
+  // Filter out system tags like invoice_days:* and account_type:* from user-facing permissions array
   const cleanPermissions = Array.isArray(a.permissions)
-    ? a.permissions.filter((p: string) => typeof p === 'string' && !p.startsWith('invoice_days:'))
+    ? a.permissions.filter((p: string) => typeof p === 'string' && !p.startsWith('invoice_days:') && !p.startsWith('account_type:'))
     : undefined;
 
   return {
@@ -803,6 +811,7 @@ export function mapDbAssociateToAssociate(a: any): Associate {
     password: String(a.password || a.pin || '1001'),
     pin: String(a.pin || a.password || '1001'),
     role: (a.role as any) || 'مسؤول مبيعات',
+    accountType: accountType as any,
     avatar: String(a.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'),
     email: String(a.email ?? ''),
     phone: String(a.phone ?? ''),
@@ -819,11 +828,14 @@ export function mapDbAssociateToAssociate(a: any): Associate {
 
 export function mapAssociateToDbPayload(associate: Associate): any {
   const perms = Array.isArray(associate.permissions) ? [...associate.permissions] : [];
-  const filteredPerms = perms.filter((p: any) => typeof p !== 'string' || !p.startsWith('invoice_days:'));
+  const filteredPerms = perms.filter((p: any) => typeof p !== 'string' || (!p.startsWith('invoice_days:') && !p.startsWith('account_type:')));
   const daysTag = `invoice_days:${associate.invoiceDaysAccess || (associate.role === 'مدير الفرع' ? 'all' : 'today')}${
     associate.invoiceDaysAccess === 'custom' && associate.invoiceCustomDaysLimit ? `:${associate.invoiceCustomDaysLimit}` : ''
   }`;
   filteredPerms.push(daysTag as any);
+
+  const typeTag = `account_type:${associate.accountType || 'both'}`;
+  filteredPerms.push(typeTag as any);
 
   return {
     id: associate.id,
@@ -832,6 +844,7 @@ export function mapAssociateToDbPayload(associate: Associate): any {
     password: associate.password || associate.pin || '1001',
     pin: associate.pin || associate.password || '1001',
     role: associate.role,
+    account_type: associate.accountType || 'both',
     email: associate.email || '',
     phone: associate.phone || '',
     commission_rate: associate.commissionRate || 0.05,
@@ -1548,7 +1561,7 @@ async function processPendingSyncQueueInternal(): Promise<{
 
 export async function fetchProductsFromSupabase(): Promise<{ data: Product[]; error?: any }> {
   try {
-    const res = await fetchSelectiveFromSupabase('products', 'id, name, category, price, wholesale_price, price_installment, cost, stock_quantity, description, barcodes, alternative_barcodes, p_k, created_at');
+    const res = await fetchSelectiveFromSupabase('products', 'id, name, category, price, wholesale_price, price_installment, cost, stock_quantity, description, barcodes, p_k, created_at');
     if (res.error) return { data: [], error: res.error };
     return { data: (res.data || []).map(mapDbProductToProduct) };
   } catch (err: any) {
@@ -1560,6 +1573,7 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
   try {
     const payload = mapProductToDbPayload(product);
     delete payload.updated_at;
+    delete payload.p_k;
     if (payload.id && (isNaN(Number(payload.id)) || Number(payload.id) > 2147483647)) {
       delete payload.id;
     }
@@ -1591,17 +1605,17 @@ export async function insertProductToSupabase(product: Product): Promise<{ succe
 export async function updateProductInSupabase(product: Product): Promise<{ success: boolean; data?: Product; error?: any }> {
   try {
     const payload = mapProductToDbPayload(product);
-    // Never update primary/immutable keys on update payload
+    // Never update primary/immutable keys or serial p_k on update payload
     delete payload.id;
     delete payload.created_at;
+    delete payload.p_k;
 
     const idNum = (product.id && !isNaN(Number(product.id))) ? Number(product.id) : null;
-    const skuNum = (product.sku && !isNaN(Number(product.sku))) ? Number(product.sku) : null;
 
     const { data, error } = await safeSupabaseMutation(
       'products',
       async (p) => {
-        // 1. Try matching by numeric ID if available
+        // 1. Match strictly by numeric or string ID
         if (idNum !== null) {
           const { data: updateData, error: updateErr } = await supabase
             .from('products')
@@ -1624,12 +1638,12 @@ export async function updateProductInSupabase(product: Product): Promise<{ succe
           }
         }
 
-        // 2. Try matching by p_k if numeric SKU is available
-        if (skuNum !== null) {
+        // 2. Fallback: match by barcode if ID was not matched
+        if (product.barcode) {
           const { data: updateData, error: updateErr } = await supabase
             .from('products')
             .update(p)
-            .eq('p_k', skuNum)
+            .contains('barcodes', [product.barcode])
             .select('id, name');
 
           if (!updateErr && Array.isArray(updateData) && updateData.length > 0) {

@@ -9,15 +9,17 @@ interface SplitAssociateModalProps {
 }
 
 export const SplitAssociateModal: React.FC<SplitAssociateModalProps> = ({ isOpen, onClose }) => {
-  const { currentAssociate, associates, splitAssociates, setSplitAssociates } = usePOS();
+  const { currentAssociate, activeInvoiceSeller, availableSellers, associates, splitAssociates, setSplitAssociates } = usePOS();
 
+  const primaryAssociate = activeInvoiceSeller || currentAssociate;
   const [splits, setSplits] = useState<SplitAssociate[]>(splitAssociates);
 
-  if (!isOpen || !currentAssociate) return null;
+  if (!isOpen || !primaryAssociate) return null;
 
-  // Filter out current associate from secondary choices
-  const availableAssociates = associates.filter(
-    (a) => a.id !== currentAssociate.id && !splits.some((s) => s.associateId === a.id)
+  // Filter out primary associate from secondary choices
+  const candidatePool = availableSellers.length > 0 ? availableSellers : associates;
+  const availableAssociates = candidatePool.filter(
+    (a) => a.id !== primaryAssociate.id && !splits.some((s) => s.associateId === a.id)
   );
 
   const handleAddSplit = (associateId: string) => {
@@ -90,19 +92,19 @@ export const SplitAssociateModal: React.FC<SplitAssociateModalProps> = ({ isOpen
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <img
-                src={currentAssociate.avatar}
-                alt={currentAssociate.name}
+                src={primaryAssociate.avatar}
+                alt={primaryAssociate.name}
                 className="w-10 h-10 rounded-xl object-cover ring-2 ring-emerald-500/50"
               />
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-bold text-stone-100">{currentAssociate.name}</span>
+                  <span className="text-sm font-bold text-stone-100">{primaryAssociate.name}</span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-medium">
-                    Primary Register
+                    البائع الأساسي
                   </span>
                 </div>
                 <p className="text-xs text-stone-400">
-                  Base Rate: {(currentAssociate.commissionRate * 100).toFixed(0)}%
+                  نسبة العمولة: {((primaryAssociate.commissionRate || 0.05) * 100).toFixed(0)}%
                 </p>
               </div>
             </div>

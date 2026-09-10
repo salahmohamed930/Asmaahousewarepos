@@ -12,6 +12,7 @@ import {
   clearAllProducts as clearAllProductsService,
   getNextUniqueProductCode,
   checkProductCodeConflict,
+  checkProductIdConflict,
   identifyDuplicateProductCodes,
   fetchDuplicateProductsAcrossCatalog,
   DuplicateCodeGroup,
@@ -87,11 +88,24 @@ export const CatalogView: React.FC = () => {
   const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
   const [extraBarcodeEntry, setExtraBarcodeEntry] = useState('');
 
-  const handleAddExtraBarcode = () => {
+  const handleAddExtraBarcode = async () => {
     const trimmed = extraBarcodeEntry.trim();
     if (!trimmed) return;
     const newCodes = trimmed.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
     const existing = formData.barcodes || [];
+
+    for (const code of newCodes) {
+      if (existing.includes(code) || formData.barcode === code) {
+        alert(`الباركود "${code}" موجود بالفعل في بيانات هذا الصنف.`);
+        return;
+      }
+      const conflict = await checkProductCodeConflict(code, editingProduct?.id);
+      if (conflict.exists && conflict.conflictingProduct) {
+        alert(`⚠️ لا يمكن إضافة هذا الباركود: الكود "${code}" مستخدم بالفعل للصنف "${conflict.conflictingProduct.name}". التشابه في الباركود ممنوع!`);
+        return;
+      }
+    }
+
     const updated = Array.from(new Set([...existing, ...newCodes]));
     setFormData((prev) => ({ ...prev, barcodes: updated }));
     setExtraBarcodeEntry('');
@@ -118,7 +132,7 @@ export const CatalogView: React.FC = () => {
   const [filterDuplicatesOnly, setFilterDuplicatesOnly] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateCodeGroup[]>([]);
   const [duplicateProductsList, setDuplicateProductsList] = useState<Product[]>([]);
-  const [duplicateMap, setDuplicateMap] = useState<Map<string, { code: string; type: 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>>(new Map());
+  const [duplicateMap, setDuplicateMap] = useState<Map<string, { code: string; type: 'id' | 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>>(new Map());
   const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
   const [duplicatesLoaded, setDuplicatesLoaded] = useState(false);
   const [isGeneratingCode, setIsGeneratingCode] = useState(false);
@@ -508,7 +522,7 @@ export const CatalogView: React.FC = () => {
     }
 
     for (const row of bulkAddRows) {
-      await createProduct({
+      const res = await createProduct({
         name: row.name,
         sku: row.sku || '',
         barcode: row.barcode || '',
@@ -522,6 +536,10 @@ export const CatalogView: React.FC = () => {
         description: 'صنف مضاف من خلال الإضافة المتعددة',
         barcodes: row.barcode ? [row.barcode] : [],
       });
+      if (!res.success) {
+        alert(`خطأ عند إضافة الصنف "${row.name}": ${res.error?.message || 'التشابه في الباركود أو المعرف ممنوع'}`);
+        return;
+      }
     }
 
     setIsBulkAddModalOpen(false);
@@ -596,9 +614,30 @@ export const CatalogView: React.FC = () => {
     if (formData.barcode?.trim()) {
       const barcodeCheck = await checkProductCodeConflict(formData.barcode.trim(), editingProduct?.id);
       if (barcodeCheck.exists && barcodeCheck.conflictingProduct) {
-        alert(`لا يمكن حفظ الصنف: الباركود "${formData.barcode}" مستخدم بالفعل للصنف "${barcodeCheck.conflictingProduct.name}". يرجى اختيار باركود فريد.`);
+        alert(`لا يمكن حفظ الصنف: الباركود الرئيسي "${formData.barcode}" مستخدم بالفعل للصنف "${barcodeCheck.conflictingProduct.name}". التشابه في الباركود ممنوع!`);
         return;
       }
+    }
+
+    // Check all extra barcodes for conflict
+    if (Array.isArray(formData.barcodes)) {
+      for (const extraCode of formData.barcodes) {
+        if (!extraCode || !extraCode.trim()) continue;
+        const codeTrimmed = extraCode.trim();
+        const conflict = await checkProductCodeConflict(codeTrimmed, editingProduct?.id);
+        if (conflict.exists && conflict.conflictingProduct) {
+          alert(`لا يمكن حفظ الصنف: الباركود الإضافي "${codeTrimmed}" مستخدم بالفعل للصنف "${conflict.conflictingProduct.name}". التشابه في الباركود ممنوع!`);
+          return;
+        }
+      }
+    }
+
+    // Ensure no duplicate barcodes within the product itself
+    const allFormBarcodes = [formData.barcode, ...(formData.barcodes || [])].map((b) => b?.trim()).filter(Boolean);
+    const uniqueFormBarcodes = new Set(allFormBarcodes);
+    if (uniqueFormBarcodes.size < allFormBarcodes.length) {
+      alert('لا يمكن تكرار نفس الباركود أكثر من مرة داخل نفس الصنف.');
+      return;
     }
 
     localStorage.setItem('last_chosen_category', formData.category);
@@ -624,13 +663,20 @@ export const CatalogView: React.FC = () => {
     };
 
     if (editingProduct) {
+      const res = await updateProductService(editingProduct.id, productPayload);
+      if (!res.success) {
+        alert(res.error?.message || 'حدث خطأ أثناء تعديل الصنف: قد يكون هناك تشابه في الباركود مع صنف آخر.');
+        return;
+      }
       const updatedProduct = { ...editingProduct, ...productPayload } as Product;
       setCatalogProducts((prev) => prev.map((p) => (String(p.id) === String(editingProduct.id) ? updatedProduct : p)));
       setDuplicateProductsList((prev) => prev.map((p) => (String(p.id) === String(editingProduct.id) ? updatedProduct : p)));
-
-      await updateProductService(editingProduct.id, productPayload);
     } else {
-      await createProduct(productPayload);
+      const res = await createProduct(productPayload);
+      if (!res.success) {
+        alert(res.error?.message || 'حدث خطأ أثناء إضافة الصنف: قد يكون هناك تشابه في ID أو الباركود مع صنف آخر.');
+        return;
+      }
     }
 
     setIsModalOpen(false);
@@ -1090,6 +1136,19 @@ export const CatalogView: React.FC = () => {
                             <div className="min-w-0">
                               <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
                               <p className="text-[9px] text-stone-500 font-mono mt-0.5 flex flex-wrap items-center gap-1.5">
+                                {p.p_k !== undefined && p.p_k !== null && (
+                                  <span className="bg-stone-850 text-stone-400 border border-stone-700/60 px-1 py-0.2 rounded text-[8px] font-sans font-semibold">
+                                    مسلسل: #{p.p_k}
+                                  </span>
+                                )}
+                                {dupInfo && dupInfo.type === 'id' ? (
+                                  <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
+                                    ID: {p.id} (مكرر)
+                                  </span>
+                                ) : (
+                                  <span>ID: {p.id}</span>
+                                )}
+                                <span className="text-stone-700">|</span>
                                 {dupInfo && dupInfo.type === 'sku' ? (
                                   <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
                                     كود: {p.sku} (مكرر)
@@ -1116,13 +1175,13 @@ export const CatalogView: React.FC = () => {
                                   className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-sans font-bold px-2 py-0.5 rounded flex flex-wrap items-center gap-1 mt-1"
                                   title={
                                     dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0
-                                      ? `مشترك في ${dupInfo.type === 'sku' ? 'كود الصنف' : 'الباركود'} (${dupInfo.code}) مع:\n${dupInfo.conflictingProducts.join('\n')}`
+                                      ? `مشترك في ${dupInfo.type === 'id' ? 'ID' : dupInfo.type === 'sku' ? 'كود الصنف' : 'الباركود'} (${dupInfo.code}) مع:\n${dupInfo.conflictingProducts.join('\n')}`
                                       : `كود مكرر (${dupInfo.code})`
                                   }
                                 >
                                   <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-400" />
                                   <span>
-                                    {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-stone-100 underline">{dupInfo.code}</strong>
+                                    {dupInfo.type === 'id' ? 'ID مشترك' : dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-stone-100 underline">{dupInfo.code}</strong>
                                   </span>
                                   {dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0 && (
                                     <span className="text-rose-300/80 mr-1 truncate max-w-[280px]">
@@ -1271,6 +1330,19 @@ export const CatalogView: React.FC = () => {
                         </span>
                         <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
                         <p className="text-[8px] text-stone-500 font-mono flex flex-wrap items-center gap-1">
+                          {p.p_k !== undefined && p.p_k !== null && (
+                            <span className="bg-stone-850 text-stone-400 border border-stone-700/60 px-1 py-0.2 rounded text-[7px] font-sans font-semibold">
+                              #{p.p_k}
+                            </span>
+                          )}
+                          {dupInfo && dupInfo.type === 'id' ? (
+                            <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
+                              ID: {p.id} (مكرر)
+                            </span>
+                          ) : (
+                            <span>ID: {p.id}</span>
+                          )}
+                          <span className="text-stone-700">|</span>
                           {dupInfo && dupInfo.type === 'sku' ? (
                             <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
                               كود: {p.sku} (مكرر)
@@ -1292,13 +1364,13 @@ export const CatalogView: React.FC = () => {
                             className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[8px] font-sans font-bold px-1.5 py-0.5 rounded flex flex-wrap items-center gap-1 mt-1"
                             title={
                               dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0
-                                ? `مشترك في ${dupInfo.type === 'sku' ? 'كود الصنف' : 'الباركود'} (${dupInfo.code}) مع:\n${dupInfo.conflictingProducts.join('\n')}`
+                                ? `مشترك في ${dupInfo.type === 'id' ? 'ID' : dupInfo.type === 'sku' ? 'كود الصنف' : 'الباركود'} (${dupInfo.code}) مع:\n${dupInfo.conflictingProducts.join('\n')}`
                                 : `كود مكرر (${dupInfo.code})`
                             }
                           >
                             <AlertTriangle className="w-2.5 h-2.5 shrink-0 text-rose-400" />
                             <span>
-                              {dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-stone-100 underline">{dupInfo.code}</strong>
+                              {dupInfo.type === 'id' ? 'ID مشترك' : dupInfo.type === 'sku' ? 'كود صنف مشترك' : 'باركود مشترك'}: <strong className="font-mono text-stone-100 underline">{dupInfo.code}</strong>
                             </span>
                             {dupInfo.conflictingProducts && dupInfo.conflictingProducts.length > 0 && (
                               <span className="text-rose-300/80 truncate max-w-full">

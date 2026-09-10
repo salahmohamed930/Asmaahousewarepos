@@ -11,7 +11,7 @@ import {
 } from '../lib/supabaseSync';
 
 export const PRODUCT_SELECT_COLUMNS =
-  'id, name, p_k, barcodes, alternative_barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, description, created_at';
+  'id, name, p_k, barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, description, created_at';
 
 export interface GetProductsOptions {
   page?: number;
@@ -118,13 +118,11 @@ export async function getProducts(options: GetProductsOptions = {}): Promise<Get
         `name.ilike."%${cleanSearch}%"`,
         `description.ilike."%${cleanSearch}%"`,
         `barcodes.cs.{"${cleanSearch}"}`,
-        `alternative_barcodes.cs.{"${cleanSearch}"}`,
       ];
       if (/^\d+$/.test(cleanSearch)) {
         const num = Number(cleanSearch);
         if (!isNaN(num) && num <= 2147483647) {
           terms.push(`id.eq.${num}`);
-          terms.push(`p_k.eq.${num}`);
         }
       }
       searchFilterString = terms.join(',');
@@ -240,13 +238,11 @@ export async function searchProductsForPOS(options: POSSearchOptions = {}): Prom
         `name.ilike."%${cleanSearch}%"`,
         `description.ilike."%${cleanSearch}%"`,
         `barcodes.cs.{"${cleanSearch}"}`,
-        `alternative_barcodes.cs.{"${cleanSearch}"}`,
       ];
       if (/^\d+$/.test(cleanSearch)) {
         const num = Number(cleanSearch);
         if (!isNaN(num) && num <= 2147483647) {
           terms.push(`id.eq.${num}`);
-          terms.push(`p_k.eq.${num}`);
         }
       }
       searchFilterString = terms.join(',');
@@ -316,16 +312,14 @@ export async function getProductByBarcode(barcode: string): Promise<Product | nu
   try {
     const cleanSearch = cleanBarcode.replace(/[,(){}%\\"[\]]/g, '').trim();
 
-    // 1. Direct query on barcodes arrays and p_k / id
+    // 1. Direct query on barcodes arrays and id
     const terms: string[] = [
       `barcodes.cs.{"${cleanSearch}"}`,
-      `alternative_barcodes.cs.{"${cleanSearch}"}`,
     ];
     if (/^\d+$/.test(cleanSearch)) {
       const num = Number(cleanSearch);
       if (!isNaN(num) && num <= 2147483647) {
         terms.push(`id.eq.${num}`);
-        terms.push(`p_k.eq.${num}`);
       }
     }
 
@@ -451,6 +445,36 @@ export async function getCategories(): Promise<string[]> {
  * 6. CRUD Operations Wrappers
  */
 export async function createProduct(product: Partial<Product>): Promise<{ success: boolean; data?: Product; error?: any }> {
+  // Enforce uniqueness on ID if specified
+  if (product.id) {
+    const idConflict = await checkProductIdConflict(String(product.id));
+    if (idConflict.exists && idConflict.conflictingProduct) {
+      return {
+        success: false,
+        error: new Error(`لا يمكن إضافة الصنف: المعرف (ID) "${product.id}" مستخدم بالفعل للصنف "${idConflict.conflictingProduct.name}". التشابه في ID ممنوع.`),
+      };
+    }
+  }
+
+  // Enforce uniqueness on Barcodes (primary + barcodes array)
+  const allBarcodes = Array.from(
+    new Set(
+      [product.barcode, ...(Array.isArray(product.barcodes) ? product.barcodes : [])]
+        .map((b) => (b ? String(b).trim() : ''))
+        .filter(Boolean)
+    )
+  );
+
+  for (const b of allBarcodes) {
+    const bConflict = await checkProductCodeConflict(b);
+    if (bConflict.exists && bConflict.conflictingProduct) {
+      return {
+        success: false,
+        error: new Error(`لا يمكن إضافة الصنف: الباركود "${b}" مستخدم بالفعل للصنف "${bConflict.conflictingProduct.name}". التشابه في الباركود ممنوع!`),
+      };
+    }
+  }
+
   const res = await insertProductToSupabase(product as Product);
   if (res.data) {
     try {
@@ -463,6 +487,25 @@ export async function createProduct(product: Partial<Product>): Promise<{ succes
 }
 
 export async function updateProduct(id: string, product: Partial<Product>): Promise<{ success: boolean; data?: Product; error?: any }> {
+  // Enforce uniqueness on Barcodes (primary + barcodes array) against other products
+  const allBarcodes = Array.from(
+    new Set(
+      [product.barcode, ...(Array.isArray(product.barcodes) ? product.barcodes : [])]
+        .map((b) => (b ? String(b).trim() : ''))
+        .filter(Boolean)
+    )
+  );
+
+  for (const b of allBarcodes) {
+    const bConflict = await checkProductCodeConflict(b, id);
+    if (bConflict.exists && bConflict.conflictingProduct) {
+      return {
+        success: false,
+        error: new Error(`لا يمكن تعديل الصنف: الباركود "${b}" مستخدم بالفعل للصنف "${bConflict.conflictingProduct.name}". التشابه في الباركود ممنوع!`),
+      };
+    }
+  }
+
   const fullProd = { ...product, id } as Product;
   try {
     await db.products.put(fullProd);
@@ -526,6 +569,74 @@ export function buildEan13Barcode(num: number): string {
 }
 
 /**
+ * 8.5. Check if a product ID conflicts with any existing product
+ * (checks both Dexie local cache and Supabase)
+ */
+export async function checkProductIdConflict(
+  id: string,
+  excludeProductId?: string
+): Promise<{ exists: boolean; conflictingProduct?: { id: string; name: string } | null }> {
+  const clean = id?.trim();
+  if (!clean) return { exists: false, conflictingProduct: null };
+
+  const cleanLower = clean.toLowerCase();
+
+  // 1. Check local Dexie first
+  try {
+    const localMatch = await db.products
+      .filter((p) => {
+        if (excludeProductId && String(p.id) === String(excludeProductId)) return false;
+        return String(p.id).toLowerCase() === cleanLower;
+      })
+      .first();
+
+    if (localMatch) {
+      return {
+        exists: true,
+        conflictingProduct: {
+          id: String(localMatch.id),
+          name: localMatch.name,
+        },
+      };
+    }
+  } catch (e) {
+    console.warn('[checkProductIdConflict] Dexie check error:', e);
+  }
+
+  // 2. Check Supabase
+  try {
+    const idNum = !isNaN(Number(clean)) ? Number(clean) : null;
+    let query = supabase.from('products').select('id, name');
+    if (idNum !== null && idNum <= 2147483647) {
+      query = query.eq('id', idNum);
+    } else {
+      query = query.eq('id', clean);
+    }
+
+    if (excludeProductId && !isNaN(Number(excludeProductId))) {
+      query = query.neq('id', Number(excludeProductId));
+    } else if (excludeProductId) {
+      query = query.neq('id', excludeProductId);
+    }
+
+    const { data, error } = await query.limit(1);
+    if (!error && data && data.length > 0) {
+      return {
+        exists: true,
+        conflictingProduct: {
+          id: String(data[0].id),
+          name: data[0].name,
+        },
+      };
+    }
+  } catch (e) {
+    console.warn('[checkProductIdConflict] Supabase check error:', e);
+  }
+
+  return { exists: false, conflictingProduct: null };
+}
+
+/**
  * 9. Check if a SKU or Barcode conflicts with any existing product
  * (checks both Dexie local cache and Supabase)
  */
@@ -544,6 +655,7 @@ export async function checkProductCodeConflict(
       .filter((p) => {
         if (excludeProductId && String(p.id) === String(excludeProductId)) return false;
         return Boolean(
+          String(p.id).toLowerCase() === cleanLower ||
           p.sku?.toLowerCase() === cleanLower ||
           p.barcode?.toLowerCase() === cleanLower ||
           (Array.isArray(p.barcodes) && p.barcodes.some((b) => b?.toLowerCase() === cleanLower))
@@ -566,21 +678,20 @@ export async function checkProductCodeConflict(
     console.warn('[checkProductCodeConflict] Dexie check error:', e);
   }
 
-  // 2. Check Supabase
+  // 2. Check Supabase (strictly on barcodes and id)
   try {
     const cleanSearch = clean.replace(/[,(){}%\\"[\]]/g, '').trim();
     const terms: string[] = [
       `barcodes.cs.{"${cleanSearch}"}`,
-      `alternative_barcodes.cs.{"${cleanSearch}"}`,
     ];
     if (/^\d+$/.test(cleanSearch)) {
       const num = Number(cleanSearch);
       if (num <= 2147483647) {
-        terms.push(`p_k.eq.${num}`);
+        terms.push(`id.eq.${num}`);
       }
     }
 
-    let query = supabase.from('products').select('id, name, p_k, barcodes').or(terms.join(','));
+    let query = supabase.from('products').select('id, name, barcodes').or(terms.join(','));
     if (excludeProductId && !isNaN(Number(excludeProductId))) {
       query = query.neq('id', Number(excludeProductId));
     }
@@ -593,8 +704,8 @@ export async function checkProductCodeConflict(
         conflictingProduct: {
           id: String(p.id),
           name: p.name,
-          sku: String(p.p_k || p.id),
-          barcode: Array.isArray(p.barcodes) && p.barcodes.length > 0 ? p.barcodes[0] : String(p.p_k || p.id),
+          sku: String(p.id),
+          barcode: Array.isArray(p.barcodes) && p.barcodes.length > 0 ? p.barcodes[0] : String(p.id),
         },
       };
     }
@@ -616,21 +727,21 @@ export async function getNextUniqueProductCode(
 ): Promise<{ sku: string; barcode: string }> {
   let maxCode = 24630;
 
-  // 1. Fetch max p_k from Supabase
+  // 1. Fetch max numeric id from Supabase
   try {
     const { data } = await supabase
       .from('products')
-      .select('p_k')
-      .order('p_k', { ascending: false })
+      .select('id')
+      .order('id', { ascending: false })
       .limit(1);
-    if (data && data.length > 0 && data[0]?.p_k) {
-      const pNum = Number(data[0].p_k);
-      if (!isNaN(pNum)) {
-        maxCode = Math.max(maxCode, pNum);
+    if (data && data.length > 0 && data[0]?.id) {
+      const idNum = Number(data[0].id);
+      if (!isNaN(idNum) && idNum < 10000000) {
+        maxCode = Math.max(maxCode, idNum);
       }
     }
   } catch (e) {
-    console.warn('[products.service] error querying max p_k:', e);
+    console.warn('[products.service] error querying max id:', e);
   }
 
   // 2. Also check Dexie for any local items with higher codes
@@ -675,7 +786,7 @@ export async function getNextUniqueProductCode(
 
 export interface DuplicateCodeGroup {
   code: string;
-  type: 'sku' | 'barcode';
+  type: 'id' | 'sku' | 'barcode';
   products: Product[];
 }
 
@@ -692,18 +803,26 @@ export function isPlaceholderProductCode(code?: string | null): boolean {
 }
 
 /**
- * 11. Scan a list of products to identify duplicate SKUs or Barcodes.
+ * 11. Scan a list of products to identify duplicate IDs, SKUs or Barcodes.
  * Returns a map of productId -> duplicate info.
  * Compares ONLY between DIFFERENT products and ignores placeholders and self-references.
  */
-export function identifyDuplicateProductCodes(products: Product[]): Map<string, { code: string; type: 'sku' | 'barcode'; duplicateName: string }> {
-  const duplicateMap = new Map<string, { code: string; type: 'sku' | 'barcode'; duplicateName: string }>();
+export function identifyDuplicateProductCodes(products: Product[]): Map<string, { code: string; type: 'id' | 'sku' | 'barcode'; duplicateName: string }> {
+  const duplicateMap = new Map<string, { code: string; type: 'id' | 'sku' | 'barcode'; duplicateName: string }>();
 
+  const idTracker = new Map<string, Product[]>();
   const skuTracker = new Map<string, Product[]>();
   const barcodeTracker = new Map<string, Product[]>();
 
   for (const p of products) {
     if (!p || !p.id) continue;
+
+    // Check ID
+    if (!isPlaceholderProductCode(p.id)) {
+      const idKey = String(p.id).trim().toLowerCase();
+      if (!idTracker.has(idKey)) idTracker.set(idKey, []);
+      idTracker.get(idKey)!.push(p);
+    }
 
     // Check SKU
     if (!isPlaceholderProductCode(p.sku)) {
@@ -737,13 +856,29 @@ export function identifyDuplicateProductCodes(products: Product[]): Map<string, 
     }
   }
 
+  // Populate duplicateMap when 2 or more products share the ID
+  for (const [code, prods] of idTracker.entries()) {
+    if (prods.length > 1) {
+      for (const p of prods) {
+        const other = prods.find((o) => o !== p);
+        if (other) {
+          duplicateMap.set(String(p.id), {
+            code,
+            type: 'id',
+            duplicateName: other.name,
+          });
+        }
+      }
+    }
+  }
+
   // Populate duplicateMap ONLY when 2 or more DIFFERENT products share the SKU
   for (const [code, prods] of skuTracker.entries()) {
     if (prods.length > 1) {
       for (const p of prods) {
         const other = prods.find((o) => String(o.id) !== String(p.id));
-        if (other) {
-          duplicateMap.set(p.id, {
+        if (other && !duplicateMap.has(String(p.id))) {
+          duplicateMap.set(String(p.id), {
             code: p.sku || code,
             type: 'sku',
             duplicateName: other.name,
@@ -758,8 +893,8 @@ export function identifyDuplicateProductCodes(products: Product[]): Map<string, 
     if (prods.length > 1) {
       for (const p of prods) {
         const other = prods.find((o) => String(o.id) !== String(p.id));
-        if (other && !duplicateMap.has(p.id)) {
-          duplicateMap.set(p.id, {
+        if (other && !duplicateMap.has(String(p.id))) {
+          duplicateMap.set(String(p.id), {
             code,
             type: 'barcode',
             duplicateName: other.name,
@@ -779,7 +914,7 @@ export function identifyDuplicateProductCodes(products: Product[]): Map<string, 
 export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
   groups: DuplicateCodeGroup[];
   allDuplicateProducts: Product[];
-  duplicateMap: Map<string, { code: string; type: 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>;
+  duplicateMap: Map<string, { code: string; type: 'id' | 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>;
 }> {
   try {
     let products: Product[] = [];
@@ -819,6 +954,16 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
     for (const p of products) {
       if (!p || !p.id) continue;
 
+      // 0. ID tracking (strict uniqueness on ID)
+      if (!isPlaceholderProductCode(p.id)) {
+        const idKey = `ID:${String(p.id).trim().toLowerCase()}`;
+        if (!codeToProducts.has(idKey)) codeToProducts.set(idKey, []);
+        const existing = codeToProducts.get(idKey)!;
+        if (!existing.some((x) => String(x.id) === String(p.id))) {
+          existing.push(p);
+        }
+      }
+
       // 1. SKU tracking
       if (!isPlaceholderProductCode(p.sku)) {
         const sKey = `SKU:${p.sku.trim().toLowerCase()}`;
@@ -853,18 +998,20 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
     }
 
     const groups: DuplicateCodeGroup[] = [];
-    const duplicateMap = new Map<string, { code: string; type: 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>();
+    const duplicateMap = new Map<string, { code: string; type: 'id' | 'sku' | 'barcode'; conflictingProducts: string[]; groupIndex: number }>();
     const seenProductIds = new Set<string>();
     const allDuplicateProducts: Product[] = [];
 
     let groupIdx = 0;
     for (const [codeKey, prods] of codeToProducts.entries()) {
       if (prods.length > 1) {
+        const isId = codeKey.startsWith('ID:');
         const isSku = codeKey.startsWith('SKU:');
-        const rawCode = codeKey.replace(/^(SKU:|BARCODE:)/, '');
+        const rawCode = codeKey.replace(/^(ID:|SKU:|BARCODE:)/, '');
+        const dupType: 'id' | 'sku' | 'barcode' = isId ? 'id' : isSku ? 'sku' : 'barcode';
         groups.push({
           code: rawCode,
-          type: isSku ? 'sku' : 'barcode',
+          type: dupType,
           products: prods,
         });
 
@@ -872,7 +1019,7 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
           const otherNames = prods.filter((other) => String(other.id) !== String(p.id)).map((o) => o.name);
           duplicateMap.set(String(p.id), {
             code: rawCode,
-            type: isSku ? 'sku' : 'barcode',
+            type: dupType,
             conflictingProducts: otherNames,
             groupIndex: groupIdx,
           });

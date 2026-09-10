@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { usePOS } from '../../context/POSContext';
-import { Associate, Permission, InvoiceDaysAccess, POSExpense } from '../../types';
+import { Associate, Permission, InvoiceDaysAccess, POSExpense, AssociateAccountType } from '../../types';
 import {
   Users,
   UserPlus,
+  UserCheck,
   Award,
   TrendingUp,
   Key,
@@ -287,6 +288,7 @@ export const AssociatesView: React.FC = () => {
     password: string;
     pin: string;
     role: Associate['role'];
+    accountType: AssociateAccountType;
     permissions: Permission[];
     invoiceDaysAccess: InvoiceDaysAccess;
     invoiceCustomDaysLimit: number;
@@ -302,6 +304,7 @@ export const AssociatesView: React.FC = () => {
     password: '',
     pin: '',
     role: 'مسؤول مبيعات',
+    accountType: 'both',
     permissions: ['create_invoice', 'apply_discount'],
     invoiceDaysAccess: 'today',
     invoiceCustomDaysLimit: 3,
@@ -322,6 +325,7 @@ export const AssociatesView: React.FC = () => {
       password: generatedPassword,
       pin: generatedPin,
       role: 'مسؤول مبيعات',
+      accountType: 'both',
       permissions: ['create_invoice', 'apply_discount'],
       invoiceDaysAccess: 'today',
       invoiceCustomDaysLimit: 3,
@@ -338,21 +342,32 @@ export const AssociatesView: React.FC = () => {
 
   const handleOpenEdit = (assoc: Associate) => {
     setEditingAssociate(assoc);
+    const resolvedAccountType: AssociateAccountType =
+      assoc.accountType ||
+      (assoc.pin && (assoc.username || assoc.password)
+        ? 'both'
+        : assoc.pin
+        ? 'seller_only'
+        : assoc.username
+        ? 'account_only'
+        : 'neither');
+
     setFormData({
       name: assoc.name,
       username: assoc.username || assoc.name.split(' ')[0].toLowerCase(),
-      password: assoc.password || assoc.pin,
-      pin: assoc.pin,
+      password: assoc.password || assoc.pin || '',
+      pin: assoc.pin || '',
       role: assoc.role,
+      accountType: resolvedAccountType,
       permissions: assoc.permissions || ['create_invoice', 'apply_discount'],
       invoiceDaysAccess: assoc.invoiceDaysAccess || (assoc.role === 'مدير الفرع' ? 'all' : 'today'),
       invoiceCustomDaysLimit: assoc.invoiceCustomDaysLimit || 3,
-      email: assoc.email,
-      phone: assoc.phone,
-      commissionRate: assoc.commissionRate * 100,
-      dailyGoal: assoc.dailyGoal,
-      hourlyRate: assoc.hourlyRate,
-      avatar: assoc.avatar,
+      email: assoc.email || '',
+      phone: assoc.phone || '',
+      commissionRate: (assoc.commissionRate || 0.05) * 100,
+      dailyGoal: assoc.dailyGoal || 0,
+      hourlyRate: assoc.hourlyRate || 0,
+      avatar: assoc.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
     });
     setIsAddModalOpen(true);
   };
@@ -370,43 +385,66 @@ export const AssociatesView: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.pin) return;
+    if (!formData.name.trim()) {
+      alert('يرجى كتابة اسم الموظف');
+      return;
+    }
 
-    const cleanUsername = formData.username.trim() || formData.name.trim().toLowerCase().replace(/\s+/g, '');
-    const cleanPassword = formData.password.trim() || formData.pin;
+    const isAccountAllowed = formData.accountType === 'both' || formData.accountType === 'account_only';
+    const isSellerAllowed = formData.accountType === 'both' || formData.accountType === 'seller_only';
+
+    if (isSellerAllowed && !formData.pin.trim()) {
+      alert('يرجى إدخال كود البائع (PIN)');
+      return;
+    }
+
+    let cleanUsername = '';
+    let cleanPassword = '';
+    let cleanPin = '';
+
+    if (isAccountAllowed) {
+      cleanUsername = formData.username.trim() || formData.name.trim().toLowerCase().replace(/\s+/g, '');
+      cleanPassword = formData.password.trim() || formData.pin || '1234';
+    }
+
+    if (isSellerAllowed) {
+      cleanPin = formData.pin.trim();
+    }
 
     if (editingAssociate) {
       updateAssociate({
         ...editingAssociate,
-        name: formData.name,
+        name: formData.name.trim(),
         username: cleanUsername,
         password: cleanPassword,
         role: formData.role,
-        pin: formData.pin,
-        permissions: formData.permissions,
-        invoiceDaysAccess: formData.invoiceDaysAccess,
+        pin: cleanPin,
+        accountType: formData.accountType,
+        permissions: isAccountAllowed ? formData.permissions : [],
+        invoiceDaysAccess: isAccountAllowed ? formData.invoiceDaysAccess : 'today',
         invoiceCustomDaysLimit: formData.invoiceCustomDaysLimit,
         email: formData.email,
         phone: formData.phone,
-        commissionRate: formData.commissionRate / 100,
-        dailyGoal: formData.dailyGoal,
+        commissionRate: isSellerAllowed ? formData.commissionRate / 100 : 0,
+        dailyGoal: isSellerAllowed ? formData.dailyGoal : 0,
         hourlyRate: formData.hourlyRate,
         avatar: formData.avatar,
       });
     } else {
       addAssociate({
-        name: formData.name,
+        name: formData.name.trim(),
         username: cleanUsername,
         password: cleanPassword,
         role: formData.role,
-        pin: formData.pin,
-        permissions: formData.permissions,
-        invoiceDaysAccess: formData.invoiceDaysAccess,
+        pin: cleanPin,
+        accountType: formData.accountType,
+        permissions: isAccountAllowed ? formData.permissions : [],
+        invoiceDaysAccess: isAccountAllowed ? formData.invoiceDaysAccess : 'today',
         invoiceCustomDaysLimit: formData.invoiceCustomDaysLimit,
         email: formData.email,
         phone: formData.phone,
-        commissionRate: formData.commissionRate / 100,
-        dailyGoal: formData.dailyGoal,
+        commissionRate: isSellerAllowed ? formData.commissionRate / 100 : 0,
+        dailyGoal: isSellerAllowed ? formData.dailyGoal : 0,
         hourlyRate: formData.hourlyRate,
         avatar: formData.avatar,
       });
@@ -546,37 +584,72 @@ export const AssociatesView: React.FC = () => {
                   />
                   <div className="min-w-0 flex-1">
                     <h3 className="text-base font-extrabold text-stone-100 truncate">{assoc.name}</h3>
-                    <p className="text-xs text-amber-400 font-bold">{assoc.role}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-xs text-amber-400 font-bold">{assoc.role}</p>
+                      {assoc.accountType === 'account_only' && (
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800">
+                          حساب فقط
+                        </span>
+                      )}
+                      {assoc.accountType === 'seller_only' && (
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800">
+                          كود بائع فقط
+                        </span>
+                      )}
+                      {assoc.accountType === 'neither' && (
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700">
+                          بدون حساب ولا كود
+                        </span>
+                      )}
+                      {(assoc.accountType === 'both' || !assoc.accountType) && (
+                        <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
+                          حساب + كود بائع
+                        </span>
+                      )}
+                    </div>
 
-                    {/* Username & Password Display */}
+                    {/* Username, Password & PIN Display */}
                     <div className="bg-stone-950 border border-stone-800/90 rounded-xl p-2 mt-2 space-y-1 text-[11px]">
-                      <div className="flex items-center justify-between">
-                        <span className="text-stone-400 font-semibold flex items-center gap-1">
-                          <User className="w-3 h-3 text-amber-400" />
-                          اسم المستخدم:
-                        </span>
-                        <span className="font-mono font-bold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/60">
-                          {assoc.username || '—'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-stone-400 font-semibold flex items-center gap-1">
-                          <Lock className="w-3 h-3 text-emerald-400" />
-                          كلمة المرور:
-                        </span>
-                        <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/60">
-                          {assoc.password || '—'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-stone-400 font-semibold flex items-center gap-1">
-                          <Key className="w-3 h-3 text-amber-500" />
-                          كود البائع (PIN):
-                        </span>
-                        <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/60">
-                          {assoc.pin || '—'}
-                        </span>
-                      </div>
+                      {(assoc.accountType === 'both' || assoc.accountType === 'account_only' || (!assoc.accountType && assoc.username)) ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-stone-400 font-semibold flex items-center gap-1">
+                              <User className="w-3 h-3 text-amber-400" />
+                              اسم المستخدم:
+                            </span>
+                            <span className="font-mono font-bold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/60">
+                              {assoc.username || '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-stone-400 font-semibold flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-emerald-400" />
+                              كلمة المرور:
+                            </span>
+                            <span className="font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/60">
+                              {assoc.password || '—'}
+                            </span>
+                          </div>
+                        </>
+                      ) : null}
+
+                      {(assoc.accountType === 'both' || assoc.accountType === 'seller_only' || (!assoc.accountType && assoc.pin)) ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-stone-400 font-semibold flex items-center gap-1">
+                            <Key className="w-3 h-3 text-amber-500" />
+                            كود البائع (PIN):
+                          </span>
+                          <span className="font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/60">
+                            {assoc.pin || '—'}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {assoc.accountType === 'neither' && (
+                        <div className="text-[10px] text-stone-500 text-center py-1">
+                          مسجل بالسجلات فقط (بدون تسجيل دخول أو كود بائع)
+                        </div>
+                      )}
                       <div className="flex items-center justify-between pt-1 border-t border-stone-900/60">
                         <span className="text-stone-400 font-semibold flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-amber-400" />
@@ -757,58 +830,204 @@ export const AssociatesView: React.FC = () => {
                 />
               </div>
 
-              {/* Username, Password & PIN Edit Fields (ADMIN PERMISSION EDITING) */}
+              {/* Account Type Selector (كلاهما، حساب مستخدم فقط، كود بائع فقط، بدون حساب وبدون كود) */}
               <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-3">
-                <span className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
-                  <Lock className="w-4 h-4" />
-                  <span>بيانات الدخول والأمان (اسم المستخدم، كلمة المرور، وكود البائع)</span>
-                </span>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-stone-300 text-[11px] mb-1 font-bold">اسم المستخدم (Username)</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      placeholder="مثال: asmaa"
-                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-amber-300 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-stone-300 text-[11px] mb-1 font-bold">كلمة المرور (للجهاز)</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="مثال: pass123"
-                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-emerald-400 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-stone-300 text-[11px] mb-1 font-bold">كود البائع (PIN للتبديل السريع)</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.pin}
-                      onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
-                      placeholder="مثال: 1001"
-                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-amber-500 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+                    <UserCheck className="w-4 h-4 text-amber-400" />
+                    <span>نوع حساب الموظف وصلاحيات التشغيل:</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400">حدد هل له حساب و/أو كود بائع</span>
                 </div>
 
-                <p className="text-[10px] text-stone-500 mt-1 leading-relaxed">
-                  * يُستخدم <strong className="text-stone-400">اسم المستخدم وكلمة المرور</strong> لتسجيل الدخول الكلي للنظام. بينما يُستخدم <strong className="text-stone-400">كود البائع (PIN)</strong> المكون من 4 أرقام للتبديل السريع وتسجيل مبيعات البائع في شاشة الكاشير.
-                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {/* 1. Both */}
+                  <div
+                    onClick={() => setFormData({ ...formData, accountType: 'both' })}
+                    className={`cursor-pointer p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      formData.accountType === 'both'
+                        ? 'bg-amber-950/40 border-amber-500 ring-1 ring-amber-500/50'
+                        : 'bg-stone-900 border-stone-800 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-stone-100 text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        كلاهما (حساب دخول + كود بائع)
+                      </span>
+                      <input
+                        type="radio"
+                        name="accountType"
+                        checked={formData.accountType === 'both'}
+                        onChange={() => setFormData({ ...formData, accountType: 'both' })}
+                        className="accent-amber-500"
+                      />
+                    </div>
+                    <p className="text-[9.5px] text-stone-400 leading-relaxed">
+                      يمتلك حساب مستخدم للدخول للنظام + كود بائع لإسناد مبيعات وعمولات الفواتير له.
+                    </p>
+                  </div>
+
+                  {/* 2. Account Only */}
+                  <div
+                    onClick={() => setFormData({ ...formData, accountType: 'account_only' })}
+                    className={`cursor-pointer p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      formData.accountType === 'account_only'
+                        ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-500/50'
+                        : 'bg-stone-900 border-stone-800 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-stone-100 text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                        حساب مستخدم فقط (بدون كود بائع)
+                      </span>
+                      <input
+                        type="radio"
+                        name="accountType"
+                        checked={formData.accountType === 'account_only'}
+                        onChange={() => setFormData({ ...formData, accountType: 'account_only' })}
+                        className="accent-sky-500"
+                      />
+                    </div>
+                    <p className="text-[9.5px] text-stone-400 leading-relaxed">
+                      يمتلك اسم مستخدم وكلمة مرور للدخول للبرنامج فقط، ولا يظهر في قائمة بائعي الفواتير (كالمحاسب أو الإداري).
+                    </p>
+                  </div>
+
+                  {/* 3. Seller Only */}
+                  <div
+                    onClick={() => setFormData({ ...formData, accountType: 'seller_only' })}
+                    className={`cursor-pointer p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      formData.accountType === 'seller_only'
+                        ? 'bg-purple-950/40 border-purple-500 ring-1 ring-purple-500/50'
+                        : 'bg-stone-900 border-stone-800 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-stone-100 text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                        كود بائع فقط (بدون حساب دخول)
+                      </span>
+                      <input
+                        type="radio"
+                        name="accountType"
+                        checked={formData.accountType === 'seller_only'}
+                        onChange={() => setFormData({ ...formData, accountType: 'seller_only' })}
+                        className="accent-purple-500"
+                      />
+                    </div>
+                    <p className="text-[9.5px] text-stone-400 leading-relaxed">
+                      ليس لديه حساب لتسجيل الدخول، لكن يمتلك كود بائع (PIN) يُختار في الفواتير لحساب مبيعاته وعمولاته.
+                    </p>
+                  </div>
+
+                  {/* 4. Neither */}
+                  <div
+                    onClick={() => setFormData({ ...formData, accountType: 'neither' })}
+                    className={`cursor-pointer p-2.5 rounded-xl border flex flex-col justify-between transition-all ${
+                      formData.accountType === 'neither'
+                        ? 'bg-stone-800 border-stone-500 ring-1 ring-stone-500/50'
+                        : 'bg-stone-900 border-stone-800 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-extrabold text-stone-100 text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-stone-500"></span>
+                        بدون حساب وبدون كود (سجلات فقط)
+                      </span>
+                      <input
+                        type="radio"
+                        name="accountType"
+                        checked={formData.accountType === 'neither'}
+                        onChange={() => setFormData({ ...formData, accountType: 'neither' })}
+                        className="accent-stone-400"
+                      />
+                    </div>
+                    <p className="text-[9.5px] text-stone-400 leading-relaxed">
+                      موظف مسجل بالسجلات الإدارية والمالية فقط (رواتب وسلف وعمالة) بدون دخول للنظام وبدون كود بائع.
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {/* User Permissions Checkboxes - Grouped by Category */}
-              <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-4">
+              {/* Username, Password & PIN Edit Fields (CONDITIONAL BASED ON ACCOUNT TYPE) */}
+              {formData.accountType !== 'neither' && (
+                <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-3">
+                  <span className="text-xs font-bold text-amber-400 flex items-center space-x-1.5 space-x-reverse">
+                    <Lock className="w-4 h-4" />
+                    <span>بيانات الدخول والأمان</span>
+                  </span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {(formData.accountType === 'both' || formData.accountType === 'account_only') && (
+                      <>
+                        <div>
+                          <label className="block text-stone-300 text-[11px] mb-1 font-bold">اسم المستخدم (Username)</label>
+                          <input
+                            type="text"
+                            required
+                            value={formData.username}
+                            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                            placeholder="مثال: asmaa"
+                            className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-amber-300 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-stone-300 text-[11px] mb-1 font-bold">كلمة المرور (للدخول)</label>
+                          <input
+                            type="text"
+                            required
+                            value={formData.password}
+                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                            placeholder="مثال: pass123"
+                            className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-emerald-400 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {(formData.accountType === 'both' || formData.accountType === 'seller_only') && (
+                      <div>
+                        <label className="block text-stone-300 text-[11px] mb-1 font-bold">كود البائع (PIN للفواتير)</label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.pin}
+                          onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+                          placeholder="مثال: 1001"
+                          className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-amber-500 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] text-stone-500 mt-1 leading-relaxed">
+                    {formData.accountType === 'both' && (
+                      <>* يُستخدم <strong className="text-stone-400">اسم المستخدم وكلمة المرور</strong> لتسجيل الدخول للنظام، بينما يُستخدم <strong className="text-stone-400">كود البائع (PIN)</strong> في شاشة الكاشير لاختيار البائع المسؤول عن الفاتورة.</>
+                    )}
+                    {formData.accountType === 'account_only' && (
+                      <>* هذا الموظف مخصص <strong className="text-sky-400">لتسجيل الدخول فقط</strong> (لا يمتلك كود بائع ولن يظهر في قائمة بائعي الفواتير).</>
+                    )}
+                    {formData.accountType === 'seller_only' && (
+                      <>* هذا الموظف مخصص <strong className="text-purple-400">كبائع للفواتير فقط</strong> (يظهر كوده في الكاشير لحساب مبيعاته دون أن يمتلك حساب دخول للبرنامج).</>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {formData.accountType === 'neither' && (
+                <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl text-[11px] text-stone-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-stone-500 shrink-0"></span>
+                  <span>هذا الموظف مسجل للأغراض الإدارية والمالية فقط (كشوف المرتبات والسلف) بدون حساب دخول وبدون كود بائع.</span>
+                </div>
+              )}
+
+              {/* User Permissions Checkboxes & Days Access - Grouped by Category */}
+              {(formData.accountType === 'both' || formData.accountType === 'account_only') ? (
+                <>
+                  <div className="bg-stone-950 border border-stone-800 p-3.5 rounded-2xl space-y-4">
                 <div className="flex items-center justify-between border-b border-stone-800 pb-2">
                   <div>
                     <span className="text-xs font-bold text-stone-100 flex items-center space-x-1.5 space-x-reverse">
@@ -1056,9 +1275,16 @@ export const AssociatesView: React.FC = () => {
                   </label>
                 </div>
               </div>
+                </>
+              ) : (
+                <div className="bg-stone-950 border border-stone-800/80 p-3.5 rounded-2xl text-[11px] text-stone-400 flex items-center gap-2.5">
+                  <Shield className="w-4 h-4 text-stone-600 shrink-0" />
+                  <span>لا توجد صلاحيات أو قيود استعراض فواتير مطلوبة لهذا الموظف لأنه لا يمتلك حساب تسجيل دخول للنظام.</span>
+                </div>
+              )}
 
               {/* Role & Commission Details */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-stone-400 mb-1">المسمى الوظيفي</label>
                   <select
@@ -1075,32 +1301,48 @@ export const AssociatesView: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-stone-400 mb-1">نسبة العمولة (%)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={formData.commissionRate}
-                    onChange={(e) =>
-                      setFormData({ ...formData, commissionRate: parseFloat(e.target.value) || 0 })
-                    }
-                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-stone-100 focus:outline-none"
-                  />
-                </div>
+                {(formData.accountType === 'both' || formData.accountType === 'seller_only') ? (
+                  <div>
+                    <label className="block text-stone-400 mb-1">نسبة العمولة (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={formData.commissionRate}
+                      onChange={(e) =>
+                        setFormData({ ...formData, commissionRate: parseFloat(e.target.value) || 0 })
+                      }
+                      className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-stone-100 focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-stone-400 mb-1">أجر الساعة (ج.م)</label>
+                    <input
+                      type="number"
+                      value={formData.hourlyRate}
+                      onChange={(e) =>
+                        setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) || 0 })
+                      }
+                      className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-stone-100 focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-stone-400 mb-1">الهدف اليومي (ج.م)</label>
-                  <input
-                    type="number"
-                    value={formData.dailyGoal}
-                    onChange={(e) =>
-                      setFormData({ ...formData, dailyGoal: parseInt(e.target.value) || 0 })
-                    }
-                    className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-stone-100 focus:outline-none"
-                  />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {(formData.accountType === 'both' || formData.accountType === 'seller_only') ? (
+                  <div>
+                    <label className="block text-stone-400 mb-1">الهدف اليومي للمبيعات (ج.م)</label>
+                    <input
+                      type="number"
+                      value={formData.dailyGoal}
+                      onChange={(e) =>
+                        setFormData({ ...formData, dailyGoal: parseInt(e.target.value) || 0 })
+                      }
+                      className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 font-mono text-stone-100 focus:outline-none"
+                    />
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="block text-stone-400 mb-1">رقم الهاتف</label>

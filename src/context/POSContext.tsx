@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Associate,
   Product,
@@ -51,6 +51,8 @@ interface POSContextType {
   suppliers: Supplier[];
   supplierTransactions: SupplierTransaction[];
   currentAssociate: Associate | null;
+  activeInvoiceSeller: Associate | null;
+  availableSellers: Associate[];
   cart: CartItem[];
   selectedCustomer: Customer | null;
   splitAssociates: SplitAssociate[];
@@ -65,6 +67,7 @@ interface POSContextType {
   setActiveTab: (tab: 'register' | 'associates' | 'catalog' | 'analytics' | 'customers' | 'suppliers' | 'settings' | 'discounts') => void;
   updateSettings: (settings: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)) => void;
   setCurrentAssociate: (associate: Associate | null) => void;
+  setActiveInvoiceSeller: (seller: Associate | null) => void;
   setGlobalPriceTier: (tier: PriceTier) => void;
   quickSwitchByPin: (pin: string) => boolean;
 
@@ -157,7 +160,10 @@ interface POSContextType {
   expenses: POSExpense[];
   addExpense: (expense: Omit<POSExpense, 'id' | 'timestamp'>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
-  returnTransaction: (transactionId: string) => Promise<void>;
+  returnTransaction: (
+    transactionId: string,
+    returnedItems?: { productId: string; quantity: number }[]
+  ) => Promise<Transaction | undefined>;
 
   // Sync Engine State & Controls
   syncStatus: 'synced' | 'syncing' | 'pending' | 'failed' | 'offline';
@@ -215,6 +221,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Local UI State
   const [currentAssociate, setCurrentAssociateState] = useState<Associate | null>(null);
+  const [activeInvoiceSeller, setActiveInvoiceSellerState] = useState<Associate | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [invoiceDiscount, setInvoiceDiscount] = useState<InvoiceDiscount | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -533,8 +540,41 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await triggerBackgroundSync();
   };
 
+  const availableSellers = useMemo(() => {
+    return associates.filter((a) => {
+      if (a.accountType === 'account_only' || a.accountType === 'neither') return false;
+      return Boolean(a.pin) || a.accountType === 'seller_only' || a.accountType === 'both';
+    });
+  }, [associates]);
+
+  // Keep activeInvoiceSeller in sync if empty or if previous seller was deleted
+  useEffect(() => {
+    if (!activeInvoiceSeller) {
+      if (currentAssociate && (currentAssociate.accountType === 'both' || currentAssociate.accountType === 'seller_only' || !currentAssociate.accountType)) {
+        setActiveInvoiceSellerState(currentAssociate);
+      } else if (availableSellers.length > 0) {
+        setActiveInvoiceSellerState(availableSellers[0]);
+      }
+    } else {
+      const stillExists = availableSellers.find((a) => a.id === activeInvoiceSeller.id);
+      if (!stillExists && availableSellers.length > 0) {
+        setActiveInvoiceSellerState(availableSellers[0]);
+      }
+    }
+  }, [currentAssociate, availableSellers, activeInvoiceSeller]);
+
   const setCurrentAssociate = (assoc: Associate | null) => {
     setCurrentAssociateState(assoc);
+    if (assoc) {
+      // If the newly logged in user can sell, set them as the active invoice seller
+      if (assoc.accountType === 'both' || assoc.accountType === 'seller_only' || !assoc.accountType) {
+        setActiveInvoiceSellerState(assoc);
+      }
+    }
+  };
+
+  const setActiveInvoiceSeller = (seller: Associate | null) => {
+    setActiveInvoiceSellerState(seller);
   };
 
   const setGlobalPriceTier = (tier: PriceTier) => {
@@ -1313,8 +1353,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const discountTotal = discountTotalOverride > 0 ? discountTotalOverride : calculatedDiscountTotal;
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
-    const primaryAssocId = currentAssociate?.id || editingTransaction.primaryAssociateId || 'system';
-    const primaryAssocName = currentAssociate?.name || editingTransaction.primaryAssociateName || 'النظام';
+    const primaryAssocId = activeInvoiceSeller?.id || editingTransaction.primaryAssociateId || currentAssociate?.id || 'system';
+    const primaryAssocName = activeInvoiceSeller?.name || editingTransaction.primaryAssociateName || currentAssociate?.name || 'النظام';
     const finalMethod = paymentMethod || editingTransaction.paymentMethod || 'كاش';
 
     // 1. Adjust inventory stock based on difference between old and new item quantities
@@ -1462,8 +1502,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const discountTotal = discountTotalOverride > 0 ? discountTotalOverride : calculatedDiscountTotal;
 
     const grandTotal = Math.max(0, subtotal - discountTotal);
-    const primaryAssocId = currentAssociate?.id || 'system';
-    const primaryAssocName = currentAssociate?.name || 'النظام';
+    const primaryAssocId = activeInvoiceSeller?.id || currentAssociate?.id || 'system';
+    const primaryAssocName = activeInvoiceSeller?.name || currentAssociate?.name || 'النظام';
 
     const commissions: TransactionCommission[] = [];
     if (splitAssociates.length > 0) {
@@ -1481,11 +1521,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
       });
-    } else if (currentAssociate) {
-      const comm = grandTotal * (currentAssociate.commissionRate || 0.05);
+    } else if (activeInvoiceSeller || currentAssociate) {
+      const seller = activeInvoiceSeller || currentAssociate!;
+      const comm = grandTotal * (seller.commissionRate || 0.05);
       commissions.push({
-        associateId: currentAssociate.id,
-        associateName: currentAssociate.name,
+        associateId: seller.id,
+        associateName: seller.name,
         saleAmount: grandTotal,
         commissionAmount: comm,
         sharePercentage: 100,
@@ -1619,8 +1660,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentMethod: 'كاش',
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
-      primaryAssociateId: currentAssociate?.id || 'system',
-      primaryAssociateName: currentAssociate?.name || 'النظام',
+      primaryAssociateId: activeInvoiceSeller?.id || currentAssociate?.id || 'system',
+      primaryAssociateName: activeInvoiceSeller?.name || currentAssociate?.name || 'النظام',
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       commissions: [],
       notes,
@@ -1684,6 +1725,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setInvoiceDiscount(foundTx.invoiceDiscount);
     } else {
       setInvoiceDiscount(null);
+    }
+    if (foundTx.primaryAssociateId) {
+      const seller = associates.find((a) => a.id === foundTx.primaryAssociateId);
+      if (seller) {
+        setActiveInvoiceSellerState(seller);
+      }
     }
     setActiveHeldTransactionId(transactionId);
     setEditingTransaction(null);
@@ -1766,40 +1813,176 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const returnTransaction = async (transactionId: string) => {
-    const targetTx = transactions.find((t) => t.id === transactionId && t.status === 'مكتملة');
-    if (!targetTx) return;
+  const returnTransaction = async (
+    transactionId: string,
+    returnedItems?: { productId: string; quantity: number }[]
+  ): Promise<Transaction | undefined> => {
+    const targetTx = transactions.find(
+      (t) => t.id === transactionId && (t.status === 'مكتملة' || t.isPartiallyReturned)
+    );
+    if (!targetTx) return undefined;
 
-    for (const item of (targetTx.items || [])) {
-      const p = products.find((prod) => prod.id === item.productId);
+    const existingReturned = targetTx.returnedQuantities || {};
+    const itemsMap: Record<string, number> = {};
+
+    if (!returnedItems || returnedItems.length === 0) {
+      // Default to returning all remaining quantities of all items
+      (targetTx.items || []).forEach((item) => {
+        const prev = existingReturned[item.productId] || 0;
+        const remaining = Math.max(0, item.quantity - prev);
+        if (remaining > 0) {
+          itemsMap[item.productId] = remaining;
+        }
+      });
+    } else {
+      returnedItems.forEach((ri) => {
+        if (ri.quantity > 0) {
+          const origItem = (targetTx.items || []).find((i) => i.productId === ri.productId);
+          if (origItem) {
+            const prev = existingReturned[origItem.productId] || 0;
+            const remaining = Math.max(0, origItem.quantity - prev);
+            const actualQty = Math.min(ri.quantity, remaining);
+            if (actualQty > 0) {
+              itemsMap[ri.productId] = actualQty;
+            }
+          }
+        }
+      });
+    }
+
+    if (Object.keys(itemsMap).length === 0) {
+      return undefined;
+    }
+
+    // 1. Restock products in local database and memory
+    for (const [prodId, qtyToReturn] of Object.entries(itemsMap)) {
+      const p = products.find((prod) => prod.id === prodId);
       if (p) {
-        const restored = { ...p, stock: p.stock + item.quantity };
+        const restored = { ...p, stock: (p.stock || 0) + qtyToReturn };
         await db.products.put(restored);
         await addToPendingQueue('products', 'UPDATE', restored);
+        setProducts((prev) => prev.map((prod) => (prod.id === prodId ? restored : prod)));
       }
     }
 
+    // 2. Financial calculation: compute refund amount taking proportional discount into account
+    const invSubtotal = targetTx.subtotal || targetTx.grandTotal || 1;
+    const invDiscount = targetTx.discountTotal || 0;
+    const discountRatio = invSubtotal > 0 ? invDiscount / invSubtotal : 0;
+
+    let totalRefundAmount = 0;
+    const returnItemsList: TransactionItem[] = [];
+
+    for (const [prodId, qtyToReturn] of Object.entries(itemsMap)) {
+      const origItem = (targetTx.items || []).find((i) => i.productId === prodId);
+      if (origItem) {
+        const itemSubtotal = origItem.unitPrice * qtyToReturn;
+        const itemDiscount = Math.round(itemSubtotal * discountRatio * 100) / 100;
+        const itemRefundNet = Math.max(0, itemSubtotal - itemDiscount);
+        totalRefundAmount += itemRefundNet;
+
+        returnItemsList.push({
+          productId: origItem.productId,
+          productName: origItem.productName,
+          sku: origItem.sku || '',
+          productBarcode: origItem.productBarcode,
+          quantity: qtyToReturn,
+          priceTier: origItem.priceTier || 'cash',
+          unitPrice: origItem.unitPrice,
+          totalPrice: itemSubtotal,
+          discountAmount: itemDiscount,
+        });
+      }
+    }
+
+    totalRefundAmount = Math.round(totalRefundAmount * 100) / 100;
+
+    // 3. Customer balance, debt, and loyalty points adjustments
     if (targetTx.customerId) {
       const cust = customers.find((c) => c.id === targetTx.customerId);
       if (cust) {
         const ratio = settings.loyaltyPointsRatio || 10;
-        const addedPoints = Math.floor(targetTx.grandTotal / ratio);
+        const pointsToDeduct = Math.floor(totalRefundAmount / ratio);
+        const debtReduction = targetTx.amountDeferred
+          ? Math.min(targetTx.amountDeferred, totalRefundAmount)
+          : 0;
+
         const restoredCust = {
           ...cust,
-          totalSpent: Math.max(0, (cust.totalSpent || 0) - targetTx.grandTotal),
-          loyaltyPoints: Math.max(0, (cust.loyaltyPoints || 0) - addedPoints),
-          currentDebt: Math.max(0, (cust.currentDebt || 0) - (targetTx.amountDeferred || 0)),
+          totalSpent: Math.max(0, (cust.totalSpent || 0) - totalRefundAmount),
+          loyaltyPoints: Math.max(0, (cust.loyaltyPoints || 0) - pointsToDeduct),
+          currentDebt: Math.max(0, (cust.currentDebt || 0) - debtReduction),
         };
         await db.customers.put(restoredCust);
         await addToPendingQueue('customers', 'UPDATE', restoredCust);
+        setCustomers((prev) => prev.map((c) => (c.id === targetTx.customerId ? restoredCust : c)));
       }
     }
 
-    const updatedTx: Transaction = { ...targetTx, status: 'مسترجعة' };
+    // 4. Update returned quantities map on targetTx
+    const updatedReturnedQuantities = { ...existingReturned };
+    for (const [prodId, qty] of Object.entries(itemsMap)) {
+      updatedReturnedQuantities[prodId] = (updatedReturnedQuantities[prodId] || 0) + qty;
+    }
+
+    const isAllReturned = (targetTx.items || []).every(
+      (i) => (updatedReturnedQuantities[i.productId] || 0) >= i.quantity
+    );
+
+    const updatedRefundedAmount = (targetTx.refundedAmount || 0) + totalRefundAmount;
+    const originalGrandTotal = targetTx.originalGrandTotal || targetTx.grandTotal;
+    const updatedGrandTotal = isAllReturned
+      ? originalGrandTotal
+      : Math.max(0, originalGrandTotal - updatedRefundedAmount);
+
+    const updatedTx: Transaction = {
+      ...targetTx,
+      status: isAllReturned ? 'مسترجعة' : 'مكتملة',
+      isPartiallyReturned: !isAllReturned,
+      originalGrandTotal,
+      grandTotal: updatedGrandTotal,
+      returnedQuantities: updatedReturnedQuantities,
+      refundedAmount: updatedRefundedAmount,
+      notes: targetTx.notes
+        ? `${targetTx.notes} | تم مرتجع بقيمة ${totalRefundAmount.toLocaleString()} ج.م`
+        : `تم مرتجع بقيمة ${totalRefundAmount.toLocaleString()} ج.م`,
+    };
+
     await db.transactions.put(updatedTx);
     await addToPendingQueue('transactions', 'UPDATE', updatedTx);
-    setTransactions((prev) => prev.map((t) => (t.id === transactionId ? updatedTx : t)));
+
+    // 5. Create a dedicated return receipt transaction for audit and printing
+    const returnReceiptTx: Transaction = {
+      id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+      receiptNumber: `RET-${targetTx.receiptNumber}-${Math.floor(100 + Math.random() * 900)}`,
+      timestamp: new Date().toISOString(),
+      items: returnItemsList,
+      subtotal: totalRefundAmount,
+      discountTotal: 0,
+      taxTotal: 0,
+      grandTotal: totalRefundAmount,
+      paymentMethod: targetTx.paymentMethod,
+      paymentDetails: `مرتجع من فاتورة #${targetTx.receiptNumber}`,
+      customerId: targetTx.customerId,
+      customerName: targetTx.customerName,
+      primaryAssociateId: currentAssociate?.id || targetTx.primaryAssociateId,
+      primaryAssociateName: currentAssociate?.name || targetTx.primaryAssociateName,
+      commissions: [],
+      notes: `إيصال مرتجع ${isAllReturned ? 'كامل' : 'جزئي'} للفاتورة #${targetTx.receiptNumber}`,
+      status: 'مسترجعة',
+      parentTransactionId: targetTx.id,
+    };
+
+    await db.transactions.put(returnReceiptTx);
+    await addToPendingQueue('transactions', 'INSERT', returnReceiptTx);
+
+    setTransactions((prev) => [
+      returnReceiptTx,
+      ...prev.map((t) => (t.id === transactionId ? updatedTx : t)),
+    ]);
+
     processPendingSyncQueue();
+    return returnReceiptTx;
   };
 
   const payCustomerDebt = async (
@@ -1936,6 +2119,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         suppliers,
         supplierTransactions,
         currentAssociate,
+        activeInvoiceSeller,
+        setActiveInvoiceSeller,
+        availableSellers,
         cart,
         selectedCustomer,
         splitAssociates,

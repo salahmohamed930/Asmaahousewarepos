@@ -21,6 +21,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { ReceiptModal } from '../Register/ReceiptModal';
+import { ReturnInvoiceModal } from '../Register/ReturnInvoiceModal';
 
 interface InvoiceDetailModalProps {
   transaction: Transaction | null;
@@ -41,10 +42,12 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
     products,
     customers,
     startEditingTransaction,
+    returnTransaction,
   } = usePOS();
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [showReceiptPrint, setShowReceiptPrint] = useState<boolean>(false);
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState<boolean>(false);
 
   // Editable transaction copy
   const [editedTx, setEditedTx] = useState<Transaction | null>(null);
@@ -627,6 +630,21 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
                   <span>إلغاء الفاتورة</span>
                 </button>
               )}
+
+              {(!currentAssociate || hasPermission('return_invoice') || currentAssociate?.role === 'مدير الفرع') &&
+                (editedTx.status === 'مكتملة' || editedTx.isPartiallyReturned) &&
+                editedTx.status !== 'مسترجعة' &&
+                !editedTx.id.startsWith('pay_') && (
+                  <button
+                    type="button"
+                    onClick={() => setIsReturnModalOpen(true)}
+                    className="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold rounded-xl text-xs transition-all flex items-center space-x-1 space-x-reverse justify-center shadow-sm"
+                    title="استرجاع أصناف من هذه الفاتورة"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>مرتجع أصناف</span>
+                  </button>
+              )}
             </div>
 
             {/* Left side buttons: Edit / Save / Close */}
@@ -739,6 +757,23 @@ export const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({
         <ReceiptModal
           transaction={editedTx}
           onClose={() => setShowReceiptPrint(false)}
+        />
+      )}
+
+      {/* Return Invoice Selective Items Modal */}
+      {isReturnModalOpen && editedTx && (
+        <ReturnInvoiceModal
+          isOpen={isReturnModalOpen}
+          transaction={editedTx}
+          onClose={() => setIsReturnModalOpen(false)}
+          onConfirmReturn={async (returnedItems) => {
+            const retTx = await returnTransaction(editedTx.id, returnedItems);
+            setIsReturnModalOpen(false);
+            if (retTx) {
+              setEditedTx(retTx);
+            }
+            onClose();
+          }}
         />
       )}
     </>

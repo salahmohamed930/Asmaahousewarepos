@@ -37,6 +37,9 @@ export type InvoiceDaysAccess =
   | 'custom'       // عدد أيام مخصص
   | 'all';         // كافة الأيام (كل الفواتير التاريخية بدون قيود)
 
+// نوع حساب الموظف: كلاهما (حساب دخول + كود بائع)، حساب فقط، كود بائع فقط، بدون حساب وبدون كود
+export type AssociateAccountType = 'both' | 'account_only' | 'seller_only' | 'neither';
+
 export interface Associate {
   id: string;
   name: string;
@@ -44,6 +47,7 @@ export interface Associate {
   password?: string;
   pin: string;
   role: Role;
+  accountType?: AssociateAccountType; // نوع حساب الموظف
   permissions?: Permission[];
   invoiceDaysAccess?: InvoiceDaysAccess; // صلاحية الأيام المسموح للمستخدم برؤية فواتيرها
   invoiceCustomDaysLimit?: number;       // عدد الأيام المسموح بها في حال اختيار مخصص
@@ -72,6 +76,7 @@ export interface Product {
   image: string;
   description?: string;
   barcodes?: string[];      // أكواد / باركودات إضافية للمنتج
+  p_k?: number;             // رقم مسلسل الصنف (للعرض فقط - لا يتم تعديله أو استخدامه في الاستعلامات)
 }
 
 export interface SplitAssociate {
@@ -196,6 +201,11 @@ export interface Transaction {
   isSynced?: boolean;         // تم المزامنة مع قاعدة البيانات السحابية أم لا
   updated_at?: string;        // توقيت التحديث / الإنشاء الأصلي من قاعدة البيانات السحابية
   date?: string;
+  returnedQuantities?: Record<string, number>; // كميات الأصناف المرتجعة من هذه الفاتورة (معرف الصنف -> الكمية المرتجعة)
+  isPartiallyReturned?: boolean;               // هل تم استرجاع جزء من الفاتورة
+  refundedAmount?: number;                     // إجمالي المبالغ المستردة من الفاتورة
+  originalGrandTotal?: number;                 // الإجمالي الأصلي قبل أي مرتجع جزئي
+  parentTransactionId?: string;                // معرف الفاتورة الأصلية في حال كان هذا إيصال مرتجع
 }
 
 export interface ShiftRecord {

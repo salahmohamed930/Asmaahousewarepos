@@ -522,10 +522,13 @@ export const CatalogView: React.FC = () => {
     }
 
     for (const row of bulkAddRows) {
+      const rowSku = row.sku?.trim() || '';
+      const rowBarcode = row.barcode?.trim() || rowSku;
       const res = await createProduct({
+        id: rowSku || undefined,
         name: row.name,
-        sku: row.sku || '',
-        barcode: row.barcode || '',
+        sku: rowSku,
+        barcode: rowBarcode,
         category: row.category,
         cost: Number(row.cost),
         priceCash: Number(row.priceCash),
@@ -534,7 +537,7 @@ export const CatalogView: React.FC = () => {
         stock: Number(row.stock),
         image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
         description: 'صنف مضاف من خلال الإضافة المتعددة',
-        barcodes: row.barcode ? [row.barcode] : [],
+        barcodes: rowBarcode ? [rowBarcode] : [],
       });
       if (!res.success) {
         alert(`خطأ عند إضافة الصنف "${row.name}": ${res.error?.message || 'التشابه في الباركود أو المعرف ممنوع'}`);
@@ -647,10 +650,10 @@ export const CatalogView: React.FC = () => {
     }
 
     const productPayload: Partial<Product> = {
-      id: editingProduct?.id,
+      id: editingProduct?.id || (formData.sku?.trim() ? formData.sku.trim() : undefined),
       name: formData.name,
-      sku: formData.sku,
-      barcode: formData.barcode,
+      sku: formData.sku?.trim() || '',
+      barcode: formData.barcode?.trim() || formData.sku?.trim() || '',
       category: formData.category,
       priceCash: Number(formData.priceCash),
       priceInstallment: Number(formData.priceInstallment),

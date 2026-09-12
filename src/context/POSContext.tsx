@@ -822,9 +822,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- LOCAL-FIRST WRITE OPERATIONS (Save to Dexie -> Queue in Outbox -> Update State -> Sync) ---
 
   const addProduct = async (prodData: Omit<Product, 'id'>) => {
+    const safeId = prodData.sku ? String(prodData.sku).trim() : (prodData.barcode ? String(prodData.barcode).trim() : `prod_${Date.now()}`);
     const newProduct: Product = {
       ...prodData,
-      id: prodData.sku || prodData.barcode || `prod_${Date.now()}`,
+      id: safeId,
+      sku: prodData.sku || safeId,
     };
     await db.products.put(newProduct);
     await addToPendingQueue('products', 'INSERT', newProduct);

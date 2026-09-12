@@ -452,8 +452,9 @@ export function mapProductToDbPayload(product: Product): any {
   delete payload.p_k;
   delete payload.alternative_barcodes;
 
-  if (product.id && !isNaN(Number(product.id))) {
-    payload.id = Number(product.id);
+  const candidateId = product.id ?? product.sku;
+  if (candidateId && !isNaN(Number(candidateId))) {
+    payload.id = Number(candidateId);
   }
 
   return payload;

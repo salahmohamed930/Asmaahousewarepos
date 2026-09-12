@@ -445,6 +445,11 @@ export async function getCategories(): Promise<string[]> {
  * 6. CRUD Operations Wrappers
  */
 export async function createProduct(product: Partial<Product>): Promise<{ success: boolean; data?: Product; error?: any }> {
+  // If id is not specified, but sku is provided (e.g. 6/7-digit numeric code), store sku in the id field
+  if (!product.id && product.sku && !isNaN(Number(product.sku))) {
+    product.id = String(product.sku).trim();
+  }
+
   // Enforce uniqueness on ID if specified
   if (product.id) {
     const idConflict = await checkProductIdConflict(String(product.id));
@@ -717,17 +722,18 @@ export async function checkProductCodeConflict(
 }
 
 /**
- * 10. Generate a guaranteed unique product code (SKU & EAN-13 Barcode)
- * Finds the max existing numeric code in Supabase & Dexie, then steps sequentially
- * ensuring no collision with existing products or codes in current session.
+ * 10. Generate a guaranteed unique product code (6 or 7 digits SKU & Barcode)
+ * Starts from 6 digits (>= 100000) or steps sequentially after the highest existing ID/SKU,
+ * ensuring no collisions and easy printing on thermal barcode labels.
  */
 export async function getNextUniqueProductCode(
   offset: number = 0,
   excludeCodes: Set<string> = new Set()
 ): Promise<{ sku: string; barcode: string }> {
-  let maxCode = 24630;
+  // Ensure starting base is at least 6 digits (100000)
+  let maxCode = 100000;
 
-  // 1. Fetch max numeric id from Supabase (filtering out large non-standard IDs)
+  // 1. Fetch max numeric id from Supabase (filtering out large non-standard IDs > 9999999)
   try {
     const { data } = await supabase
       .from('products')
@@ -748,11 +754,11 @@ export async function getNextUniqueProductCode(
   // 2. Also check Dexie for any local items with higher codes
   try {
     const localMax = await db.products
-      .filter((p) => !isNaN(Number(p.sku)))
+      .filter((p) => !isNaN(Number(p.sku || p.id)))
       .toArray();
     for (const p of localMax) {
-      const n = Number(p.sku);
-      if (n > maxCode && n < 1000000) {
+      const n = Number(p.sku || p.id);
+      if (n > maxCode && n < 10000000) {
         maxCode = n;
       }
     }
@@ -760,25 +766,27 @@ export async function getNextUniqueProductCode(
     // ignore
   }
 
-  // 3. Increment sequentially with offset
-  let candidateNum = maxCode + 1 + offset;
+  // 3. Increment sequentially with offset (guarantees 6 or 7 digits)
+  let candidateNum = Math.max(100000, maxCode + 1 + offset);
   let sku = String(candidateNum);
-  let barcode = buildEan13Barcode(candidateNum);
+  // Default barcode is the same 6/7 digit code for clean and easy label printing
+  let barcode = sku;
 
   // 4. Ensure candidate doesn't conflict with excludeCodes or DB
   let attempts = 0;
-  while (attempts < 100) {
+  while (attempts < 200) {
     const inExclude = excludeCodes.has(sku) || excludeCodes.has(barcode);
     if (!inExclude) {
       const skuConflict = await checkProductCodeConflict(sku);
       const barcodeConflict = await checkProductCodeConflict(barcode);
-      if (!skuConflict.exists && !barcodeConflict.exists) {
+      const idConflict = await checkProductIdConflict(sku);
+      if (!skuConflict.exists && !barcodeConflict.exists && !idConflict.exists) {
         break;
       }
     }
     candidateNum++;
     sku = String(candidateNum);
-    barcode = buildEan13Barcode(candidateNum);
+    barcode = sku;
     attempts++;
   }
 

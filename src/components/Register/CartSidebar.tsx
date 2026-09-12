@@ -17,6 +17,7 @@ import {
   Percent,
   Tag,
   Check,
+  Edit3,
 } from 'lucide-react';
 import SplitAssociateModal from './SplitAssociateModal';
 import { CustomerPaymentModal } from '../Customers/CustomerPaymentModal';
@@ -76,6 +77,17 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   const [showDiscountEditor, setShowDiscountEditor] = useState(false);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [discountValueInput, setDiscountValueInput] = useState<string>('');
+
+  // Item-level discount modal/editor state
+  const [editingItemDiscount, setEditingItemDiscount] = useState<{
+    productId: string;
+    productName: string;
+    unitPrice: number;
+    quantity: number;
+    currentPercent: number;
+  } | null>(null);
+  const [itemDiscountType, setItemDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [itemDiscountValueInput, setItemDiscountValueInput] = useState<string>('');
 
   // Seller PIN state - starts EMPTY by default as requested!
   const [sellerPinInput, setSellerPinInput] = useState('');
@@ -176,6 +188,62 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     setInvoiceDiscount(null);
     setDiscountValueInput('');
     setShowDiscountEditor(false);
+  };
+
+  // Item discount handlers
+  const handleOpenItemDiscountEditor = (
+    productId: string,
+    productName: string,
+    unitPrice: number,
+    quantity: number,
+    currentPercent: number
+  ) => {
+    if (!canApplyDiscount) {
+      alert('عفواً، يتطلب تعديل خصم الصنف صلاحية مدير النظام أو صلاحية الخصم.');
+      return;
+    }
+    setEditingItemDiscount({
+      productId,
+      productName,
+      unitPrice,
+      quantity,
+      currentPercent,
+    });
+    setItemDiscountType('percentage');
+    setItemDiscountValueInput(currentPercent > 0 ? String(currentPercent) : '');
+  };
+
+  const handleApplyItemDiscount = () => {
+    if (!editingItemDiscount) return;
+    const val = parseFloat(itemDiscountValueInput);
+    if (isNaN(val) || val <= 0) {
+      updateCartItemDiscount(editingItemDiscount.productId, 0);
+      setEditingItemDiscount(null);
+      return;
+    }
+
+    let calculatedPercent = 0;
+    if (itemDiscountType === 'percentage') {
+      calculatedPercent = Math.min(100, Math.max(0, val));
+    } else {
+      // Fixed pound amount per item line -> convert to equivalent percentage
+      const totalItemLinePrice = editingItemDiscount.unitPrice * editingItemDiscount.quantity;
+      if (totalItemLinePrice > 0) {
+        const clampedAmount = Math.min(totalItemLinePrice, Math.max(0, val));
+        calculatedPercent = Math.round((clampedAmount / totalItemLinePrice) * 100 * 100) / 100;
+      }
+    }
+
+    updateCartItemDiscount(editingItemDiscount.productId, calculatedPercent);
+    setEditingItemDiscount(null);
+    setItemDiscountValueInput('');
+  };
+
+  const handleRemoveItemDiscount = () => {
+    if (!editingItemDiscount) return;
+    updateCartItemDiscount(editingItemDiscount.productId, 0);
+    setEditingItemDiscount(null);
+    setItemDiscountValueInput('');
   };
 
   // Filtered customer search (by name, phone, address, notes)
@@ -508,6 +576,201 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
         {/* 2. INVOICE ITEMS SINGLE-ROW TABLE                        */}
         {/* ======================================================== */}
         <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+          {/* Modal / Dialog for editing Item-level Discount */}
+          {editingItemDiscount && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+              <div
+                className="bg-stone-900 border border-amber-500/60 rounded-2xl max-w-sm w-full p-4 space-y-3 shadow-2xl text-stone-100"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between pb-2 border-b border-stone-800">
+                  <div className="flex items-center space-x-2 space-x-reverse font-extrabold text-xs text-amber-400">
+                    <Tag className="w-4 h-4 text-amber-400" />
+                    <div className="truncate max-w-[220px]">
+                      <span>خصم الصنف: </span>
+                      <span className="text-stone-100 font-bold">{editingItemDiscount.productName}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingItemDiscount(null)}
+                    className="text-stone-400 hover:text-stone-200 p-1 rounded-lg hover:bg-stone-800 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Item Details summary */}
+                <div className="bg-stone-950 p-2.5 rounded-xl border border-stone-800 flex justify-between items-center text-xs">
+                  <div>
+                    <span className="text-stone-400 text-[11px] block">سعر الوحدة × الكمية:</span>
+                    <span className="font-mono text-stone-200 font-bold">
+                      {editingItemDiscount.unitPrice.toLocaleString()} ج.م × {editingItemDiscount.quantity}
+                    </span>
+                  </div>
+                  <div className="text-left">
+                    <span className="text-stone-400 text-[11px] block">إجمالي الصنف قبل الخصم:</span>
+                    <span className="font-mono text-amber-400 font-extrabold text-sm">
+                      {(editingItemDiscount.unitPrice * editingItemDiscount.quantity).toLocaleString()} ج.م
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mode Selector (Percentage vs Fixed) */}
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-950 rounded-xl border border-stone-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemDiscountType('percentage');
+                      setItemDiscountValueInput('');
+                    }}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1 space-x-reverse ${
+                      itemDiscountType === 'percentage'
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <Percent className="w-3.5 h-3.5" />
+                    <span>نسبة مئوية (%)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemDiscountType('fixed');
+                      setItemDiscountValueInput('');
+                    }}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1 space-x-reverse ${
+                      itemDiscountType === 'fixed'
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    <DollarSign className="w-3.5 h-3.5" />
+                    <span>مبلغ مالي (ج.م)</span>
+                  </button>
+                </div>
+
+                {/* Value Input */}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step={itemDiscountType === 'percentage' ? '1' : '0.5'}
+                      min="0"
+                      max={
+                        itemDiscountType === 'percentage'
+                          ? 100
+                          : editingItemDiscount.unitPrice * editingItemDiscount.quantity
+                      }
+                      value={itemDiscountValueInput}
+                      onChange={(e) => setItemDiscountValueInput(e.target.value)}
+                      placeholder={
+                        itemDiscountType === 'percentage'
+                          ? 'أدخل النسبة المئوية للخصم (مثلاً: 10)'
+                          : 'أدخل قيمة الخصم بالجنيه (مثلاً: 25)'
+                      }
+                      autoFocus
+                      className="w-full py-2 px-3 bg-stone-950 border border-stone-700 rounded-xl text-xs font-mono font-bold text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
+                      {itemDiscountType === 'percentage' ? '%' : 'ج.م'}
+                    </span>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div className="flex flex-wrap gap-1">
+                    {itemDiscountType === 'percentage' ? (
+                      [5, 10, 15, 20, 25, 30, 50].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => setItemDiscountValueInput(String(pct))}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-colors ${
+                            itemDiscountValueInput === String(pct)
+                              ? 'bg-amber-600 text-white shadow'
+                              : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
+                          }`}
+                        >
+                          {pct}%
+                        </button>
+                      ))
+                    ) : (
+                      [5, 10, 20, 50, 100, 200]
+                        .filter((amt) => amt <= editingItemDiscount.unitPrice * editingItemDiscount.quantity)
+                        .map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setItemDiscountValueInput(String(amt))}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-colors ${
+                              itemDiscountValueInput === String(amt)
+                                ? 'bg-amber-600 text-white shadow'
+                                : 'bg-stone-800 hover:bg-stone-700 text-stone-300'
+                            }`}
+                          >
+                            {amt} ج.م
+                          </button>
+                        ))
+                    )}
+                  </div>
+
+                  {/* Live Preview of deduction */}
+                  {Boolean(parseFloat(itemDiscountValueInput)) && (
+                    <div className="p-2 bg-emerald-950/50 border border-emerald-800/60 rounded-xl text-xs text-emerald-300 flex justify-between items-center font-bold">
+                      <span>الصافي بعد الخصم:</span>
+                      <span className="font-mono text-emerald-200">
+                        {(
+                          itemDiscountType === 'percentage'
+                            ? Math.max(
+                                0,
+                                editingItemDiscount.unitPrice *
+                                  editingItemDiscount.quantity *
+                                  (1 - Math.min(100, Math.max(0, parseFloat(itemDiscountValueInput) || 0)) / 100)
+                              )
+                            : Math.max(
+                                0,
+                                editingItemDiscount.unitPrice * editingItemDiscount.quantity -
+                                  (parseFloat(itemDiscountValueInput) || 0)
+                              )
+                        ).toLocaleString()}{' '}
+                        ج.م
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center space-x-2 space-x-reverse pt-2">
+                  <button
+                    type="button"
+                    onClick={handleApplyItemDiscount}
+                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition-colors shadow flex items-center justify-center space-x-1 space-x-reverse"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>حفظ الخصم</span>
+                  </button>
+                  {editingItemDiscount.currentPercent > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveItemDiscount}
+                      className="px-3 py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 rounded-xl text-xs font-bold transition-colors"
+                    >
+                      إلغاء الخصم
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditingItemDiscount(null)}
+                    className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-xl text-xs font-bold transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-stone-500 py-8">
               <FileText className="w-10 h-10 stroke-[1.25] text-stone-700 mb-1.5" />
@@ -615,14 +878,41 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
 
                         {/* 4. الخصم */}
                         <td className="py-1.5 px-1 text-center font-mono whitespace-nowrap text-[11px]">
-                          {lineDiscount > 0 ? (
-                            <span className="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded text-[10px]">
-                              -{canViewItemPrice ? `${lineDiscount.toLocaleString()} ج.م` : '***'}
-                              {overallDiscountPercent > 0 && ` (${overallDiscountPercent}%)`}
-                            </span>
-                          ) : (
-                            <span className="text-stone-600 font-bold">-</span>
-                          )}
+                          <div className="inline-flex items-center justify-center space-x-1 space-x-reverse">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOpenItemDiscountEditor(
+                                  item.product.id,
+                                  item.product.name,
+                                  unitPrice,
+                                  item.quantity,
+                                  item.discountPercent || 0
+                                )
+                              }
+                              className={`group inline-flex items-center space-x-1 space-x-reverse px-1.5 py-0.5 rounded-lg border transition-all ${
+                                lineDiscount > 0
+                                  ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400 hover:border-emerald-500 hover:bg-emerald-900/50'
+                                  : 'bg-stone-950 border-stone-800 text-stone-500 hover:text-amber-400 hover:border-stone-700'
+                              }`}
+                              title="انقر لتعديل الخصم الخاص بهذا الصنف"
+                            >
+                              {lineDiscount > 0 ? (
+                                <>
+                                  <span className="font-bold text-[10px]">
+                                    -{canViewItemPrice ? `${lineDiscount.toLocaleString()} ج.م` : '***'}
+                                    {overallDiscountPercent > 0 && ` (${overallDiscountPercent}%)`}
+                                  </span>
+                                  <Edit3 className="w-2.5 h-2.5 text-emerald-400/70 group-hover:text-emerald-300" />
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[10px] font-medium text-stone-500 group-hover:text-stone-300">خصم</span>
+                                  <Tag className="w-2.5 h-2.5 text-stone-600 group-hover:text-amber-400" />
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </td>
 
                         {/* 5. إجمالي الصنف */}

@@ -328,11 +328,20 @@ export async function safeSupabaseMutation(
       continue;
     }
 
-    // Handle unique constraint violations (e.g. products_p_k_key)
+    // Handle unique constraint violations (e.g. products_p_k_key, associates_username_key)
     if (errMsg.includes('products_p_k_key') || (errMsg.includes('duplicate key') && errMsg.includes('p_k'))) {
       if (currentPayload && currentPayload.p_k !== undefined) {
         console.warn(`[SUPABASE ADAPTER] Table '${tableName}' hit p_k unique constraint. Stripping p_k and retrying...`);
         delete currentPayload.p_k;
+        continue;
+      }
+    }
+
+    if (errMsg.includes('associates_username_key') || (errMsg.includes('duplicate key') && errMsg.includes('username'))) {
+      if (currentPayload && currentPayload.username !== undefined) {
+        const fallbackUniqueUsername = `${String(currentPayload.username).replace(/_[0-9]+$/, '')}_${Date.now()}`;
+        console.warn(`[SUPABASE ADAPTER] Table '${tableName}' hit username unique constraint. Regenerating username to ${fallbackUniqueUsername} and retrying...`);
+        currentPayload.username = fallbackUniqueUsername;
         continue;
       }
     }
@@ -837,10 +846,19 @@ export function mapAssociateToDbPayload(associate: Associate): any {
   const typeTag = `account_type:${associate.accountType || 'both'}`;
   filteredPerms.push(typeTag as any);
 
+  const safeId = toSafeDbId(associate.id);
+  const isNoAccount = associate.accountType === 'seller_only' || associate.accountType === 'neither';
+
+  // For associates without a login account, ensure username and password are safe and guaranteed unique
+  let safeUsername = associate.username?.trim();
+  if (isNoAccount || !safeUsername) {
+    safeUsername = `seller_${safeId || Date.now()}`;
+  }
+
   return {
-    id: associate.id,
+    id: safeId,
     name: associate.name,
-    username: associate.username,
+    username: safeUsername,
     password: associate.password || associate.pin || '1001',
     pin: associate.pin || associate.password || '1001',
     role: associate.role,

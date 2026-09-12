@@ -352,10 +352,15 @@ export const AssociatesView: React.FC = () => {
         ? 'account_only'
         : 'neither');
 
+    const isWithoutAccount = resolvedAccountType === 'seller_only' || resolvedAccountType === 'neither';
+    const displayUsername = isWithoutAccount
+      ? ''
+      : (assoc.username && !assoc.username.startsWith('seller_') ? assoc.username : assoc.name.split(' ')[0].toLowerCase());
+
     setFormData({
       name: assoc.name,
-      username: assoc.username || assoc.name.split(' ')[0].toLowerCase(),
-      password: assoc.password || assoc.pin || '',
+      username: displayUsername,
+      password: isWithoutAccount ? '' : (assoc.password || assoc.pin || ''),
       pin: assoc.pin || '',
       role: assoc.role,
       accountType: resolvedAccountType,
@@ -405,6 +410,26 @@ export const AssociatesView: React.FC = () => {
     if (isAccountAllowed) {
       cleanUsername = formData.username.trim() || formData.name.trim().toLowerCase().replace(/\s+/g, '');
       cleanPassword = formData.password.trim() || formData.pin || '1234';
+
+      // Check if username is already taken by another associate
+      const isDuplicate = associates.some(
+        (a) =>
+          a.id !== editingAssociate?.id &&
+          (a.accountType === 'both' || a.accountType === 'account_only' || !a.accountType) &&
+          a.username &&
+          a.username.trim().toLowerCase() === cleanUsername.toLowerCase()
+      );
+
+      if (isDuplicate) {
+        alert(`اسم المستخدم "${cleanUsername}" مستخدم بالفعل لموظف آخر. يرجى اختيار اسم مستخدم مختلف.`);
+        return;
+      }
+    } else {
+      // For associates without a login account (seller_only or neither), generate a unique identifier
+      // so it never causes unique constraint violations in Supabase
+      const uniqueSuffix = editingAssociate ? editingAssociate.id.replace(/[^a-zA-Z0-9]/g, '_') : Date.now();
+      cleanUsername = `seller_${uniqueSuffix}`;
+      cleanPassword = formData.pin || '1234';
     }
 
     if (isSellerAllowed) {

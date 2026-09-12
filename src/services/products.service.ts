@@ -727,11 +727,12 @@ export async function getNextUniqueProductCode(
 ): Promise<{ sku: string; barcode: string }> {
   let maxCode = 24630;
 
-  // 1. Fetch max numeric id from Supabase
+  // 1. Fetch max numeric id from Supabase (filtering out large non-standard IDs)
   try {
     const { data } = await supabase
       .from('products')
       .select('id')
+      .lt('id', 10000000)
       .order('id', { ascending: false })
       .limit(1);
     if (data && data.length > 0 && data[0]?.id) {

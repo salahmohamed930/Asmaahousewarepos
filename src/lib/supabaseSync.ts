@@ -372,11 +372,21 @@ export function mapDbProductToProduct(p: any): Product {
     ? String(p.id)
     : (p.sku ? String(p.sku) : (p.barcode ? String(p.barcode) : `prod_${Math.random().toString(36).substring(2, 9)}`));
 
-  const allBarcodes: string[] = Array.isArray(p.barcodes)
-    ? p.barcodes.map(String).filter(Boolean)
+  // Filter out any legacy p_k serial numbers that might have been stored in the barcodes column
+  const rawPkStr = (p.p_k !== null && p.p_k !== undefined) ? String(p.p_k).trim() : null;
+
+  const rawBarcodes: string[] = Array.isArray(p.barcodes)
+    ? p.barcodes.map(String).map((s: string) => s.trim()).filter(Boolean)
     : typeof p.barcodes === 'string'
       ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
+
+  // Deduplicate and strip out legacy p_k
+  const allBarcodes: string[] = Array.from(
+    new Set(
+      rawBarcodes.filter((b) => !rawPkStr || b !== rawPkStr)
+    )
+  );
 
   // Primary barcode: direct barcode column -> first item in barcodes array -> p.sku -> safeId
   // (NOTE: p_k is strictly a serial number, never used as a barcode or queried/modified)
@@ -411,6 +421,8 @@ export function mapDbProductToProduct(p: any): Product {
 }
 
 export function mapProductToDbPayload(product: Product): any {
+  const pkStr = (product.p_k !== null && product.p_k !== undefined) ? String(product.p_k).trim() : null;
+
   const allBarcodes: string[] = Array.from(
     new Set(
       [
@@ -418,7 +430,7 @@ export function mapProductToDbPayload(product: Product): any {
         ...(Array.isArray(product.barcodes) ? product.barcodes : []),
       ]
         .map((b) => (b ? String(b).trim() : ''))
-        .filter(Boolean)
+        .filter((b) => Boolean(b) && (!pkStr || b !== pkStr))
     )
   );
 

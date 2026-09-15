@@ -379,7 +379,7 @@ export const CatalogView: React.FC = () => {
     return () => clearTimeout(timer);
   }, [formData.barcode, isModalOpen, editingProduct?.id]);
 
-  // Generate unique codes for single add/edit product
+  // Generate unique codes for single add/edit product (Generates SKU ONLY)
   const handleGenerateUniqueCodes = async () => {
     setIsGeneratingCode(true);
     try {
@@ -387,13 +387,10 @@ export const CatalogView: React.FC = () => {
       setFormData((prev) => ({
         ...prev,
         sku: next.sku,
-        barcode: next.barcode,
-        barcodes: next.barcode ? [next.barcode, ...(prev.barcodes || []).filter((b) => b !== prev.barcode)] : prev.barcodes,
       }));
       setSkuConflict(null);
-      setBarcodeConflict(null);
     } catch (e) {
-      console.error('Error generating unique codes:', e);
+      console.error('Error generating unique SKU:', e);
     } finally {
       setIsGeneratingCode(false);
     }
@@ -403,7 +400,6 @@ export const CatalogView: React.FC = () => {
     const usedCodes = new Set<string>();
     bulkAddRows.forEach((r) => {
       if (r.sku) usedCodes.add(String(r.sku).trim());
-      if (r.barcode) usedCodes.add(String(r.barcode).trim());
     });
 
     const nextCode = await getNextUniqueProductCode(bulkAddRows.length, usedCodes);
@@ -412,7 +408,7 @@ export const CatalogView: React.FC = () => {
       {
         name: '',
         sku: nextCode.sku,
-        barcode: nextCode.barcode,
+        barcode: '',
         category: lastChosenCategory,
         cost: 0,
         priceCash: 0,
@@ -428,7 +424,6 @@ export const CatalogView: React.FC = () => {
     bulkAddRows.forEach((r, i) => {
       if (i !== index) {
         if (r.sku) usedCodes.add(String(r.sku).trim());
-        if (r.barcode) usedCodes.add(String(r.barcode).trim());
       }
     });
 
@@ -438,7 +433,6 @@ export const CatalogView: React.FC = () => {
       updated[index] = {
         ...updated[index],
         sku: nextCode.sku,
-        barcode: nextCode.barcode,
       };
       return updated;
     });
@@ -457,7 +451,7 @@ export const CatalogView: React.FC = () => {
         {
           name: '',
           sku: nextCode.sku,
-          barcode: nextCode.barcode,
+          barcode: '',
           category: lastChosenCategory,
           cost: 0,
           priceCash: 0,
@@ -523,7 +517,7 @@ export const CatalogView: React.FC = () => {
 
     for (const row of bulkAddRows) {
       const rowSku = row.sku?.trim() || '';
-      const rowBarcode = row.barcode?.trim() || rowSku;
+      const rowBarcode = row.barcode?.trim() || '';
       const res = await createProduct({
         id: rowSku || undefined,
         name: row.name,
@@ -558,7 +552,7 @@ export const CatalogView: React.FC = () => {
       setFormData({
         name: '',
         sku: nextCode.sku,
-        barcode: nextCode.barcode,
+        barcode: '',
         category: lastChosenCategory,
         priceCash: 0,
         priceInstallment: 0,
@@ -567,7 +561,7 @@ export const CatalogView: React.FC = () => {
         stock: 10,
         image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
         description: '',
-        barcodes: nextCode.barcode ? [nextCode.barcode] : [],
+        barcodes: [],
       });
       setSkuConflict(null);
       setBarcodeConflict(null);
@@ -653,7 +647,7 @@ export const CatalogView: React.FC = () => {
       id: editingProduct?.id || (formData.sku?.trim() ? formData.sku.trim() : undefined),
       name: formData.name,
       sku: formData.sku?.trim() || '',
-      barcode: formData.barcode?.trim() || formData.sku?.trim() || '',
+      barcode: formData.barcode?.trim() || '',
       category: formData.category,
       priceCash: Number(formData.priceCash),
       priceInstallment: Number(formData.priceInstallment),
@@ -662,7 +656,9 @@ export const CatalogView: React.FC = () => {
       stock: Number(formData.stock),
       image: formData.image,
       description: formData.description,
-      barcodes: formData.barcodes || (formData.barcode ? [formData.barcode] : []),
+      barcodes: formData.barcodes?.length
+        ? formData.barcodes.filter(Boolean)
+        : (formData.barcode?.trim() ? [formData.barcode.trim()] : []),
     };
 
     if (editingProduct) {
@@ -1570,10 +1566,10 @@ export const CatalogView: React.FC = () => {
                       onClick={handleGenerateUniqueCodes}
                       disabled={isGeneratingCode}
                       className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 bg-stone-900 border border-stone-800 hover:border-amber-500/50 px-2 py-0.5 rounded-lg transition-colors"
-                      title="إنشاء كود SKU وباركود جديدين مميزين وغير مكررين"
+                      title="توليد كود SKU فريد (6 إلى 7 أرقام)"
                     >
                       <Sparkles className={`w-3 h-3 ${isGeneratingCode ? 'animate-spin' : ''}`} />
-                      <span>توليد كود تلقائي فريد</span>
+                      <span>توليد SKU تلقائي</span>
                     </button>
                   </div>
                   <input
@@ -1597,9 +1593,11 @@ export const CatalogView: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-stone-300">الباركود الرئيسي</label>
+                    <span className="text-[10px] text-stone-500">(اختياري - امسح بالباركود إذا وُجد)</span>
                   </div>
                   <input
                     type="text"
+                    placeholder="اتركه فارغاً إذا لم يتوفر باركود للمنتج..."
                     value={formData.barcode}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                     className={`w-full bg-stone-950 border rounded-xl px-3 py-2 text-xs font-mono focus:outline-none ${
@@ -1865,7 +1863,7 @@ export const CatalogView: React.FC = () => {
                       <th className="py-2 px-2 text-center w-8">#</th>
                       <th className="py-2 px-2 min-w-[150px]">اسم الصنف *</th>
                       <th className="py-2 px-2 min-w-[120px]">كود الصنف (SKU)</th>
-                      <th className="py-2 px-2 min-w-[130px]">الباركود الرئيسي</th>
+                      <th className="py-2 px-2 min-w-[130px]">الباركود (اختياري)</th>
                       <th className="py-2 px-2 min-w-[110px]">القسم / التصنيف</th>
                       <th className="py-2 px-2 w-20 text-center">التكلفة</th>
                       <th className="py-2 px-2 w-20 text-center text-emerald-400">كاش</th>
@@ -1924,7 +1922,7 @@ export const CatalogView: React.FC = () => {
                             <div className="flex items-center gap-1">
                               <input
                                 type="text"
-                                placeholder="باركود..."
+                                placeholder="باركود (اختياري)..."
                                 value={row.barcode}
                                 onChange={(e) => handleBulkAddRowChange(index, 'barcode', e.target.value)}
                                 className={`w-full bg-stone-950 border ${

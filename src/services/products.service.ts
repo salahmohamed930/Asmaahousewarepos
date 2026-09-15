@@ -650,7 +650,7 @@ export async function checkProductCodeConflict(
   excludeProductId?: string
 ): Promise<{ exists: boolean; conflictingProduct?: { id: string; name: string; sku: string; barcode: string } | null }> {
   const clean = code?.trim();
-  if (!clean) return { exists: false, conflictingProduct: null };
+  if (!clean || isPlaceholderProductCode(clean)) return { exists: false, conflictingProduct: null };
 
   const cleanLower = clean.toLowerCase();
 
@@ -661,9 +661,9 @@ export async function checkProductCodeConflict(
         if (excludeProductId && String(p.id) === String(excludeProductId)) return false;
         return Boolean(
           String(p.id).toLowerCase() === cleanLower ||
-          p.sku?.toLowerCase() === cleanLower ||
-          p.barcode?.toLowerCase() === cleanLower ||
-          (Array.isArray(p.barcodes) && p.barcodes.some((b) => b?.toLowerCase() === cleanLower))
+          (p.sku && !isPlaceholderProductCode(p.sku) && p.sku.toLowerCase() === cleanLower) ||
+          (p.barcode && !isPlaceholderProductCode(p.barcode) && p.barcode.toLowerCase() === cleanLower) ||
+          (Array.isArray(p.barcodes) && p.barcodes.some((b) => b && !isPlaceholderProductCode(b) && b.toLowerCase() === cleanLower))
         );
       })
       .first();
@@ -722,9 +722,9 @@ export async function checkProductCodeConflict(
 }
 
 /**
- * 10. Generate a guaranteed unique product code (6 or 7 digits SKU & Barcode)
- * Starts from 6 digits (>= 100000) or steps sequentially after the highest existing ID/SKU,
- * ensuring no collisions and easy printing on thermal barcode labels.
+ * 10. Generate a guaranteed unique product code (6 or 7 digits SKU only)
+ * Starts from 6 digits (>= 100000) or steps sequentially after the highest existing ID/SKU.
+ * Generates ONLY the SKU (product code) and leaves the primary barcode empty to avoid conflicts and code duplication.
  */
 export async function getNextUniqueProductCode(
   offset: number = 0,
@@ -769,28 +769,25 @@ export async function getNextUniqueProductCode(
   // 3. Increment sequentially with offset (guarantees 6 or 7 digits)
   let candidateNum = Math.max(100000, maxCode + 1 + offset);
   let sku = String(candidateNum);
-  // Default barcode is the same 6/7 digit code for clean and easy label printing
-  let barcode = sku;
 
-  // 4. Ensure candidate doesn't conflict with excludeCodes or DB
+  // 4. Ensure candidate SKU doesn't conflict with excludeCodes, existing SKUs, or DB IDs
   let attempts = 0;
   while (attempts < 200) {
-    const inExclude = excludeCodes.has(sku) || excludeCodes.has(barcode);
+    const inExclude = excludeCodes.has(sku);
     if (!inExclude) {
       const skuConflict = await checkProductCodeConflict(sku);
-      const barcodeConflict = await checkProductCodeConflict(barcode);
       const idConflict = await checkProductIdConflict(sku);
-      if (!skuConflict.exists && !barcodeConflict.exists && !idConflict.exists) {
+      if (!skuConflict.exists && !idConflict.exists) {
         break;
       }
     }
     candidateNum++;
     sku = String(candidateNum);
-    barcode = sku;
     attempts++;
   }
 
-  return { sku, barcode };
+  // We generate ONLY the SKU; barcode remains an empty string to avoid code collisions
+  return { sku, barcode: '' };
 }
 
 export interface DuplicateCodeGroup {

@@ -388,13 +388,11 @@ export function mapDbProductToProduct(p: any): Product {
     )
   );
 
-  // Primary barcode: direct barcode column -> first item in barcodes array -> p.sku -> safeId
-  // (NOTE: p_k is strictly a serial number, never used as a barcode or queried/modified)
-  const primaryBarcode = (p.barcode ? String(p.barcode) : null)
-    || (allBarcodes.length > 0 ? allBarcodes[0] : null)
-    || (p.sku ? String(p.sku) : null)
-    || safeId
-    || '000000';
+  // Primary barcode: direct barcode column -> first item in barcodes array -> empty string
+  // (Never fall back to p.sku or safeId to prevent SKU/barcode conflicts and unwanted barcode duplication)
+  const primaryBarcode = (p.barcode ? String(p.barcode).trim() : null)
+    || (allBarcodes.length > 0 ? allBarcodes[0] : '')
+    || '';
 
   // SKU / Item Code ("كود الصنف"):
   const resolvedSku = String(p.sku ?? safeId ?? 'SKU-000');

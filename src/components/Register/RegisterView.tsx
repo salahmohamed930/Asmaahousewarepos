@@ -33,6 +33,7 @@ import ReceiptModal from './ReceiptModal';
 import { ReturnInvoiceModal } from './ReturnInvoiceModal';
 import { InvoiceDetailModal } from '../Common/InvoiceDetailModal';
 import { matchesArabicQuery } from '../../utils/textUtils';
+import { printInvoiceReceipt } from '../../utils/receiptPrinter';
 
 export const RegisterView: React.FC = () => {
   const {
@@ -62,6 +63,7 @@ export const RegisterView: React.FC = () => {
     cancelEditingTransaction,
     startNewInvoice,
     syncNow,
+    settings,
   } = usePOS();
 
   const canManageExpenses = hasPermission('manage_expenses');
@@ -207,6 +209,46 @@ export const RegisterView: React.FC = () => {
   const [completedTransaction, setCompletedTransaction] = useState<Transaction | null>(null);
   const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
   const [addedAnimationId, setAddedAnimationId] = useState<string | null>(null);
+  const [printStatusToast, setPrintStatusToast] = useState<{
+    receiptNumber: string;
+    message: string;
+    type?: 'loading' | 'success' | 'info';
+  } | null>(null);
+
+  // Trigger silent invoice printing
+  const triggerSilentPrint = async (tx: Transaction) => {
+    setPrintStatusToast({
+      receiptNumber: tx.receiptNumber,
+      message: `تم إتمام الفاتورة #${tx.receiptNumber} وجاري طباعتها صامتاً...`,
+      type: 'loading',
+    });
+    try {
+      const res = await printInvoiceReceipt(tx, {
+        settings,
+        associates,
+        customers,
+        receiptType: settings?.printSettings?.receiptType || 'thermal',
+      });
+      setPrintStatusToast({
+        receiptNumber: tx.receiptNumber,
+        message: res.usedDirect
+          ? `✅ تمت الطباعة الصامتة المباشرة للفاتورة #${tx.receiptNumber}`
+          : `✅ تم إرسال الفاتورة #${tx.receiptNumber} للطباعة الصامتة`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      console.error('Silent print failed:', err);
+      setPrintStatusToast({
+        receiptNumber: tx.receiptNumber,
+        message: `تم إتمام الفاتورة #${tx.receiptNumber}`,
+        type: 'info',
+      });
+    } finally {
+      setTimeout(() => {
+        setPrintStatusToast(null);
+      }, 3500);
+    }
+  };
 
   // Seller PIN input state inside catalog
   const [sellerPinInput, setSellerPinInput] = useState<string>(currentAssociate?.pin || '');
@@ -337,7 +379,12 @@ export const RegisterView: React.FC = () => {
         }, 50);
       } else if (action === 'print_last_receipt') {
         if (transactions.length > 0) {
-          setCompletedTransaction(transactions[0]);
+          const isSilent = settings?.printSettings?.silentPrintInvoice !== false;
+          if (isSilent) {
+            triggerSilentPrint(transactions[0]);
+          } else {
+            setCompletedTransaction(transactions[0]);
+          }
         } else {
           alert('لا توجد فواتير سابقة لطباعتها حالياً.');
         }
@@ -1319,9 +1366,16 @@ export const RegisterView: React.FC = () => {
                                     <span>فتح / تعديل</span>
                                   </button>
                                   <button
-                                    onClick={() => setCompletedTransaction(tx)}
+                                    onClick={() => {
+                                      const isSilent = settings?.printSettings?.silentPrintInvoice !== false;
+                                      if (isSilent) {
+                                        triggerSilentPrint(tx);
+                                      } else {
+                                        setCompletedTransaction(tx);
+                                      }
+                                    }}
                                     className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-[11px] flex items-center space-x-1 space-x-reverse transition-colors"
-                                    title="عرض وطباعة الفاتورة"
+                                    title="طباعة الفاتورة صامتاً"
                                   >
                                     <Printer className="w-3.5 h-3.5" />
                                     <span>طباعة</span>
@@ -1832,11 +1886,17 @@ export const RegisterView: React.FC = () => {
         onClose={() => setIsPaymentOpen(false)}
         onSuccess={(tx) => {
           setIsPaymentOpen(false);
-          setCompletedTransaction(tx);
+          const isSilent = settings?.printSettings?.silentPrintInvoice !== false;
+          if (isSilent) {
+            // Cancel receipt modal screen and print silently!
+            triggerSilentPrint(tx);
+          } else {
+            setCompletedTransaction(tx);
+          }
         }}
       />
 
-      {/* Receipt Modal */}
+      {/* Receipt Modal (only shown if silent printing is explicitly disabled) */}
       <ReceiptModal
         transaction={completedTransaction}
         onClose={() => setCompletedTransaction(null)}
@@ -1851,7 +1911,12 @@ export const RegisterView: React.FC = () => {
           if (!returningTransaction) return;
           const returnReceipt = await returnTransaction(returningTransaction.id, returnedItems);
           if (returnReceipt) {
-            setCompletedTransaction(returnReceipt);
+            const isSilent = settings?.printSettings?.silentPrintInvoice !== false;
+            if (isSilent) {
+              triggerSilentPrint(returnReceipt);
+            } else {
+              setCompletedTransaction(returnReceipt);
+            }
           }
         }}
       />
@@ -1996,6 +2061,26 @@ export const RegisterView: React.FC = () => {
           transaction={selectedTxForDetail}
           onClose={() => setSelectedTxForDetail(null)}
         />
+      )}
+
+      {/* Floating Silent Print Notification Toast */}
+      {printStatusToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] bg-stone-900/95 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <Printer className={`w-4 h-4 ${printStatusToast.type === 'loading' ? 'animate-pulse' : ''}`} />
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] font-black text-emerald-400">الطباعة الصامتة للفاتورة</p>
+            <p className="text-xs text-stone-200 font-bold">{printStatusToast.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPrintStatusToast(null)}
+            className="text-stone-400 hover:text-white p-1 rounded-lg hover:bg-stone-800 transition-colors mr-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );

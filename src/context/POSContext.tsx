@@ -275,6 +275,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showLogo: false,
       receiptType: 'thermal' as const,
       directPrintEnabled: true,
+      silentPrintInvoice: true,
       invoicePrinterName: '',
       barcodePrinterName: '',
       invoiceCopies: 1,

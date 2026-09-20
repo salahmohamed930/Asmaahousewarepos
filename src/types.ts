@@ -274,6 +274,7 @@ export interface PrintSettings {
 
   // Direct Printing (QZ Tray / Local Bridge) Settings
   directPrintEnabled?: boolean;
+  silentPrintInvoice?: boolean; // تفعيل الطباعة الصامتة الفورية للفاتورة وتخطي شاشة المعاينة
   invoicePrinterName?: string;
   barcodePrinterName?: string;
   invoiceCopies?: number;

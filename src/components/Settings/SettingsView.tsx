@@ -951,6 +951,26 @@ export const SettingsView: React.FC = () => {
                 />
               </div>
 
+              {/* Silent Print & Bypass Receipt Modal */}
+              <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-amber-500/30 bg-amber-950/10">
+                <div>
+                  <span className="text-xs font-extrabold text-amber-300 block">
+                    الطباعة الصامتة الفورية وتخطي شاشة معاينة الفاتورة بعد الدفع
+                  </span>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    إلغاء شاشة طباعة الفاتورة الثانية بعد الدفع، وإرسال الفاتورة تلقائياً للطباعة الصامتة بمجرد الضغط على إتمام عملية البيع.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.printSettings.silentPrintInvoice !== false}
+                  onChange={(e) =>
+                    handlePrintSettingChange('silentPrintInvoice', e.target.checked)
+                  }
+                  className="w-5 h-5 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
+                />
+              </div>
+
               {/* Discover Windows Printers Button */}
               <div>
                 <button

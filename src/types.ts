@@ -272,8 +272,10 @@ export interface PrintSettings {
   receiptType: 'thermal' | 'a4';
   facebookUrl?: string;
 
-  // Direct Printing (QZ Tray / Local Bridge) Settings
+  // Direct Printing (QZ Tray / Local Bridge / Kiosk) Settings
   directPrintEnabled?: boolean;
+  directPrintMethod?: 'kiosk' | 'qz-tray'; // طريقة الطباعة الصامتة: وضع Kiosk لكروم (بدون برامج) أو QZ Tray
+  suppressWindowsPrintDialog?: boolean; // منع ظهور نافذة ويندوز إذا تعذرت الطباعة الصامتة
   silentPrintInvoice?: boolean; // تفعيل الطباعة الصامتة الفورية للفاتورة وتخطي شاشة المعاينة
   invoicePrinterName?: string;
   barcodePrinterName?: string;

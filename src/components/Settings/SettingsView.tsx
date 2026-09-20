@@ -49,6 +49,7 @@ import {
   Layers,
   ArrowRightLeft,
   ScanSearch,
+  Download,
 } from 'lucide-react';
 
 export type SettingsTabId =
@@ -196,6 +197,49 @@ export const SettingsView: React.FC = () => {
     } finally {
       setIsSearchingPrinters(false);
     }
+  };
+
+  const handleDownloadKioskLauncher = () => {
+    const appUrl = window.location.href;
+    const batContent = `@echo off
+chcp 65001 > nul
+title تشغيل كاشير أسماء للأدوات المنزلية - وضع الطباعة الصامتة
+echo ===================================================================
+echo   تشغيل كاشير أسماء للأدوات المنزلية - وضع الطباعة الصامتة المباشرة
+echo ===================================================================
+echo.
+echo جاري تشغيل المتصفح وتفعيل الطباعة الصامتة المباشرة بدون أي نوافذ...
+
+:: 1. تشغيل عبر Google Chrome
+if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (
+    start "" "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --app="${appUrl}"
+    exit
+)
+if exist "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" (
+    start "" "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --app="${appUrl}"
+    exit
+)
+start "" "chrome.exe" --kiosk-printing --app="${appUrl}"
+if %errorlevel% equ 0 exit
+
+:: 2. تشغيل عبر Microsoft Edge (مدمج في كل أجهزة ويندوز 10/11)
+if exist "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" (
+    start "" "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" --kiosk-printing --app="${appUrl}"
+    exit
+)
+start "" "msedge.exe" --kiosk-printing --app="${appUrl}"
+exit
+`;
+
+    const blob = new Blob([batContent], { type: 'application/bat;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'تشغيل_الكاشير_طباعة_صامتة.bat';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleTestInvoicePrinter = async () => {
@@ -931,7 +975,106 @@ export const SettingsView: React.FC = () => {
                 )}
               </div>
 
-              {/* Master Direct Printing Toggle */}
+              {/* Method Selection: Kiosk Printing (No software) vs QZ Tray */}
+              <div className="p-4 bg-stone-950 rounded-xl border border-stone-850 space-y-3">
+                <label className="block text-xs font-extrabold text-stone-200">
+                  طريقة الطباعة الصامتة المباشرة (Direct Print Engine):
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handlePrintSettingChange('directPrintMethod', 'kiosk')}
+                    className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between ${
+                      (settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk'
+                        ? 'bg-amber-600/15 border-amber-500 text-amber-300 shadow-md'
+                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <span className="font-extrabold text-xs">وضع Kiosk Printing (جوجل كروم)</span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold">
+                        موصى به (بدون برامج)
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-stone-400">
+                      طباعة فورية وصامتة 100% مباشرة إلى طابعة الفواتير الافتراضية بدون تثبيت QZ Tray أو أي برامج أخرى نهائياً.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePrintSettingChange('directPrintMethod', 'qz-tray')}
+                    className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between ${
+                      settings.printSettings.directPrintMethod === 'qz-tray'
+                        ? 'bg-amber-600/15 border-amber-500 text-amber-300 shadow-md'
+                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <span className="font-extrabold text-xs">برنامج QZ Tray</span>
+                      <span className="text-[10px] bg-stone-800 text-stone-400 px-1.5 py-0.5 rounded font-bold">
+                        برنامج وسيط
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-stone-400">
+                      يتطلب تشغيل برنامج QZ Tray بالخلفية بجوار الساعة لتوجيه الطباعة لطابعة معينة بالاسم.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Kiosk Mode Fast Launcher Banner */}
+              {(settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk' && (
+                <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 text-right">
+                      <h4 className="text-xs font-black text-amber-300">
+                        الحل الأسهل والأسرع للطباعة الصامتة بدون QZ Tray (Kiosk Printing):
+                      </h4>
+                      <p className="text-[11px] text-stone-300 leading-relaxed mt-1">
+                        متصفح Google Chrome و Microsoft Edge يحتويان على ميزة مدمجة تسمى <code className="bg-stone-900 px-1.5 py-0.5 rounded text-amber-400 font-mono">--kiosk-printing</code> تقوم بطباعة كل الفواتير صامتاً وفوراً للطابعة الافتراضية بدون فتح أي نافذة على الإطلاق!
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadKioskLauncher}
+                      className="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-98"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>تحميل اختصار تشغيل الكاشير للطباعة الصامتة (.bat)</span>
+                    </button>
+                    <span className="text-[11px] text-stone-400">
+                      (احفظ الملف على سطح المكتب وشغّل منه الكاشير دائماً لتفعيل الطباعة الصامتة تلقائياً)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Suppress Windows Print Dialog Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-stone-850">
+                <div>
+                  <span className="text-xs font-extrabold text-stone-200 block">
+                    كتم نافذة طباعة الويندوز نهائياً (عدم إظهار نافذة الطباعة إذا تعذر الاتصال)
+                  </span>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    عند التفعيل، لن تظهر نافذة طباعة الويندوز المزعجة أبداً، وسيتم إرسال الطباعة فقط عبر القناة الصامتة.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.printSettings.suppressWindowsPrintDialog === true}
+                  onChange={(e) =>
+                    handlePrintSettingChange('suppressWindowsPrintDialog', e.target.checked)
+                  }
+                  className="w-5 h-5 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
+                />
+              </div>
               <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-stone-850">
                 <div>
                   <span className="text-xs font-extrabold text-stone-200 block">

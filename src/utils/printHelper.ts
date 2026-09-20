@@ -13,6 +13,7 @@ export interface PrintOptions {
   docType?: PrintDocumentType; // 'invoice' | 'barcode'
   printSettings?: PrintSettings;
   onFallbackUsed?: (reason: string) => void;
+  suppressBrowserDialog?: boolean;
 }
 
 /**
@@ -147,7 +148,20 @@ export async function smartPrintHtml(
       ? printSettings?.invoicePaperSize || '80mm'
       : printSettings?.barcodePaperSize || '38x25mm';
 
-  // Attempt direct silent printing if enabled and target printer name exists
+  const directMethod = printSettings?.directPrintMethod || 'kiosk'; // default to kiosk as primary zero-dependency method
+  const shouldSuppressDialog = printSettings?.suppressWindowsPrintDialog === true || options?.suppressBrowserDialog === true;
+
+  // 1. If method is explicitly 'kiosk' (Browser native silent printing via --kiosk-printing)
+  if (directMethod === 'kiosk') {
+    printHtmlDirect(htmlContent, options);
+    return {
+      usedDirect: true,
+      success: true,
+      message: 'تم إرسال الفاتورة عبر وضع الطباعة الصامتة (Kiosk Printing).',
+    };
+  }
+
+  // 2. If method is 'qz-tray', attempt direct silent printing via QZ Tray service
   if (isDirectEnabled && targetPrinterName && targetPrinterName.trim()) {
     let isActive = qzPrinterService.isQzActive();
     if (!isActive) {
@@ -173,18 +187,27 @@ export async function smartPrintHtml(
           } (${targetPrinterName}).`,
         };
       } else {
-        const fallbackReason = `تعذر الطباعة المباشرة على "${targetPrinterName}": ${res.error}. جاري التوجيه للطباعة عبر نافذة الويندوز.`;
+        const fallbackReason = `تعذر الطباعة عبر QZ Tray على "${targetPrinterName}": ${res.error}.`;
         if (options?.onFallbackUsed) {
           options.onFallbackUsed(fallbackReason);
         }
       }
     } else {
       const fallbackReason =
-        'خدمة الطباعة المباشرة QZ Tray غير مشغلة على الويندوز. تم فتح نافذة الطباعة القياسية.';
+        'برنامج QZ Tray غير متصل أو غير مشغل على جهاز الويندوز.';
       if (options?.onFallbackUsed) {
         options.onFallbackUsed(fallbackReason);
       }
     }
+  }
+
+  // 3. Fallback: If user chose to suppress the Windows dialog, do not open it!
+  if (shouldSuppressDialog) {
+    return {
+      usedDirect: false,
+      success: false,
+      message: 'تم كتم نافذة طباعة الويندوز تلقائياً حسب إعداداتك.',
+    };
   }
 
   // Fallback to standard browser print
@@ -192,7 +215,7 @@ export async function smartPrintHtml(
   return {
     usedDirect: false,
     success: true,
-    message: 'تم فتح نافذة طباعة الويندوز القياسية.',
+    message: 'تم إرسال أمر الطباعة للمتصفح.',
   };
 }
 

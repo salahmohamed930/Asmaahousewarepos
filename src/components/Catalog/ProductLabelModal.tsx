@@ -954,30 +954,55 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-5 bg-stone-950 border-t border-stone-800 flex items-center justify-between no-print">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold rounded-xl transition-all"
-          >
-            إلغاء
-          </button>
+        <div className="p-5 bg-stone-950 border-t border-stone-800 flex flex-wrap items-center justify-between gap-3 no-print">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold rounded-xl transition-all"
+            >
+              إلغاء
+            </button>
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 border border-stone-800 text-[11px] text-stone-400">
+              <Tag className="w-3.5 h-3.5 text-amber-500" />
+              <span>طابعة الملصقات:</span>
+              <strong className="text-amber-300 font-bold">
+                {settings?.printSettings?.barcodePrinterName || 'Xprinter XP-370B'}
+              </strong>
+              <span className="text-stone-500 font-mono">({config.widthMm}×{config.heightMm} مم)</span>
+            </div>
+          </div>
 
-          <button
-            onClick={handlePrint}
-            disabled={totalPrintCount <= 0}
-            className={`px-6 py-2.5 text-white text-xs font-extrabold rounded-xl shadow-lg flex items-center space-x-2 space-x-reverse transition-all active:scale-95 ${
-              totalPrintCount > 0
-                ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-950'
-                : 'bg-stone-800 text-stone-500 cursor-not-allowed opacity-50 shadow-none'
-            }`}
-          >
-            <Printer className="w-4 h-4" />
-            <span>
-              {isBulk
-                ? `طباعة ${totalPrintCount} ملصق (${targetProducts.length} صنف)`
-                : `طباعة ${totalPrintCount} ملصق الآن`}
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.print();
+              }}
+              disabled={totalPrintCount <= 0}
+              className="px-3.5 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+              title="فتح نافذة اختيار الطابعة لاختيار طابعة XP-370B وتعديل الخيارات"
+            >
+              <Eye className="w-3.5 h-3.5 text-stone-400" />
+              <span>معاينة واختيار الطابعة</span>
+            </button>
+
+            <button
+              onClick={() => handlePrint()}
+              disabled={totalPrintCount <= 0}
+              className={`px-6 py-2.5 text-white text-xs font-extrabold rounded-xl shadow-lg flex items-center space-x-2 space-x-reverse transition-all active:scale-95 ${
+                totalPrintCount > 0
+                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-950'
+                  : 'bg-stone-800 text-stone-500 cursor-not-allowed opacity-50 shadow-none'
+              }`}
+            >
+              <Printer className="w-4 h-4" />
+              <span>
+                {isBulk
+                  ? `طباعة ${totalPrintCount} ملصق (${targetProducts.length} صنف)`
+                  : `طباعة ${totalPrintCount} ملصق الآن`}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 

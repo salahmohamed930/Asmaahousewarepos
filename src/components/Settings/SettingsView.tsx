@@ -158,8 +158,16 @@ if "%ERRORLEVEL%"=="0" (
 )
 
 echo.
-echo [2/3] فحص الطابعات وتأكيد طابعة الفواتير الافتراضية...
+echo [2/3] فحص الطابعات وتعيين طابعة الفواتير الافتراضية...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"$inv = '${settings.printSettings.invoicePrinterName || 'XP-80C'}';" ^
+"if ($inv) {" ^
+"    $found = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like \"*$inv*\" -or $_.Name -like \"*80*\" -or $_.Name -like \"*POS*\" } | Select-Object -First 1;" ^
+"    if ($found) {" ^
+"        (New-Object -ComObject WScript.Network).SetDefaultPrinter($found.Name);" ^
+"        Write-Host ('تم ضبط طابعة الفواتير الافتراضية: [' + $found.Name + ']') -ForegroundColor Green;" ^
+"    }" ^
+"};" ^
 "$pr = Get-CimInstance Win32_Printer | Sort-Object Name;" ^
 "if ($pr) {" ^
 "    Write-Host '-------------------------------------------------------------------------------' -ForegroundColor DarkGray;" ^
@@ -227,6 +235,107 @@ exit
     const link = document.createElement('a');
     link.href = url;
     link.download = 'تشغيل_الكاشير_طباعة_صامتة.bat';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadBarcodeLauncher = () => {
+    const cleanUrl = window.location.origin + (window.location.pathname === '/' ? '' : window.location.pathname);
+    const barcodePrinter = settings.printSettings.barcodePrinterName || 'Xprinter XP-370B';
+    const batContent = `@echo off
+chcp 65001 > nul
+cls
+color 0B
+title نظام كاشير أسماء - تشغيل طابعة ملصقات الباركود
+echo ===============================================================================
+echo        نظام كاشير أسماء - تشغيل طابعة ملصقات الباركود (${barcodePrinter})
+echo ===============================================================================
+echo.
+
+echo [1/3] إغلاق أي متصفح كروم سابق لتطبيق أمر الطباعة المباشرة...
+tasklist /fi "imagename eq chrome.exe" 2>NUL | find /i /n "chrome.exe" >NUL
+if "%ERRORLEVEL%"=="0" (
+    echo تم اكتشاف متصفح كروم مفتوح، جاري إغلاقه لتفعيل طابعة الباركود...
+    taskkill /F /IM chrome.exe /T >nul 2>&1
+    timeout /t 1 /nobreak >nul
+)
+
+echo.
+echo [2/3] ضبط طابعة الباركود (${barcodePrinter}) كطابعة افتراضية في الويندوز...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"$target = '${barcodePrinter}';" ^
+"$p = Get-CimInstance Win32_Printer | Where-Object { $_.Name -like \"*$target*\" -or $_.Name -like \"*370*\" -or $_.Name -like \"*Barcode*\" -or $_.Name -like \"*Label*\" } | Select-Object -First 1;" ^
+"if ($p) {" ^
+"    (New-Object -ComObject WScript.Network).SetDefaultPrinter($p.Name);" ^
+"    Write-Host ('تم ضبط طابعة الباركود: [' + $p.Name + '] كطابعة افتراضية بنجاح.') -ForegroundColor Green;" ^
+"} else {" ^
+"    Write-Host 'تنبيه: لم يتم العثور على طابعة باسم ' $target ', يرجى التأكد من توصيلها بالكمبيوتر.' -ForegroundColor Yellow;" ^
+"};" ^
+"$pr = Get-CimInstance Win32_Printer | Sort-Object Name;" ^
+"if ($pr) {" ^
+"    for ($i=0; $i -lt $pr.Count; $i++) {" ^
+"        $flag = if ($pr[$i].Default) { ' [الطابعة الافتراضية حالياً - تخرج منها ملصقات الباركود]' } else { '' };" ^
+"        $col = if ($pr[$i].Default) { 'Green' } else { 'White' };" ^
+"        Write-Host ('[{0}] {1}{2}' -f ($i+1), $pr[$i].Name, $flag) -ForegroundColor $col;" ^
+"    }" ^
+"}"
+
+echo.
+echo [3/3] إنشاء اختصار دائم لطباعة الباركود على سطح المكتب...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"$desktop = [Environment]::GetFolderPath('Desktop');" ^
+"$shortcutPath = Join-Path $desktop 'كاشير أسماء - ملصقات الباركود.lnk';" ^
+"$ws = New-Object -ComObject WScript.Shell;" ^
+"$s = $ws.CreateShortcut($shortcutPath);" ^
+"$cPath = '';" ^
+"if (Test-Path 'C:\Program Files\Google\Chrome\Application\chrome.exe') { $cPath = 'C:\Program Files\Google\Chrome\Application\chrome.exe' }" ^
+"elseif (Test-Path 'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe') { $cPath = 'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe' }" ^
+"elseif (Test-Path 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe') { $cPath = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' }" ^
+"else { $cPath = 'chrome.exe' };" ^
+"$s.TargetPath = $cPath;" ^
+"$s.Arguments = '--kiosk-printing --app=\"${cleanUrl}\"';" ^
+"$s.IconLocation = $cPath + ',0';" ^
+"$s.Description = 'تشغيل طباعة ملصقات الباركود على طابعة الاستيكر';" ^
+"$s.Save();" ^
+"Write-Host 'تم إنشاء اختصار [كاشير أسماء - ملصقات الباركود] على سطح المكتب بنجاح!' -ForegroundColor Green;"
+
+echo.
+echo ===============================================================================
+echo   جاري تشغيل شاشة النظام... أوامر طباعة الملصقات ستخرج صامتة على طابعة الباركود!
+echo ===============================================================================
+echo.
+
+set "APP_URL=${cleanUrl}"
+set "CHROME_FLAGS=--kiosk-printing --app=%APP_URL%"
+
+if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" %CHROME_FLAGS%
+    exit
+)
+if exist "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" (
+    start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" %CHROME_FLAGS%
+    exit
+)
+if exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" (
+    start "" "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" %CHROME_FLAGS%
+    exit
+)
+if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (
+    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" %CHROME_FLAGS%
+    exit
+)
+
+start "" "chrome.exe" %CHROME_FLAGS%
+exit
+`;
+
+    const blob = new Blob([batContent], { type: 'application/bat;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'تشغيل_طابعة_الباركود.bat';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1218,19 +1327,30 @@ exit
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleTestBarcodePrinter}
-                    disabled={isTestingBarcode}
-                    className="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Tag className="w-3.5 h-3.5" />
-                    <span>
-                      {isTestingBarcode
-                        ? 'جاري طباعة الباركود التجريبي...'
-                        : 'اختبار طابعة الباركود (Test Barcode Printer)'}
-                    </span>
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadBarcodeLauncher}
+                      className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>تحميل مشغل الباركود (.bat)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestBarcodePrinter}
+                      disabled={isTestingBarcode}
+                      className="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Tag className="w-3.5 h-3.5" />
+                      <span>
+                        {isTestingBarcode
+                          ? 'جاري طباعة الباركود...'
+                          : 'اختبار طابعة الباركود'}
+                      </span>
+                    </button>
+                  </div>
 
                   <button
                     type="button"

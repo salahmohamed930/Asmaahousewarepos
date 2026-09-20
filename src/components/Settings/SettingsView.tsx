@@ -1,11 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePOS } from '../../context/POSContext';
 import { getSupabaseKeys } from '../../lib/supabase';
-import { 
-  qzPrinterService, 
-  PrinterServiceStatus,
-  BackendSecurityCheckResult 
-} from '../../services/qzPrinterService';
 import { smartPrintHtml } from '../../utils/printHelper';
 import {
   FUNCTION_KEYS_LIST,
@@ -136,69 +131,10 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  // Direct Printing Service States (QZ Tray)
-  const [printerStatus, setPrinterStatus] = useState<PrinterServiceStatus>(qzPrinterService.getStatus());
-  const [backendSecurity, setBackendSecurity] = useState<BackendSecurityCheckResult | null>(null);
-  const [isCheckingSecurity, setIsCheckingSecurity] = useState<boolean>(false);
-  const [discoveredPrinters, setDiscoveredPrinters] = useState<string[]>([]);
-  const [isSearchingPrinters, setIsSearchingPrinters] = useState<boolean>(false);
+  // Direct Silent Printing States (Chrome / Edge Kiosk Mode)
   const [isTestingInvoice, setIsTestingInvoice] = useState<boolean>(false);
   const [isTestingBarcode, setIsTestingBarcode] = useState<boolean>(false);
   const [printTestResult, setPrintTestResult] = useState<{ success?: boolean; msg: string } | null>(null);
-  const [showQzGuideModal, setShowQzGuideModal] = useState<boolean>(false);
-
-  useEffect(() => {
-    const unsubscribe = qzPrinterService.subscribeStatus((st) => {
-      setPrinterStatus(st);
-    });
-    // Auto connect attempt & backend security check
-    qzPrinterService.connect().catch(() => {});
-    qzPrinterService.checkBackendSecurityStatus().then(setBackendSecurity).catch(() => {});
-    return () => unsubscribe();
-  }, []);
-
-  const handleRefreshSecurityDiagnostics = async () => {
-    setIsCheckingSecurity(true);
-    setPrintTestResult(null);
-    try {
-      const sec = await qzPrinterService.checkBackendSecurityStatus();
-      setBackendSecurity(sec);
-      const conn = await qzPrinterService.connect();
-      if (conn.success) {
-        setPrintTestResult({
-          success: true,
-          msg: 'تم الاتصال ببرنامج QZ Tray والتحقق من الشهادة والتوقيع الأمني بنجاح.',
-        });
-      } else {
-        setPrintTestResult({
-          success: false,
-          msg: conn.error || 'تعذر الاتصال ببرنامج QZ Tray.',
-        });
-      }
-    } finally {
-      setIsCheckingSecurity(false);
-    }
-  };
-
-  const handleDiscoverPrinters = async () => {
-    setIsSearchingPrinters(true);
-    setPrintTestResult(null);
-    try {
-      const res = await qzPrinterService.findPrinters();
-      if (res.success) {
-        setDiscoveredPrinters(res.printers);
-        if (res.printers.length === 0) {
-          setPrintTestResult({ success: false, msg: 'لم يتم العثور على أي طابعات معرفة في نظام Windows.' });
-        } else {
-          setPrintTestResult({ success: true, msg: `تم اكتشاف عدد (${res.printers.length}) طابعة معرفة في الويندوز بنجاح.` });
-        }
-      } else {
-        setPrintTestResult({ success: false, msg: res.error || 'فشل اكتشاف الطابعات.' });
-      }
-    } finally {
-      setIsSearchingPrinters(false);
-    }
-  };
 
   const handleDownloadKioskLauncher = () => {
     const cleanUrl = window.location.origin + (window.location.pathname === '/' ? '' : window.location.pathname);
@@ -208,27 +144,21 @@ cls
 color 0A
 title نظام كاشير أسماء للأدوات المنزلية - الطباعة الصامتة المباشرة
 echo ===============================================================================
-echo        نظام كاشير أسماء للأدوات المنزلية - إعداد وتشغيل الطباعة الصامتة
+echo        نظام كاشير أسماء للأدوات المنزلية - تشغيل الطباعة الصامتة المباشرة
 echo ===============================================================================
 echo.
 
-:: 1. فحص نوافذ جوجل كروم السابقة لتفادي كتم وضع الطباعة الصامتة
+:: 1. إغلاق أي نافذة متصفح سابقة لضمان تفعيل وضع الطباعة الصامتة
+echo [1/3] تهيئة المتصفح لتفعيل وضع الطباعة الصامتة المباشرة بدون نوافذ...
 tasklist /fi "imagename eq chrome.exe" 2>NUL | find /i /n "chrome.exe" >NUL
 if "%ERRORLEVEL%"=="0" (
-    echo [تنبيه هام]: تم اكتشاف نوافذ مفتوحة لمتصفح جوجل كروم.
-    echo وضع الطباعة الصامتة (Kiosk Printing) يتطلب تشغيل كروم بأمر الطباعة الصامتة.
-    echo.
-    echo اضغط (1) لإغلاق كروم المفتوح وتشغيل الكاشير فوراً بوضع الطباعة الصامتة (موصى به جداً)
-    echo اضغط (2) للمتابعة مع فتح ملف تعريف معزول خاص بالكاشير (دون إغلاق صفحاتك الحالية)
-    set /p CHROME_CHOICE="أدخل اختيارك [1 أو 2]: "
-    if "%CHROME_CHOICE%"=="1" (
-        taskkill /F /IM chrome.exe /T >nul 2>&1
-        echo تم إغلاق كروم السابق بنجاح.
-    )
+    echo تم اكتشاف متصفح كروم مفتوح، جاري إغلاقه لتطبيق أمر الطباعة الصامتة فوراً...
+    taskkill /F /IM chrome.exe /T >nul 2>&1
+    timeout /t 1 /nobreak >nul
 )
 
 echo.
-echo [1/3] فحص الطابعات وتحديد طابعة الفواتير الافتراضية...
+echo [2/3] فحص الطابعات وتأكيد طابعة الفواتير الافتراضية...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 "$pr = Get-CimInstance Win32_Printer | Sort-Object Name;" ^
 "if ($pr) {" ^
@@ -236,24 +166,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 "    Write-Host 'الطابعات المعرفة على هذا الجهاز:' -ForegroundColor Yellow;" ^
 "    Write-Host '-------------------------------------------------------------------------------' -ForegroundColor DarkGray;" ^
 "    for ($i=0; $i -lt $pr.Count; $i++) {" ^
-"        $flag = if ($pr[$i].Default) { ' [الطابعة الافتراضية الحالية - تخرج منها الفواتير تلقائياً]' } else { '' };" ^
+"        $flag = if ($pr[$i].Default) { ' [الطابعة الافتراضية - تخرج منها الفواتير صامتة]' } else { '' };" ^
 "        $col = if ($pr[$i].Default) { 'Green' } else { 'White' };" ^
 "        Write-Host ('[{0}] {1}{2}' -f ($i+1), $pr[$i].Name, $flag) -ForegroundColor $col;" ^
 "    }" ^
 "    Write-Host '-------------------------------------------------------------------------------' -ForegroundColor DarkGray;" ^
-"    $ch = Read-Host 'إذا كانت طابعة الفواتير ليست الافتراضية، اكتب رقمها لتعيينها (أو اضغط Enter للإبقاء)';" ^
-"    if ($ch -match '^\d+$') {" ^
-"        $idx = [int]$ch - 1;" ^
-"        if ($idx -ge 0 -and $idx -lt $pr.Count) {" ^
-"            $tName = $pr[$idx].Name;" ^
-"            (New-Object -ComObject WScript.Network).SetDefaultPrinter($tName);" ^
-"            Write-Host ('تم تعيين [ ' + $tName + ' ] كطابعة افتراضية للويندوز بنجاح!') -ForegroundColor Green;" ^
-"        }" ^
-"    }" ^
 "}"
 
 echo.
-echo [2/3] إنشاء اختصار دائم للكاشير على سطح المكتب...
+echo [3/3] إنشاء اختصار دائم للكاشير على سطح المكتب...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 "$desktop = [Environment]::GetFolderPath('Desktop');" ^
 "$shortcutPath = Join-Path $desktop 'كاشير أسماء - طباعة صامتة.lnk';" ^
@@ -265,36 +186,39 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 "elseif (Test-Path 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe') { $cPath = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' }" ^
 "else { $cPath = 'chrome.exe' };" ^
 "$s.TargetPath = $cPath;" ^
-"$dDir = Join-Path [Environment]::GetFolderPath('LocalApplicationData') 'POS_Kiosk_Chrome';" ^
-"$s.Arguments = '--kiosk-printing --disable-print-preview --user-data-dir=\"' + $dDir + '\" --app=\"${cleanUrl}\"';" ^
-"$s.Description = 'تشغيل كاشير أسماء بوضع الطباعة الصامتة المباشرة';" ^
+"$s.Arguments = '--kiosk-printing --app=\"${cleanUrl}\"';" ^
+"$s.IconLocation = $cPath + ',0';" ^
+"$s.Description = 'تشغيل كاشير أسماء بوضع الطباعة الصامتة المباشرة بدون أي نوافذ';" ^
 "$s.Save();" ^
 "Write-Host 'تم إنشاء اختصار [كاشير أسماء - طباعة صامتة] على سطح المكتب بنجاح!' -ForegroundColor Green;"
 
 echo.
-echo [3/3] جاري تشغيل شاشة الكاشير الآن بوضع الطباعة الصامتة...
+echo ===============================================================================
+echo   جاري تشغيل شاشة الكاشير الآن... الفواتير ستطبع صامتة مباشرة بدون نوافذ!
+echo ===============================================================================
 echo.
+
 set "APP_URL=${cleanUrl}"
-set "DATA_DIR=%LOCALAPPDATA%\POS_Kiosk_Chrome"
+set "CHROME_FLAGS=--kiosk-printing --app=%APP_URL%"
 
 if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
-    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" %CHROME_FLAGS%
     exit
 )
 if exist "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" (
-    start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" %CHROME_FLAGS%
     exit
 )
 if exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" (
-    start "" "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    start "" "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" %CHROME_FLAGS%
     exit
 )
 if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (
-    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" %CHROME_FLAGS%
     exit
 )
 
-start "" "chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+start "" "chrome.exe" %CHROME_FLAGS%
 exit
 `;
 
@@ -313,58 +237,39 @@ exit
     setIsTestingInvoice(true);
     setPrintTestResult(null);
     try {
-      const isKiosk = (settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk';
-      if (isKiosk) {
-        const testHtml = `
-          <div style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 10px; direction: rtl; font-size: 11px;">
-            <h3 style="margin: 0 0 5px 0; font-size: 14px; font-weight: 900;">${settings.printSettings.headerText || 'أسماء للأدوات المنزلية'}</h3>
-            <p style="margin: 2px 0; font-weight: 800;">*** تجربة الطباعة الصامتة المباشرة ***</p>
-            <p style="margin: 2px 0; color: #555;">التاريخ: ${new Date().toLocaleString('ar-EG')}</p>
-            <hr style="border: 0; border-top: 1px dashed #000; margin: 8px 0;" />
-            <div style="display: flex; justify-content: space-between; font-weight: 800;">
-              <span>صنف تجريبي</span>
-              <span>100.00 ج.م</span>
-            </div>
-            <hr style="border: 0; border-top: 1px dashed #000; margin: 8px 0;" />
-            <div style="font-size: 13px; font-weight: 900; margin-top: 5px;">
-              الإجمالي: 100.00 ج.م
-            </div>
-            <p style="margin-top: 10px; font-size: 10px; font-weight: bold; color: #2e7d32;">
-              إذا خرج هذا الإيصال صامتاً بدون نوافذ، فالنظام جاهز تماماً للعمل!
-            </p>
+      const testHtml = `
+        <div style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 10px; direction: rtl; font-size: 11px;">
+          <h3 style="margin: 0 0 5px 0; font-size: 14px; font-weight: 900;">${settings.printSettings.headerText || 'أسماء للأدوات المنزلية'}</h3>
+          <p style="margin: 2px 0; font-weight: 800;">*** تجربة الطباعة الصامتة المباشرة ***</p>
+          <p style="margin: 2px 0; color: #555;">التاريخ: ${new Date().toLocaleString('ar-EG')}</p>
+          <hr style="border: 0; border-top: 1px dashed #000; margin: 8px 0;" />
+          <div style="display: flex; justify-content: space-between; font-weight: 800;">
+            <span>صنف تجريبي</span>
+            <span>100.00 ج.م</span>
           </div>
-        `;
-        const res = await smartPrintHtml(testHtml, {
-          docType: 'invoice',
-          printSettings: settings.printSettings,
-          pageTitle: 'تجربة-طباعة-صامتة',
-          isThermalReceipt: true,
-          pageCssSize: (settings.printSettings.invoicePaperSize || '80mm') + ' auto',
-        });
-        if (res.success) {
-          setPrintTestResult({
-            success: true,
-            msg: 'تم إرسال الفاتورة التجريبية للطباعة الصامتة بنجاح! إذا كانت الطابعة الافتراضية متصلة فستخرج فوراً.',
-          });
-        } else {
-          setPrintTestResult({ success: false, msg: res.message || 'تعذر إرسال الطباعة' });
-        }
-        return;
-      }
-
-      const targetPrinter = settings.printSettings.invoicePrinterName;
-      if (!targetPrinter) {
-        alert('يرجى اختيار وتحديد اسم طابعة الفواتير أولاً من القائمة.');
-        return;
-      }
-      const res = await qzPrinterService.testInvoicePrinter(
-        targetPrinter,
-        settings.printSettings.invoicePaperSize || '80mm'
-      );
+          <hr style="border: 0; border-top: 1px dashed #000; margin: 8px 0;" />
+          <div style="font-size: 13px; font-weight: 900; margin-top: 5px;">
+            الإجمالي: 100.00 ج.م
+          </div>
+          <p style="margin-top: 10px; font-size: 10px; font-weight: bold; color: #2e7d32;">
+            إذا خرج هذا الإيصال صامتاً بدون نوافذ، فالنظام جاهز تماماً للعمل!
+          </p>
+        </div>
+      `;
+      const res = await smartPrintHtml(testHtml, {
+        docType: 'invoice',
+        printSettings: settings.printSettings,
+        pageTitle: 'تجربة-طباعة-صامتة',
+        isThermalReceipt: true,
+        pageCssSize: (settings.printSettings.invoicePaperSize || '80mm') + ' auto',
+      });
       if (res.success) {
-        setPrintTestResult({ success: true, msg: `تم إرسال طباعة تجريبية بنجاح إلى طابعة الفواتير (${targetPrinter})!` });
+        setPrintTestResult({
+          success: true,
+          msg: 'تم إرسال الفاتورة التجريبية للطباعة الصامتة بنجاح! إذا كانت الطابعة الافتراضية متصلة فستخرج فوراً.',
+        });
       } else {
-        setPrintTestResult({ success: false, msg: `فشل اختبار طابعة الفواتير: ${res.error}` });
+        setPrintTestResult({ success: false, msg: res.message || 'تعذر إرسال الطباعة' });
       }
     } finally {
       setIsTestingInvoice(false);
@@ -375,43 +280,24 @@ exit
     setIsTestingBarcode(true);
     setPrintTestResult(null);
     try {
-      const isKiosk = (settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk';
-      if (isKiosk) {
-        const testHtml = `
-          <div style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 5px; direction: rtl; font-size: 11px;">
-            <p style="margin: 0; font-size: 12px; font-weight: 900;">ملصق باركود تجريبي</p>
-            <p style="margin: 2px 0; font-weight: 800;">1234567</p>
-            <p style="margin: 0; font-size: 13px; font-weight: 900;">50.00 ج.م</p>
-          </div>
-        `;
-        const res = await smartPrintHtml(testHtml, {
-          docType: 'barcode',
-          printSettings: settings.printSettings,
-          pageTitle: 'تجربة-باركود',
-          isThermalReceipt: true,
-          pageCssSize: (settings.printSettings.barcodePaperSize || '38x25mm') + ' auto',
-        });
-        if (res.success) {
-          setPrintTestResult({ success: true, msg: 'تم إرسال باركود تجريبي للطباعة بنجاح!' });
-        } else {
-          setPrintTestResult({ success: false, msg: res.message || 'تعذر إرسال الطباعة' });
-        }
-        return;
-      }
-
-      const targetPrinter = settings.printSettings.barcodePrinterName;
-      if (!targetPrinter) {
-        alert('يرجى اختيار وتحديد اسم طابعة الباركود والملصقات أولاً من القائمة.');
-        return;
-      }
-      const res = await qzPrinterService.testBarcodePrinter(
-        targetPrinter,
-        settings.printSettings.barcodePaperSize || '38x25mm'
-      );
+      const testHtml = `
+        <div style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 5px; direction: rtl; font-size: 11px;">
+          <p style="margin: 0; font-size: 12px; font-weight: 900;">ملصق باركود تجريبي</p>
+          <p style="margin: 2px 0; font-weight: 800;">1234567</p>
+          <p style="margin: 0; font-size: 13px; font-weight: 900;">50.00 ج.م</p>
+        </div>
+      `;
+      const res = await smartPrintHtml(testHtml, {
+        docType: 'barcode',
+        printSettings: settings.printSettings,
+        pageTitle: 'تجربة-باركود',
+        isThermalReceipt: true,
+        pageCssSize: (settings.printSettings.barcodePaperSize || '38x25mm') + ' auto',
+      });
       if (res.success) {
-        setPrintTestResult({ success: true, msg: `تم إرسال ملصق باركود تجريبي بنجاح إلى طابعة الباركود (${targetPrinter})!` });
+        setPrintTestResult({ success: true, msg: 'تم إرسال ملصق باركود تجريبي للطباعة الصامتة بنجاح!' });
       } else {
-        setPrintTestResult({ success: false, msg: `فشل اختبار طابعة الباركود: ${res.error}` });
+        setPrintTestResult({ success: false, msg: res.message || 'تعذر إرسال الطباعة' });
       }
     } finally {
       setIsTestingBarcode(false);
@@ -770,13 +656,11 @@ exit
   }[] = [
     {
       id: 'printing',
-      label: 'الطباعة المباشرة و QZ Tray',
-      icon: Zap,
-      description: 'طابعات الكاشير والباركود والأمان والتوقيع المشفر',
-      badge: printerStatus.isConnected ? 'متصل' : 'غير متصل',
-      badgeColor: printerStatus.isConnected
-        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-        : 'bg-stone-900 text-stone-400 border border-stone-800',
+      label: 'الطباعة الصامتة المباشرة',
+      icon: Printer,
+      description: 'طابعات الفواتير والباركود والطباعة الفورية بدون نوافذ',
+      badge: 'صامت ومباشر',
+      badgeColor: 'bg-emerald-950 text-emerald-300 border border-emerald-800',
     },
     {
       id: 'receipt',
@@ -967,293 +851,135 @@ exit
         {/* MAIN SETTINGS CONTENT PANEL */}
         <main className="flex-1 w-full min-w-0">
           
-          {/* TAB 1: DIRECT PRINTING & QZ TRAY */}
+          {/* TAB 1: DIRECT SILENT PRINTING */}
           {activeTab === 'printing' && (
             <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-800">
                 <div>
                   <h2 className="text-sm font-black text-amber-500 flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-amber-400" />
-                    <span>نظام الطباعة المباشرة الصامتة (QZ Tray Silent Printing)</span>
+                    <Printer className="w-4 h-4 text-amber-400" />
+                    <span>نظام الطباعة الصامتة المباشرة (Direct Silent Printing)</span>
                   </h2>
                   <p className="text-xs text-stone-400 mt-1">
-                    إرسال أوامر الفواتير وملصقات الباركود إلى طابعات Windows مباشرة دون ظهور نافذة الطباعة.
+                    إرسال الفواتير وملصقات الباركود إلى الطابعات تلقائياً وفورياً بدون ظهور نافذة طباعة الويندوز وبدون أي برامج وسيطة.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={handleRefreshSecurityDiagnostics}
-                    disabled={isCheckingSecurity}
+                    onClick={handleDownloadKioskLauncher}
+                    className="text-stone-100 hover:text-amber-300 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 transition-colors flex items-center gap-1.5 text-xs font-bold shadow-sm"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>تحميل مشغل الكاشير (.bat)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTestInvoicePrinter}
+                    disabled={isTestingInvoice}
                     className="text-stone-300 hover:text-amber-400 px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-750 transition-colors flex items-center gap-1.5 text-xs font-bold border border-stone-700 disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isCheckingSecurity ? 'animate-spin text-amber-400' : ''}`} />
-                    <span>فحص الأمان والاتصال</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowQzGuideModal(true)}
-                    className="text-stone-300 hover:text-amber-400 px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-750 transition-colors flex items-center gap-1.5 text-xs font-bold border border-stone-700"
-                  >
-                    <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                    <span>دليل التشغيل</span>
+                    <Printer className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{isTestingInvoice ? 'جاري الإرسال...' : 'تجربة طباعة فورية'}</span>
                   </button>
                 </div>
               </div>
 
-              {/* 5-Item Security & Connection Diagnostic Card */}
-              <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-stone-200 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    <span>لوحة التشخيص الأمني المتقدم لـ QZ Tray (5 مؤشرات حيوية):</span>
+              {/* Status Overview Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                <div className="p-3 rounded-xl border bg-emerald-950/40 border-emerald-800/60 text-emerald-300 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-emerald-400" />
+                    <span className="font-bold">وضع الطباعة:</span>
+                  </div>
+                  <span className="font-mono font-black text-[11px] bg-emerald-900/50 px-2 py-0.5 rounded text-emerald-200">
+                    صامت مباشر (Kiosk) ✓
                   </span>
-                  <span className="text-[10px] font-mono text-stone-500">RSA-SHA512 Security Layer</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
-                  {/* Item 1: QZ Tray Connected */}
-                  <div className={`p-2.5 rounded-lg border flex items-center justify-between ${
-                    printerStatus.isConnected
-                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                      : 'bg-stone-900 border-stone-800 text-stone-400'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <Zap className={`w-3.5 h-3.5 ${printerStatus.isConnected ? 'text-emerald-400' : 'text-stone-500'}`} />
-                      <span className="font-bold">1. اتصال QZ Tray:</span>
-                    </div>
-                    <span className="font-mono font-black text-[11px]">
-                      {printerStatus.isConnected ? 'متصل بنجاح ✓' : 'غير متصل ✕'}
-                    </span>
+                <div className="p-3 rounded-xl border bg-stone-950 border-stone-800 text-stone-300 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Printer className="w-4 h-4 text-amber-400" />
+                    <span className="font-bold truncate">طابعة الفواتير:</span>
                   </div>
-
-                  {/* Item 2: Certificate Loaded */}
-                  <div className={`p-2.5 rounded-lg border flex items-center justify-between ${
-                    backendSecurity?.hasCertificate || printerStatus.isCertificateLoaded
-                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                      : 'bg-stone-900 border-stone-800 text-stone-400'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <FileCheck className={`w-3.5 h-3.5 ${backendSecurity?.hasCertificate ? 'text-emerald-400' : 'text-stone-500'}`} />
-                      <span className="font-bold">2. شهادة الأمان (Cert):</span>
-                    </div>
-                    <span className="font-mono font-black text-[11px]">
-                      {backendSecurity?.hasCertificate ? 'مُحمّلة (X.509) ✓' : 'غير متوفرة ✕'}
-                    </span>
-                  </div>
-
-                  {/* Item 3: Signing Service Available */}
-                  <div className={`p-2.5 rounded-lg border flex items-center justify-between ${
-                    backendSecurity?.configured
-                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                      : 'bg-stone-900 border-stone-800 text-stone-400'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <KeyRound className={`w-3.5 h-3.5 ${backendSecurity?.configured ? 'text-emerald-400' : 'text-stone-500'}`} />
-                      <span className="font-bold">3. خدمة التوقيع (SHA512):</span>
-                    </div>
-                    <span className="font-mono font-black text-[11px]">
-                      {backendSecurity?.configured ? 'جاهزة ومشفرة ✓' : 'غير مهيأة ✕'}
-                    </span>
-                  </div>
-
-                  {/* Item 4: Selected Invoice Printer */}
-                  <div className={`p-2.5 rounded-lg border flex items-center justify-between ${
-                    settings.printSettings.invoicePrinterName
-                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                      : 'bg-amber-950/30 border-amber-800/40 text-amber-300'
-                  }`}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Printer className="w-3.5 h-3.5 shrink-0" />
-                      <span className="font-bold truncate">4. طابعة الفواتير:</span>
-                    </div>
-                    <span className="font-bold text-[11px] truncate mr-2">
-                      {settings.printSettings.invoicePrinterName || 'لم تُحدد بعد'}
-                    </span>
-                  </div>
-
-                  {/* Item 5: Selected Barcode Printer */}
-                  <div className={`p-2.5 rounded-lg border flex items-center justify-between ${
-                    settings.printSettings.barcodePrinterName
-                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                      : 'bg-amber-950/30 border-amber-800/40 text-amber-300'
-                  }`}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Tag className="w-3.5 h-3.5 shrink-0" />
-                      <span className="font-bold truncate">5. طابعة الباركود:</span>
-                    </div>
-                    <span className="font-bold text-[11px] truncate mr-2">
-                      {settings.printSettings.barcodePrinterName || 'لم تُحدد بعد'}
-                    </span>
-                  </div>
-
-                  {/* Diagnostic Summary */}
-                  <div className="p-2.5 rounded-lg border bg-stone-900 border-stone-800 flex items-center justify-between text-stone-300">
-                    <span className="font-bold">نظام التوجيه التلقائي:</span>
-                    <span className="font-bold text-[11px] text-amber-400">
-                      {printerStatus.isConnected ? 'QZ صامت مباشر' : 'نافذة النظام (Fallback)'}
-                    </span>
-                  </div>
+                  <span className="font-bold text-[11px] text-amber-300 truncate mr-2">
+                    {settings.printSettings.invoicePrinterName || 'طابعة الويندوز الافتراضية'}
+                  </span>
                 </div>
 
-                {backendSecurity?.isDevFallback && (
-                  <div className="text-[11px] bg-amber-950/30 border border-amber-900/40 p-2 rounded-lg text-amber-300 leading-relaxed font-bold">
-                    💡 <b>ملاحظة بيئة التطوير:</b> يتم استخدام شهادة تنموية افتراضية مولدة ذاتياً مع مفتاح خاص محمي على السيرفر لتشغيل QZ Tray محلياً. عند النشر للإنتاج، يمكن إضافة المتغيرات <code>QZ_PRIVATE_KEY</code> و <code>QZ_CERTIFICATE</code>.
+                <div className="p-3 rounded-xl border bg-stone-950 border-stone-800 text-stone-300 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-amber-400" />
+                    <span className="font-bold truncate">طابعة الباركود:</span>
                   </div>
-                )}
-              </div>
-
-              {/* Method Selection: Kiosk Printing (No software) vs QZ Tray */}
-              <div className="p-4 bg-stone-950 rounded-xl border border-stone-850 space-y-3">
-                <label className="block text-xs font-extrabold text-stone-200">
-                  طريقة الطباعة الصامتة المباشرة (Direct Print Engine):
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handlePrintSettingChange('directPrintMethod', 'kiosk')}
-                    className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between ${
-                      (settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk'
-                        ? 'bg-amber-600/15 border-amber-500 text-amber-300 shadow-md'
-                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <span className="font-extrabold text-xs">وضع Kiosk Printing (جوجل كروم)</span>
-                      <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold">
-                        موصى به (بدون برامج)
-                      </span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-stone-400">
-                      طباعة فورية وصامتة 100% مباشرة إلى طابعة الفواتير الافتراضية بدون تثبيت QZ Tray أو أي برامج أخرى نهائياً.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handlePrintSettingChange('directPrintMethod', 'qz-tray')}
-                    className={`p-3 rounded-xl border text-right transition-all flex flex-col justify-between ${
-                      settings.printSettings.directPrintMethod === 'qz-tray'
-                        ? 'bg-amber-600/15 border-amber-500 text-amber-300 shadow-md'
-                        : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <span className="font-extrabold text-xs">برنامج QZ Tray</span>
-                      <span className="text-[10px] bg-stone-800 text-stone-400 px-1.5 py-0.5 rounded font-bold">
-                        برنامج وسيط
-                      </span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-stone-400">
-                      يتطلب تشغيل برنامج QZ Tray بالخلفية بجوار الساعة لتوجيه الطباعة لطابعة معينة بالاسم.
-                    </p>
-                  </button>
+                  <span className="font-bold text-[11px] text-amber-300 truncate mr-2">
+                    {settings.printSettings.barcodePrinterName || 'طابعة الباركود الافتراضية'}
+                  </span>
                 </div>
               </div>
 
               {/* Kiosk Mode Fast Launcher Banner */}
-              {(settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk' && (
-                <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl space-y-3.5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
-                      <Zap className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 text-right">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-black text-amber-300">
-                          مشغل وضع الطباعة الصامتة الذكي (بديل QZ Tray بدون أي برامج):
-                        </h4>
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">
-                          تم التحديث لتفادي نافذة الويندوز 100%
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-stone-300 leading-relaxed mt-1">
-                        يقوم هذا المشغل بفتح الكاشير بوضع <code className="bg-stone-900 px-1.5 py-0.5 rounded text-amber-400 font-mono">--kiosk-printing</code> المباشر، مع عزل كامل لجلسة الكاشير وتعيين طابعة الفواتير الافتراضية تلقائياً لمنع أي نافذة طباعة نهائياً.
-                      </p>
-                    </div>
+              <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl space-y-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                    <Zap className="w-5 h-5" />
                   </div>
-
-                  {/* Why window appeared note & steps */}
-                  <div className="p-3 bg-stone-950/80 rounded-xl border border-stone-800 text-[11px] space-y-1.5 text-stone-300">
-                    <div className="font-extrabold text-amber-400 flex items-center gap-1.5">
-                      <Info className="w-3.5 h-3.5" />
-                      <span>لماذا قد تظهر نافذة الويندوز وكيف يحلها المشغل الجديد؟</span>
-                    </div>
-                    <ul className="list-disc list-inside space-y-1 text-stone-400 pr-1">
-                      <li>
-                        <strong className="text-stone-200">إذا كان كروم مفتوحاً مسبقاً:</strong> يتجاهل كروم أمر الطباعة الصامتة. المشغل الجديد يمنحك خيار إغلاق كروم أو فتحه بملف معزول يضمن تطبيق الطباعة الصامتة 100%.
-                      </li>
-                      <li>
-                        <strong className="text-stone-200">الطابعة الافتراضية:</strong> يجب أن تكون طابعة الفواتير الحرارية هي الافتراضية في الويندوز، والمشغل يعرضها لك ويتيح ضبطها بنقرة واحدة.
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex-1 text-right">
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleDownloadKioskLauncher}
-                        className="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-98"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>تحميل مشغل الكاشير المحدث (.bat)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleTestInvoicePrinter}
-                        disabled={isTestingInvoice}
-                        className="py-2.5 px-4 bg-stone-800 hover:bg-stone-700 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-stone-700 active:scale-98 disabled:opacity-50"
-                      >
-                        <Printer className="w-4 h-4" />
-                        <span>{isTestingInvoice ? 'جاري الإرسال...' : 'تجربة طباعة فورية'}</span>
-                      </button>
+                      <h4 className="text-xs font-black text-amber-300">
+                        مشغل وضع الطباعة الصامتة الذكي المباشر:
+                      </h4>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">
+                        يعمل 100% بدون أي برامج وسيطة
+                      </span>
                     </div>
-                    <span className="text-[11px] text-stone-400">
-                      ينشئ أيقونة «كاشير أسماء - طباعة صامتة» على سطح المكتب
-                    </span>
+                    <p className="text-[11px] text-stone-300 leading-relaxed mt-1">
+                      يقوم هذا المشغل بفتح الكاشير بوضع <code className="bg-stone-900 px-1.5 py-0.5 rounded text-amber-400 font-mono">--kiosk-printing</code> المباشر، مع عزل كامل لجلسة الكاشير وتعيين طابعة الفواتير الافتراضية تلقائياً لمنع أي نافذة طباعة نهائياً.
+                    </p>
                   </div>
                 </div>
-              )}
 
-              {/* Suppress Windows Print Dialog Toggle */}
-              <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-stone-850">
-                <div>
-                  <span className="text-xs font-extrabold text-stone-200 block">
-                    كتم نافذة طباعة الويندوز نهائياً (عدم إظهار نافذة الطباعة إذا تعذر الاتصال)
-                  </span>
-                  <p className="text-[11px] text-stone-400 mt-0.5">
-                    عند التفعيل، لن تظهر نافذة طباعة الويندوز المزعجة أبداً، وسيتم إرسال الطباعة فقط عبر القناة الصامتة.
-                  </p>
+                {/* Why window appeared note & steps */}
+                <div className="p-3 bg-stone-950/80 rounded-xl border border-stone-800 text-[11px] space-y-1.5 text-stone-300">
+                  <div className="font-extrabold text-amber-400 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5" />
+                    <span>تعليمات التشغيل للطباعة الصامتة المباشرة:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-stone-400 pr-1">
+                    <li>
+                      <strong className="text-stone-200">الفتح عبر ملف .bat:</strong> حمّل ملف التشغيل وضعه على سطح المكتب، واستخدمه لفتح الكاشير بوضع الطباعة الصامتة المباشرة.
+                    </li>
+                    <li>
+                      <strong className="text-stone-200">الطابعة الافتراضية:</strong> تأكد من ضبط طابعة الفواتير الحرارية كطابعة افتراضية في نظام Windows، وسيخرج الإيصال تلقائياً بدون لمس الماوس أو لوحة المفاتيح.
+                    </li>
+                  </ul>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={settings.printSettings.suppressWindowsPrintDialog === true}
-                  onChange={(e) =>
-                    handlePrintSettingChange('suppressWindowsPrintDialog', e.target.checked)
-                  }
-                  className="w-5 h-5 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
-                />
-              </div>
-              <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-stone-850">
-                <div>
-                  <span className="text-xs font-extrabold text-stone-200 block">
-                    تفعيل الطباعة الصامتة المباشرة (Direct Printing Enabled)
+
+                <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadKioskLauncher}
+                      className="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-98"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>تحميل مشغل الكاشير المحدث (.bat)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTestInvoicePrinter}
+                      disabled={isTestingInvoice}
+                      className="py-2.5 px-4 bg-stone-800 hover:bg-stone-700 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-stone-700 active:scale-98 disabled:opacity-50"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>{isTestingInvoice ? 'جاري الإرسال...' : 'تجربة طباعة فورية'}</span>
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-stone-400">
+                    ينشئ أيقونة «كاشير أسماء - طباعة صامتة» على سطح المكتب
                   </span>
-                  <p className="text-[11px] text-stone-400 mt-0.5">
-                    عند التفعيل، تُرسل الفاتورة أو الباركود تلقائياً للطابعة المحددة دون فتح نافذة Windows Print.
-                  </p>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={settings.printSettings.directPrintEnabled !== false}
-                  onChange={(e) =>
-                    handlePrintSettingChange('directPrintEnabled', e.target.checked)
-                  }
-                  className="w-5 h-5 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
-                />
               </div>
 
               {/* Silent Print & Bypass Receipt Modal */}
@@ -1276,21 +1002,44 @@ exit
                 />
               </div>
 
-              {/* Discover Windows Printers Button */}
-              <div>
-                <button
-                  type="button"
-                  onClick={handleDiscoverPrinters}
-                  disabled={isSearchingPrinters}
-                  className="w-full py-2.5 bg-stone-800 hover:bg-stone-750 text-stone-100 border border-stone-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
-                >
-                  <Search className={`w-4 h-4 text-amber-400 ${isSearchingPrinters ? 'animate-spin' : ''}`} />
-                  <span>
-                    {isSearchingPrinters
-                      ? 'جاري فحص واكتشاف طابعات الويندوز عبر QZ Tray...'
-                      : 'اكتشاف الطابعات المتاحة في جهاز الكاشير (Windows)'}
+              {/* Suppress Windows Print Dialog Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-stone-850">
+                <div>
+                  <span className="text-xs font-extrabold text-stone-200 block">
+                    كتم نافذة طباعة الويندوز نهائياً (عدم إظهار نافذة الطباعة إذا تعذر الاتصال)
                   </span>
-                </button>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    عند التفعيل، لن تظهر نافذة طباعة الويندوز المزعجة أبداً، وسيتم إرسال الطباعة فقط عبر القناة الصامتة.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.printSettings.suppressWindowsPrintDialog === true}
+                  onChange={(e) =>
+                    handlePrintSettingChange('suppressWindowsPrintDialog', e.target.checked)
+                  }
+                  className="w-5 h-5 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
+                />
+              </div>
+
+              {/* Enable Direct Printing Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-stone-950 rounded-xl border border-stone-850">
+                <div>
+                  <span className="text-xs font-extrabold text-stone-200 block">
+                    تفعيل الطباعة الصامتة المباشرة (Direct Printing Enabled)
+                  </span>
+                  <p className="text-[11px] text-stone-400 mt-0.5">
+                    عند التفعيل، تُرسل الفاتورة أو الباركود تلقائياً للطابعة المحددة دون فتح أي نافذة خارجية.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.printSettings.directPrintEnabled !== false}
+                  onChange={(e) =>
+                    handlePrintSettingChange('directPrintEnabled', e.target.checked)
+                  }
+                  className="w-5 h-5 rounded bg-stone-900 border-stone-700 text-amber-500 focus:ring-0 cursor-pointer"
+                />
               </div>
 
               {/* Printers Assignment Grid */}
@@ -1306,32 +1055,40 @@ exit
                     <span className="text-[10px] text-stone-500">طابعة الكاشير الحرارية</span>
                   </label>
 
-                  {discoveredPrinters.length > 0 ? (
-                    <select
-                      value={settings.printSettings.invoicePrinterName || ''}
-                      onChange={(e) =>
-                        handlePrintSettingChange('invoicePrinterName', e.target.value)
-                      }
-                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
-                    >
-                      <option value="">-- اختر طابعة الفواتير --</option>
-                      {discoveredPrinters.map((pName) => (
-                        <option key={`inv_prn_${pName}`} value={pName}>
-                          {pName}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
+                  <div className="space-y-1.5">
                     <input
                       type="text"
-                      placeholder="اسم طابعة الفواتير (مثال: POS-80 أو XP-80)"
+                      placeholder="اسم طابعة الفواتير (مثال: XP-80C أو اتركه فارغاً للافتراضية)"
                       value={settings.printSettings.invoicePrinterName || ''}
                       onChange={(e) =>
                         handlePrintSettingChange('invoicePrinterName', e.target.value)
                       }
                       className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
                     />
-                  )}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <span className="text-[10px] text-stone-500">طابعات شائعة:</span>
+                      {['طابعة الويندوز الافتراضية', 'XP-80C', 'POS-80'].map((prn) => (
+                        <button
+                          key={`chip_inv_${prn}`}
+                          type="button"
+                          onClick={() =>
+                            handlePrintSettingChange(
+                              'invoicePrinterName',
+                              prn === 'طابعة الويندوز الافتراضية' ? '' : prn
+                            )
+                          }
+                          className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all ${
+                            (prn === 'طابعة الويندوز الافتراضية' && !settings.printSettings.invoicePrinterName) ||
+                            settings.printSettings.invoicePrinterName === prn
+                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                        >
+                          {prn}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1392,32 +1149,40 @@ exit
                     <span className="text-[10px] text-stone-500">طابعة ملصقات الاستيكر</span>
                   </label>
 
-                  {discoveredPrinters.length > 0 ? (
-                    <select
-                      value={settings.printSettings.barcodePrinterName || ''}
-                      onChange={(e) =>
-                        handlePrintSettingChange('barcodePrinterName', e.target.value)
-                      }
-                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
-                    >
-                      <option value="">-- اختر طابعة الباركود --</option>
-                      {discoveredPrinters.map((pName) => (
-                        <option key={`bar_prn_${pName}`} value={pName}>
-                          {pName}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
+                  <div className="space-y-1.5">
                     <input
                       type="text"
-                      placeholder="اسم طابعة الباركود (مثال: Xprinter XP-365B)"
+                      placeholder="اسم طابعة الباركود (مثال: Xprinter XP-370B أو اتركه فارغاً)"
                       value={settings.printSettings.barcodePrinterName || ''}
                       onChange={(e) =>
                         handlePrintSettingChange('barcodePrinterName', e.target.value)
                       }
                       className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-stone-100 text-xs focus:outline-none focus:border-amber-500 font-bold"
                     />
-                  )}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <span className="text-[10px] text-stone-500">طابعات شائعة:</span>
+                      {['طابعة الباركود الافتراضية', 'Xprinter XP-370B', 'XP-365B'].map((prn) => (
+                        <button
+                          key={`chip_bar_${prn}`}
+                          type="button"
+                          onClick={() =>
+                            handlePrintSettingChange(
+                              'barcodePrinterName',
+                              prn === 'طابعة الباركود الافتراضية' ? '' : prn
+                            )
+                          }
+                          className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all ${
+                            (prn === 'طابعة الباركود الافتراضية' && !settings.printSettings.barcodePrinterName) ||
+                            settings.printSettings.barcodePrinterName === prn
+                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                        >
+                          {prn}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -2935,73 +2700,6 @@ exit
         </main>
 
       </div>
-
-      {/* QZ Tray Setup Guide Modal */}
-      {showQzGuideModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-stone-900 border border-stone-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-right">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
-              <h3 className="text-base font-black text-amber-500 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-400" />
-                <span>دليل تشغيل خدمة الطباعة المباشرة QZ Tray</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowQzGuideModal(false)}
-                className="text-stone-400 hover:text-stone-100 p-1 rounded-lg text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs text-stone-300 leading-relaxed">
-              <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 space-y-1">
-                <p className="font-bold text-amber-400">لماذا نستخدم QZ Tray؟</p>
-                <p className="text-stone-400 text-[11px]">
-                  برنامج QZ Tray هو جسر طباعة آمن وموثوق لنظام Windows يمنع ظهور نافذة "Windows Print Dialog" عند كل عملية بيع أو طباعة باركود، مما يتيح الطباعة المباشرة الصامتة على طابعات الكاشير والباركود.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-bold text-stone-100">خطوات التشغيل والأمان على جهاز الكاشير (Windows):</p>
-                <ol className="list-decimal list-inside space-y-1.5 text-stone-300 text-[11px]">
-                  <li>قم بتحميل وتثبيت برنامج QZ Tray من الموقع الرسمي: <a href="https://qz.io/download/" target="_blank" rel="noreferrer" className="text-amber-400 underline font-mono">qz.io/download</a></li>
-                  <li>افتح برنامج QZ Tray من قائمة Start في الويندوز (سيظهر رمز الجسر الأخضر بجوار الساعة).</li>
-                  <li>عند الاتصال لأول مرة، ستظهر نافذة أمان من QZ Tray تطلب الموافقة على الشهادة الرقمية الموقعة: اختر <b className="text-amber-400">"Remember this decision"</b> ثم اضغط <b className="text-emerald-400">"Allow" / "Trust"</b>.</li>
-                  <li>اضغط على زر <b className="text-amber-400">"اكتشاف الطابعات المتاحة"</b> في الإعدادات.</li>
-                  <li>اختر طابعة الفواتير (طابعة الكاشير) وطابعة الباركود (طابعة الاستيكر).</li>
-                  <li>اضغط على أزرار الاختبار للتحقق من خروج الورق/الاستيكر فوراً مع التوقيع الرقمي الآمن (SHA-512).</li>
-                </ol>
-              </div>
-
-              <div className="bg-stone-950 p-3 rounded-xl border border-stone-850 space-y-1 text-[11px]">
-                <p className="font-bold text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>الأمان وحماية المفاتيح الرقمية:</span>
-                </p>
-                <p className="text-stone-400 text-[10px] leading-relaxed">
-                  يتم توقيع طلبات الطباعة رقمياً بخوارزمية RSA-SHA512 عبر الخادم الآمن حصرياً، والمفتاح الخاص QZ_PRIVATE_KEY محمي تماماً على السيرفر ولا يتم تسريبه أو إرساله للمتصفح إطلاقاً.
-                </p>
-              </div>
-
-              <div className="bg-amber-950/30 border border-amber-800/40 p-3 rounded-xl text-[11px] text-amber-300">
-                <p className="font-bold mb-0.5">ملاحظة التوجيه التلقائي (Fallback):</p>
-                <p>إذا تم إغلاق برنامج QZ Tray أو توقف الخدمة لأي سبب، سيتعرف النظام تلقائياً على ذلك ويوجه أوامر الطباعة فوراً إلى نافذة الطباعة القياسية بدون تعطيل حركة المبيعات.</p>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowQzGuideModal(false)}
-                className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-stone-950 font-black rounded-xl text-xs transition-colors"
-              >
-                تم، فهمت ذلك
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

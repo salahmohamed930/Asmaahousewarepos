@@ -1,5 +1,6 @@
-import { qzPrinterService, PrintDocumentType } from '../services/qzPrinterService';
 import { PrintSettings } from '../types';
+
+export type PrintDocumentType = 'invoice' | 'barcode' | 'report';
 
 /**
  * Utility for printing elements cleanly using a hidden iframe to isolate the content
@@ -136,101 +137,38 @@ export function printElementById(elementId: string, options?: PrintOptions) {
 
 /**
  * Smart Print Function:
- * Tries direct silent printing via QZ Tray if enabled and printer is configured.
- * Automatically falls back to browser iframe printing if direct print is unconfigured or fails.
+ * Sends content directly to the silent printing pipeline (Chrome/Edge Kiosk mode).
+ * Uses isolated iframe for 100% clean formatting and automatic silent paper output.
  */
 export async function smartPrintHtml(
   htmlContent: string,
   options?: PrintOptions
 ): Promise<{ usedDirect: boolean; success: boolean; message?: string }> {
-  const docType: PrintDocumentType = options?.docType || 'invoice';
-  const printSettings = options?.printSettings;
-  const isDirectEnabled = printSettings?.directPrintEnabled !== false;
+  const shouldSuppress =
+    options?.suppressBrowserDialog === true ||
+    options?.printSettings?.suppressWindowsPrintDialog === true;
 
-  const targetPrinterName =
-    docType === 'invoice'
-      ? printSettings?.invoicePrinterName
-      : printSettings?.barcodePrinterName;
-
-  const copies =
-    docType === 'invoice'
-      ? printSettings?.invoiceCopies || 1
-      : printSettings?.barcodeCopies || 1;
-
-  const paperSize =
-    docType === 'invoice'
-      ? printSettings?.invoicePaperSize || '80mm'
-      : printSettings?.barcodePaperSize || '38x25mm';
-
-  const directMethod = printSettings?.directPrintMethod || 'kiosk'; // default to kiosk as primary zero-dependency method
-  const shouldSuppressDialog = printSettings?.suppressWindowsPrintDialog === true || options?.suppressBrowserDialog === true;
-
-  // 1. If method is explicitly 'kiosk' (Browser native silent printing via --kiosk-printing)
-  if (directMethod === 'kiosk') {
+  try {
     printHtmlDirect(htmlContent, options);
     return {
       usedDirect: true,
       success: true,
-      message: 'تم إرسال الفاتورة عبر وضع الطباعة الصامتة (Kiosk Printing).',
+      message: 'تم إرسال المستند للطباعة الصامتة المباشرة (Kiosk Printing).',
     };
-  }
-
-  // 2. If method is 'qz-tray', attempt direct silent printing via QZ Tray service
-  if (isDirectEnabled && targetPrinterName && targetPrinterName.trim()) {
-    let isActive = qzPrinterService.isQzActive();
-    if (!isActive) {
-      const conn = await qzPrinterService.connect();
-      isActive = conn.success;
+  } catch (err: any) {
+    if (shouldSuppress) {
+      return {
+        usedDirect: false,
+        success: false,
+        message: 'تم كتم نافذة طباعة الويندوز تلقائياً.',
+      };
     }
-
-    if (isActive) {
-      const res = await qzPrinterService.printHtmlDirect(htmlContent, {
-        printerName: targetPrinterName,
-        copies,
-        paperSize,
-        docType,
-        pageTitle: options?.pageTitle,
-      });
-
-      if (res.success) {
-        return {
-          usedDirect: true,
-          success: true,
-          message: `تمت الطباعة المباشرة بنجاح على طابعة ${
-            docType === 'invoice' ? 'الفواتير' : 'الباركود'
-          } (${targetPrinterName}).`,
-        };
-      } else {
-        const fallbackReason = `تعذر الطباعة عبر QZ Tray على "${targetPrinterName}": ${res.error}.`;
-        if (options?.onFallbackUsed) {
-          options.onFallbackUsed(fallbackReason);
-        }
-      }
-    } else {
-      const fallbackReason =
-        'برنامج QZ Tray غير متصل أو غير مشغل على جهاز الويندوز.';
-      if (options?.onFallbackUsed) {
-        options.onFallbackUsed(fallbackReason);
-      }
-    }
-  }
-
-  // 3. Fallback: If user chose to suppress the Windows dialog, do not open it!
-  if (shouldSuppressDialog) {
     return {
       usedDirect: false,
       success: false,
-      message: 'تم كتم نافذة طباعة الويندوز تلقائياً حسب إعداداتك.',
+      message: err?.message || 'تعذر استكمال الطباعة.',
     };
   }
-
-  // Fallback to standard browser print
-  printHtmlDirect(htmlContent, options);
-  return {
-    usedDirect: false,
-    success: true,
-    message: 'تم إرسال أمر الطباعة للمتصفح.',
-  };
 }
 
 /**

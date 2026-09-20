@@ -35,8 +35,8 @@ export function buildReceiptHtml(
 
 /**
  * Sends the invoice receipt directly for silent printing:
- * - Uses QZ Tray direct hardware printing if connected & configured.
- * - Falls back cleanly to hidden iframe printing without disturbing the user.
+ * - Uses direct silent printing via isolated frame and kiosk mode.
+ * - Prints without disturbing user workflow or opening secondary preview screens.
  */
 export async function printInvoiceReceipt(
   transaction: Transaction,

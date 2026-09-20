@@ -10,7 +10,7 @@ if (typeof window !== 'undefined') {
     const reason = event.reason;
     const msg = reason?.message || String(reason || '');
 
-    // Silently ignore benign background network/websocket/qz lifecycle events
+    // Silently ignore benign background network lifecycle events
     if (
       msg.includes('WebSocket') ||
       msg.includes('Connection closed') ||
@@ -18,7 +18,6 @@ if (typeof window !== 'undefined') {
       msg.includes('Failed to fetch') ||
       msg.includes('NetworkError') ||
       msg.includes('Network request failed') ||
-      msg.includes('qz') ||
       msg.includes('resizeObserver') ||
       msg.includes('ResizeObserver')
     ) {

@@ -6,6 +6,7 @@ import {
   PrinterServiceStatus,
   BackendSecurityCheckResult 
 } from '../../services/qzPrinterService';
+import { smartPrintHtml } from '../../utils/printHelper';
 import {
   FUNCTION_KEYS_LIST,
   DEFAULT_SHORTCUT_KEYS,
@@ -200,34 +201,100 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleDownloadKioskLauncher = () => {
-    const appUrl = window.location.href;
+    const cleanUrl = window.location.origin + (window.location.pathname === '/' ? '' : window.location.pathname);
     const batContent = `@echo off
 chcp 65001 > nul
-title تشغيل كاشير أسماء للأدوات المنزلية - وضع الطباعة الصامتة
-echo ===================================================================
-echo   تشغيل كاشير أسماء للأدوات المنزلية - وضع الطباعة الصامتة المباشرة
-echo ===================================================================
+cls
+color 0A
+title نظام كاشير أسماء للأدوات المنزلية - الطباعة الصامتة المباشرة
+echo ===============================================================================
+echo        نظام كاشير أسماء للأدوات المنزلية - إعداد وتشغيل الطباعة الصامتة
+echo ===============================================================================
 echo.
-echo جاري تشغيل المتصفح وتفعيل الطباعة الصامتة المباشرة بدون أي نوافذ...
 
-:: 1. تشغيل عبر Google Chrome
-if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (
-    start "" "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --app="${appUrl}"
-    exit
+:: 1. فحص نوافذ جوجل كروم السابقة لتفادي كتم وضع الطباعة الصامتة
+tasklist /fi "imagename eq chrome.exe" 2>NUL | find /i /n "chrome.exe" >NUL
+if "%ERRORLEVEL%"=="0" (
+    echo [تنبيه هام]: تم اكتشاف نوافذ مفتوحة لمتصفح جوجل كروم.
+    echo وضع الطباعة الصامتة (Kiosk Printing) يتطلب تشغيل كروم بأمر الطباعة الصامتة.
+    echo.
+    echo اضغط (1) لإغلاق كروم المفتوح وتشغيل الكاشير فوراً بوضع الطباعة الصامتة (موصى به جداً)
+    echo اضغط (2) للمتابعة مع فتح ملف تعريف معزول خاص بالكاشير (دون إغلاق صفحاتك الحالية)
+    set /p CHROME_CHOICE="أدخل اختيارك [1 أو 2]: "
+    if "%CHROME_CHOICE%"=="1" (
+        taskkill /F /IM chrome.exe /T >nul 2>&1
+        echo تم إغلاق كروم السابق بنجاح.
+    )
 )
-if exist "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" (
-    start "" "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --app="${appUrl}"
-    exit
-)
-start "" "chrome.exe" --kiosk-printing --app="${appUrl}"
-if %errorlevel% equ 0 exit
 
-:: 2. تشغيل عبر Microsoft Edge (مدمج في كل أجهزة ويندوز 10/11)
-if exist "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" (
-    start "" "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" --kiosk-printing --app="${appUrl}"
+echo.
+echo [1/3] فحص الطابعات وتحديد طابعة الفواتير الافتراضية...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"$pr = Get-CimInstance Win32_Printer | Sort-Object Name;" ^
+"if ($pr) {" ^
+"    Write-Host '-------------------------------------------------------------------------------' -ForegroundColor DarkGray;" ^
+"    Write-Host 'الطابعات المعرفة على هذا الجهاز:' -ForegroundColor Yellow;" ^
+"    Write-Host '-------------------------------------------------------------------------------' -ForegroundColor DarkGray;" ^
+"    for ($i=0; $i -lt $pr.Count; $i++) {" ^
+"        $flag = if ($pr[$i].Default) { ' [الطابعة الافتراضية الحالية - تخرج منها الفواتير تلقائياً]' } else { '' };" ^
+"        $col = if ($pr[$i].Default) { 'Green' } else { 'White' };" ^
+"        Write-Host ('[{0}] {1}{2}' -f ($i+1), $pr[$i].Name, $flag) -ForegroundColor $col;" ^
+"    }" ^
+"    Write-Host '-------------------------------------------------------------------------------' -ForegroundColor DarkGray;" ^
+"    $ch = Read-Host 'إذا كانت طابعة الفواتير ليست الافتراضية، اكتب رقمها لتعيينها (أو اضغط Enter للإبقاء)';" ^
+"    if ($ch -match '^\d+$') {" ^
+"        $idx = [int]$ch - 1;" ^
+"        if ($idx -ge 0 -and $idx -lt $pr.Count) {" ^
+"            $tName = $pr[$idx].Name;" ^
+"            (New-Object -ComObject WScript.Network).SetDefaultPrinter($tName);" ^
+"            Write-Host ('تم تعيين [ ' + $tName + ' ] كطابعة افتراضية للويندوز بنجاح!') -ForegroundColor Green;" ^
+"        }" ^
+"    }" ^
+"}"
+
+echo.
+echo [2/3] إنشاء اختصار دائم للكاشير على سطح المكتب...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"$desktop = [Environment]::GetFolderPath('Desktop');" ^
+"$shortcutPath = Join-Path $desktop 'كاشير أسماء - طباعة صامتة.lnk';" ^
+"$ws = New-Object -ComObject WScript.Shell;" ^
+"$s = $ws.CreateShortcut($shortcutPath);" ^
+"$cPath = '';" ^
+"if (Test-Path 'C:\Program Files\Google\Chrome\Application\chrome.exe') { $cPath = 'C:\Program Files\Google\Chrome\Application\chrome.exe' }" ^
+"elseif (Test-Path 'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe') { $cPath = 'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe' }" ^
+"elseif (Test-Path 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe') { $cPath = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' }" ^
+"else { $cPath = 'chrome.exe' };" ^
+"$s.TargetPath = $cPath;" ^
+"$dDir = Join-Path [Environment]::GetFolderPath('LocalApplicationData') 'POS_Kiosk_Chrome';" ^
+"$s.Arguments = '--kiosk-printing --disable-print-preview --user-data-dir=\"' + $dDir + '\" --app=\"${cleanUrl}\"';" ^
+"$s.Description = 'تشغيل كاشير أسماء بوضع الطباعة الصامتة المباشرة';" ^
+"$s.Save();" ^
+"Write-Host 'تم إنشاء اختصار [كاشير أسماء - طباعة صامتة] على سطح المكتب بنجاح!' -ForegroundColor Green;"
+
+echo.
+echo [3/3] جاري تشغيل شاشة الكاشير الآن بوضع الطباعة الصامتة...
+echo.
+set "APP_URL=${cleanUrl}"
+set "DATA_DIR=%LOCALAPPDATA%\POS_Kiosk_Chrome"
+
+if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
     exit
 )
-start "" "msedge.exe" --kiosk-printing --app="${appUrl}"
+if exist "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" (
+    start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    exit
+)
+if exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" (
+    start "" "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    exit
+)
+if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" (
+    start "" "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
+    exit
+)
+
+start "" "chrome.exe" --kiosk-printing --disable-print-preview --user-data-dir="%DATA_DIR%" --app="%APP_URL%"
 exit
 `;
 
@@ -243,14 +310,53 @@ exit
   };
 
   const handleTestInvoicePrinter = async () => {
-    const targetPrinter = settings.printSettings.invoicePrinterName;
-    if (!targetPrinter) {
-      alert('يرجى اختيار وتحديد اسم طابعة الفواتير أولاً من القائمة.');
-      return;
-    }
     setIsTestingInvoice(true);
     setPrintTestResult(null);
     try {
+      const isKiosk = (settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk';
+      if (isKiosk) {
+        const testHtml = `
+          <div style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 10px; direction: rtl; font-size: 11px;">
+            <h3 style="margin: 0 0 5px 0; font-size: 14px; font-weight: 900;">${settings.printSettings.headerText || 'أسماء للأدوات المنزلية'}</h3>
+            <p style="margin: 2px 0; font-weight: 800;">*** تجربة الطباعة الصامتة المباشرة ***</p>
+            <p style="margin: 2px 0; color: #555;">التاريخ: ${new Date().toLocaleString('ar-EG')}</p>
+            <hr style="border: 0; border-top: 1px dashed #000; margin: 8px 0;" />
+            <div style="display: flex; justify-content: space-between; font-weight: 800;">
+              <span>صنف تجريبي</span>
+              <span>100.00 ج.م</span>
+            </div>
+            <hr style="border: 0; border-top: 1px dashed #000; margin: 8px 0;" />
+            <div style="font-size: 13px; font-weight: 900; margin-top: 5px;">
+              الإجمالي: 100.00 ج.م
+            </div>
+            <p style="margin-top: 10px; font-size: 10px; font-weight: bold; color: #2e7d32;">
+              إذا خرج هذا الإيصال صامتاً بدون نوافذ، فالنظام جاهز تماماً للعمل!
+            </p>
+          </div>
+        `;
+        const res = await smartPrintHtml(testHtml, {
+          docType: 'invoice',
+          printSettings: settings.printSettings,
+          pageTitle: 'تجربة-طباعة-صامتة',
+          isThermalReceipt: true,
+          pageCssSize: (settings.printSettings.invoicePaperSize || '80mm') + ' auto',
+        });
+        if (res.success) {
+          setPrintTestResult({
+            success: true,
+            msg: 'تم إرسال الفاتورة التجريبية للطباعة الصامتة بنجاح! إذا كانت الطابعة الافتراضية متصلة فستخرج فوراً.',
+          });
+        } else {
+          setPrintTestResult({ success: false, msg: res.message || 'تعذر إرسال الطباعة' });
+        }
+        return;
+      }
+
+      const targetPrinter = settings.printSettings.invoicePrinterName;
+      if (!targetPrinter) {
+        alert('يرجى اختيار وتحديد اسم طابعة الفواتير أولاً من القائمة.');
+        return;
+      }
       const res = await qzPrinterService.testInvoicePrinter(
         targetPrinter,
         settings.printSettings.invoicePaperSize || '80mm'
@@ -266,14 +372,38 @@ exit
   };
 
   const handleTestBarcodePrinter = async () => {
-    const targetPrinter = settings.printSettings.barcodePrinterName;
-    if (!targetPrinter) {
-      alert('يرجى اختيار وتحديد اسم طابعة الباركود والملصقات أولاً من القائمة.');
-      return;
-    }
     setIsTestingBarcode(true);
     setPrintTestResult(null);
     try {
+      const isKiosk = (settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk';
+      if (isKiosk) {
+        const testHtml = `
+          <div style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 5px; direction: rtl; font-size: 11px;">
+            <p style="margin: 0; font-size: 12px; font-weight: 900;">ملصق باركود تجريبي</p>
+            <p style="margin: 2px 0; font-weight: 800;">1234567</p>
+            <p style="margin: 0; font-size: 13px; font-weight: 900;">50.00 ج.م</p>
+          </div>
+        `;
+        const res = await smartPrintHtml(testHtml, {
+          docType: 'barcode',
+          printSettings: settings.printSettings,
+          pageTitle: 'تجربة-باركود',
+          isThermalReceipt: true,
+          pageCssSize: (settings.printSettings.barcodePaperSize || '38x25mm') + ' auto',
+        });
+        if (res.success) {
+          setPrintTestResult({ success: true, msg: 'تم إرسال باركود تجريبي للطباعة بنجاح!' });
+        } else {
+          setPrintTestResult({ success: false, msg: res.message || 'تعذر إرسال الطباعة' });
+        }
+        return;
+      }
+
+      const targetPrinter = settings.printSettings.barcodePrinterName;
+      if (!targetPrinter) {
+        alert('يرجى اختيار وتحديد اسم طابعة الباركود والملصقات أولاً من القائمة.');
+        return;
+      }
       const res = await qzPrinterService.testBarcodePrinter(
         targetPrinter,
         settings.printSettings.barcodePaperSize || '38x25mm'
@@ -1025,32 +1155,64 @@ exit
 
               {/* Kiosk Mode Fast Launcher Banner */}
               {(settings.printSettings.directPrintMethod || 'kiosk') === 'kiosk' && (
-                <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl space-y-3">
+                <div className="p-4 bg-amber-950/20 border border-amber-500/30 rounded-2xl space-y-3.5">
                   <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
                       <Zap className="w-5 h-5" />
                     </div>
                     <div className="flex-1 text-right">
-                      <h4 className="text-xs font-black text-amber-300">
-                        الحل الأسهل والأسرع للطباعة الصامتة بدون QZ Tray (Kiosk Printing):
-                      </h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-black text-amber-300">
+                          مشغل وضع الطباعة الصامتة الذكي (بديل QZ Tray بدون أي برامج):
+                        </h4>
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">
+                          تم التحديث لتفادي نافذة الويندوز 100%
+                        </span>
+                      </div>
                       <p className="text-[11px] text-stone-300 leading-relaxed mt-1">
-                        متصفح Google Chrome و Microsoft Edge يحتويان على ميزة مدمجة تسمى <code className="bg-stone-900 px-1.5 py-0.5 rounded text-amber-400 font-mono">--kiosk-printing</code> تقوم بطباعة كل الفواتير صامتاً وفوراً للطابعة الافتراضية بدون فتح أي نافذة على الإطلاق!
+                        يقوم هذا المشغل بفتح الكاشير بوضع <code className="bg-stone-900 px-1.5 py-0.5 rounded text-amber-400 font-mono">--kiosk-printing</code> المباشر، مع عزل كامل لجلسة الكاشير وتعيين طابعة الفواتير الافتراضية تلقائياً لمنع أي نافذة طباعة نهائياً.
                       </p>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDownloadKioskLauncher}
-                      className="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-98"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>تحميل اختصار تشغيل الكاشير للطباعة الصامتة (.bat)</span>
-                    </button>
+                  {/* Why window appeared note & steps */}
+                  <div className="p-3 bg-stone-950/80 rounded-xl border border-stone-800 text-[11px] space-y-1.5 text-stone-300">
+                    <div className="font-extrabold text-amber-400 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5" />
+                      <span>لماذا قد تظهر نافذة الويندوز وكيف يحلها المشغل الجديد؟</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-stone-400 pr-1">
+                      <li>
+                        <strong className="text-stone-200">إذا كان كروم مفتوحاً مسبقاً:</strong> يتجاهل كروم أمر الطباعة الصامتة. المشغل الجديد يمنحك خيار إغلاق كروم أو فتحه بملف معزول يضمن تطبيق الطباعة الصامتة 100%.
+                      </li>
+                      <li>
+                        <strong className="text-stone-200">الطابعة الافتراضية:</strong> يجب أن تكون طابعة الفواتير الحرارية هي الافتراضية في الويندوز، والمشغل يعرضها لك ويتيح ضبطها بنقرة واحدة.
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadKioskLauncher}
+                        className="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg active:scale-98"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>تحميل مشغل الكاشير المحدث (.bat)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTestInvoicePrinter}
+                        disabled={isTestingInvoice}
+                        className="py-2.5 px-4 bg-stone-800 hover:bg-stone-700 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-stone-700 active:scale-98 disabled:opacity-50"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>{isTestingInvoice ? 'جاري الإرسال...' : 'تجربة طباعة فورية'}</span>
+                      </button>
+                    </div>
                     <span className="text-[11px] text-stone-400">
-                      (احفظ الملف على سطح المكتب وشغّل منه الكاشير دائماً لتفعيل الطباعة الصامتة تلقائياً)
+                      ينشئ أيقونة «كاشير أسماء - طباعة صامتة» على سطح المكتب
                     </span>
                   </div>
                 </div>

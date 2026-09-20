@@ -29,18 +29,25 @@ export function printHtmlDirect(htmlContent: string, options?: PrintOptions) {
   const iframe = document.createElement('iframe');
   iframe.id = 'pos_direct_print_frame';
   iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.left = '-9999px';
+  iframe.style.top = '-9999px';
+  iframe.style.width = '380px';
+  iframe.style.height = '700px';
   iframe.style.border = '0';
-  iframe.style.visibility = 'hidden';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
   document.body.appendChild(iframe);
+
+  const shouldSuppress =
+    options?.suppressBrowserDialog === true ||
+    options?.printSettings?.suppressWindowsPrintDialog === true;
 
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
   if (!doc) {
-    console.warn('Could not access print iframe document, falling back to window.print()');
-    window.print();
+    console.warn('Could not access print iframe document');
+    if (!shouldSuppress) {
+      window.print();
+    }
     return;
   }
 
@@ -104,8 +111,10 @@ export function printHtmlDirect(htmlContent: string, options?: PrintOptions) {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
     } catch (err) {
-      console.warn('Iframe print error, falling back to standard print:', err);
-      window.print();
+      console.warn('Iframe print error:', err);
+      if (!shouldSuppress) {
+        window.print();
+      }
     }
   }, 250);
 }
@@ -114,7 +123,12 @@ export function printElementById(elementId: string, options?: PrintOptions) {
   const el = document.getElementById(elementId);
   if (!el) {
     console.error(`Element with id #${elementId} not found for printing.`);
-    window.print();
+    const shouldSuppress =
+      options?.suppressBrowserDialog === true ||
+      options?.printSettings?.suppressWindowsPrintDialog === true;
+    if (!shouldSuppress) {
+      window.print();
+    }
     return;
   }
   printHtmlDirect(el.outerHTML, options);
@@ -230,7 +244,6 @@ export async function smartPrintElementById(
   const el = document.getElementById(elementId);
   if (!el) {
     console.error(`Element with id #${elementId} not found for printing.`);
-    window.print();
     return {
       usedDirect: false,
       success: false,

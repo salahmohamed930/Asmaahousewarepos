@@ -1135,11 +1135,6 @@ export const CatalogView: React.FC = () => {
                             <div className="min-w-0">
                               <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
                               <p className="text-[9px] text-stone-500 font-mono mt-0.5 flex flex-wrap items-center gap-1.5">
-                                {p.p_k !== undefined && p.p_k !== null && (
-                                  <span className="bg-stone-850 text-stone-400 border border-stone-700/60 px-1 py-0.2 rounded text-[8px] font-sans font-semibold">
-                                    مسلسل: #{p.p_k}
-                                  </span>
-                                )}
                                 {dupInfo && dupInfo.type === 'id' ? (
                                   <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
                                     ID: {p.id} (مكرر)
@@ -1329,11 +1324,6 @@ export const CatalogView: React.FC = () => {
                         </span>
                         <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
                         <p className="text-[8px] text-stone-500 font-mono flex flex-wrap items-center gap-1">
-                          {p.p_k !== undefined && p.p_k !== null && (
-                            <span className="bg-stone-850 text-stone-400 border border-stone-700/60 px-1 py-0.2 rounded text-[7px] font-sans font-semibold">
-                              #{p.p_k}
-                            </span>
-                          )}
                           {dupInfo && dupInfo.type === 'id' ? (
                             <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
                               ID: {p.id} (مكرر)

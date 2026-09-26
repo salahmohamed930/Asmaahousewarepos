@@ -76,7 +76,6 @@ export interface Product {
   image: string;
   description?: string;
   barcodes?: string[];      // أكواد / باركودات إضافية للمنتج
-  p_k?: number;             // رقم مسلسل الصنف (للعرض فقط - لا يتم تعديله أو استخدامه في الاستعلامات)
 }
 
 export interface SplitAssociate {

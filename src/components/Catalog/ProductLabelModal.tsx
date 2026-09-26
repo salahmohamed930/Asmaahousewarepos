@@ -303,6 +303,9 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
     await smartPrintElementById('printable-price-labels', {
       docType: 'barcode',
       printSettings: settings?.printSettings,
+      targetPrinterName: settings?.printSettings?.barcodePrinterName || 'Xprinter XP-370B',
+      widthMm: config.widthMm,
+      heightMm: config.heightMm,
       pageTitle: `ملصقات-باركود-${previewProduct.name}`,
       pageCssSize: config.pageCssSize,
       customStyles: `
@@ -973,19 +976,6 @@ export const ProductLabelModal: React.FC<ProductLabelModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                window.print();
-              }}
-              disabled={totalPrintCount <= 0}
-              className="px-3.5 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
-              title="فتح نافذة اختيار الطابعة لاختيار طابعة XP-370B وتعديل الخيارات"
-            >
-              <Eye className="w-3.5 h-3.5 text-stone-400" />
-              <span>معاينة واختيار الطابعة</span>
-            </button>
-
             <button
               onClick={() => handlePrint()}
               disabled={totalPrintCount <= 0}

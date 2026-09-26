@@ -11,7 +11,7 @@ import {
 } from '../lib/supabaseSync';
 
 export const PRODUCT_SELECT_COLUMNS =
-  'id, name, p_k, barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, description, created_at';
+  'id, name, barcodes, category, price, wholesale_price, price_installment, cost, stock_quantity, description, created_at';
 
 export interface GetProductsOptions {
   page?: number;

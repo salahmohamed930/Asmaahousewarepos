@@ -544,30 +544,24 @@ export const CatalogView: React.FC = () => {
     loadDuplicates();
   };
 
-  const handleOpenAdd = async () => {
+  const handleOpenAdd = () => {
     setEditingProduct(null);
-    setIsGeneratingCode(true);
-    try {
-      const nextCode = await getNextUniqueProductCode(0);
-      setFormData({
-        name: '',
-        sku: nextCode.sku,
-        barcode: '',
-        category: lastChosenCategory,
-        priceCash: 0,
-        priceInstallment: 0,
-        priceWholesale: 0,
-        cost: 0,
-        stock: 10,
-        image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
-        description: '',
-        barcodes: [],
-      });
-      setSkuConflict(null);
-      setBarcodeConflict(null);
-    } finally {
-      setIsGeneratingCode(false);
-    }
+    setFormData({
+      name: '',
+      sku: '',
+      barcode: '',
+      category: lastChosenCategory,
+      priceCash: 0,
+      priceInstallment: 0,
+      priceWholesale: 0,
+      cost: 0,
+      stock: 10,
+      image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
+      description: '',
+      barcodes: [],
+    });
+    setSkuConflict(null);
+    setBarcodeConflict(null);
     setExtraBarcodeEntry('');
     setIsModalOpen(true);
   };
@@ -1135,20 +1129,12 @@ export const CatalogView: React.FC = () => {
                             <div className="min-w-0">
                               <h3 className="text-xs font-bold text-stone-100">{p.name}</h3>
                               <p className="text-[9px] text-stone-500 font-mono mt-0.5 flex flex-wrap items-center gap-1.5">
-                                {dupInfo && dupInfo.type === 'id' ? (
+                                {dupInfo && (dupInfo.type === 'id' || dupInfo.type === 'sku') ? (
                                   <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
-                                    ID: {p.id} (مكرر)
+                                    كود الصنف (ID): {p.id || p.sku} (مكرر)
                                   </span>
                                 ) : (
-                                  <span>ID: {p.id}</span>
-                                )}
-                                <span className="text-stone-700">|</span>
-                                {dupInfo && dupInfo.type === 'sku' ? (
-                                  <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 rounded">
-                                    كود: {p.sku} (مكرر)
-                                  </span>
-                                ) : (
-                                  <span>كود: {p.sku}</span>
+                                  <span>كود (ID): {p.id || p.sku || 'بدون كود'}</span>
                                 )}
                                 <span className="text-stone-700">|</span>
                                 {dupInfo && dupInfo.type === 'barcode' ? (
@@ -1156,7 +1142,7 @@ export const CatalogView: React.FC = () => {
                                     باركود: {p.barcode} (مكرر)
                                   </span>
                                 ) : (
-                                  <span>باركود: {p.barcode}</span>
+                                  <span>باركود: {p.barcode || 'لا يوجد'}</span>
                                 )}
                                 {p.barcodes && p.barcodes.length > 0 && (
                                   <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] font-sans font-extrabold px-1 rounded-sm" title={p.barcodes.join(' - ')}>
@@ -1324,20 +1310,12 @@ export const CatalogView: React.FC = () => {
                         </span>
                         <h3 className="text-xs font-bold text-stone-100 line-clamp-1">{p.name}</h3>
                         <p className="text-[8px] text-stone-500 font-mono flex flex-wrap items-center gap-1">
-                          {dupInfo && dupInfo.type === 'id' ? (
+                          {dupInfo && (dupInfo.type === 'id' || dupInfo.type === 'sku') ? (
                             <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
-                              ID: {p.id} (مكرر)
+                              كود (ID): {p.id || p.sku} (مكرر)
                             </span>
                           ) : (
-                            <span>ID: {p.id}</span>
-                          )}
-                          <span className="text-stone-700">|</span>
-                          {dupInfo && dupInfo.type === 'sku' ? (
-                            <span className="text-rose-400 font-bold bg-rose-500/15 border border-rose-500/30 px-1 py-0.2 rounded">
-                              كود: {p.sku} (مكرر)
-                            </span>
-                          ) : (
-                            <span>كود: {p.sku}</span>
+                            <span>كود (ID): {p.id || p.sku || 'بدون كود'}</span>
                           )}
                           <span className="text-stone-700">|</span>
                           {dupInfo && dupInfo.type === 'barcode' ? (
@@ -1345,7 +1323,7 @@ export const CatalogView: React.FC = () => {
                               باركود: {p.barcode} (مكرر)
                             </span>
                           ) : (
-                            <span>باركود: {p.barcode}</span>
+                            <span>باركود: {p.barcode || 'لا يوجد'}</span>
                           )}
                         </p>
                         {dupInfo && (
@@ -1550,20 +1528,21 @@ export const CatalogView: React.FC = () => {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-stone-300">كود المنتج (SKU)</label>
+                    <label className="block text-xs font-bold text-stone-300">كود الصنف / المعرف (ID)</label>
                     <button
                       type="button"
                       onClick={handleGenerateUniqueCodes}
                       disabled={isGeneratingCode}
                       className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 bg-stone-900 border border-stone-800 hover:border-amber-500/50 px-2 py-0.5 rounded-lg transition-colors"
-                      title="توليد كود SKU فريد (6 إلى 7 أرقام)"
+                      title="توليد كود ID فريد"
                     >
                       <Sparkles className={`w-3 h-3 ${isGeneratingCode ? 'animate-spin' : ''}`} />
-                      <span>توليد SKU تلقائي</span>
+                      <span>توليد كود ID تلقائي</span>
                     </button>
                   </div>
                   <input
                     type="text"
+                    placeholder="اتركه فارغاً للتسلسل التلقائي في قاعدة البيانات أو أدخل الكود..."
                     value={formData.sku}
                     onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
                     className={`w-full bg-stone-950 border rounded-xl px-3 py-2 text-xs font-mono focus:outline-none ${

@@ -359,9 +359,9 @@ export async function safeSupabaseMutation(
 // --- MAPPERS ---
 
 export function mapDbProductToProduct(p: any): Product {
-  const safeId = (p.id !== null && p.id !== undefined && String(p.id) !== 'null' && String(p.id) !== 'undefined')
-    ? String(p.id)
-    : (p.sku ? String(p.sku) : (p.barcode ? String(p.barcode) : `prod_${Math.random().toString(36).substring(2, 9)}`));
+  const safeId = (p.id !== null && p.id !== undefined && String(p.id).trim() !== '' && String(p.id) !== 'null' && String(p.id) !== 'undefined')
+    ? String(p.id).trim()
+    : '';
 
   const rawBarcodes: string[] = Array.isArray(p.barcodes)
     ? p.barcodes.map(String).map((s: string) => s.trim()).filter(Boolean)
@@ -372,18 +372,15 @@ export function mapDbProductToProduct(p: any): Product {
   const allBarcodes: string[] = Array.from(new Set(rawBarcodes));
 
   // Primary barcode: direct barcode column -> first item in barcodes array -> empty string
-  // (Never fall back to p.sku or safeId to prevent SKU/barcode conflicts and unwanted barcode duplication)
   const primaryBarcode = (p.barcode ? String(p.barcode).trim() : null)
     || (allBarcodes.length > 0 ? allBarcodes[0] : '')
     || '';
 
-  // SKU / Item Code ("كود الصنف"):
-  const resolvedSku = String(p.sku ?? safeId ?? 'SKU-000');
-
+  // The id from the database is strictly the sku / item code. No random generation or fake fallback.
   return {
     id: safeId,
     name: p.name || 'منتج',
-    sku: resolvedSku,
+    sku: safeId,
     barcode: primaryBarcode,
     category: p.category || 'عام',
     priceCash: Number(p.priceCash ?? p.cash_price ?? p.price_cash ?? p.price ?? p.sale_price ?? 0),
@@ -424,9 +421,16 @@ export function mapProductToDbPayload(product: Product): any {
 
   delete payload.alternative_barcodes;
 
-  const candidateId = product.id ?? product.sku;
-  if (candidateId && !isNaN(Number(candidateId))) {
-    payload.id = Number(candidateId);
+  const candidateId = (product.id && String(product.id).trim() !== '')
+    ? String(product.id).trim()
+    : (product.sku && String(product.sku).trim() !== '' ? String(product.sku).trim() : null);
+
+  if (candidateId) {
+    if (!isNaN(Number(candidateId))) {
+      payload.id = Number(candidateId);
+    } else {
+      payload.id = candidateId;
+    }
   }
 
   return payload;

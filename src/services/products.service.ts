@@ -817,24 +817,16 @@ export function identifyDuplicateProductCodes(products: Product[]): Map<string, 
   const duplicateMap = new Map<string, { code: string; type: 'id' | 'sku' | 'barcode'; duplicateName: string }>();
 
   const idTracker = new Map<string, Product[]>();
-  const skuTracker = new Map<string, Product[]>();
   const barcodeTracker = new Map<string, Product[]>();
 
   for (const p of products) {
-    if (!p || !p.id) continue;
+    if (!p) continue;
+    const cleanId = String(p.id || p.sku || '').trim().toLowerCase();
 
-    // Check ID
-    if (!isPlaceholderProductCode(p.id)) {
-      const idKey = String(p.id).trim().toLowerCase();
-      if (!idTracker.has(idKey)) idTracker.set(idKey, []);
-      idTracker.get(idKey)!.push(p);
-    }
-
-    // Check SKU
-    if (!isPlaceholderProductCode(p.sku)) {
-      const s = p.sku.trim().toLowerCase();
-      if (!skuTracker.has(s)) skuTracker.set(s, []);
-      const list = skuTracker.get(s)!;
+    // Check ID / Code
+    if (cleanId && !isPlaceholderProductCode(cleanId)) {
+      if (!idTracker.has(cleanId)) idTracker.set(cleanId, []);
+      const list = idTracker.get(cleanId)!;
       if (!list.some((item) => String(item.id) === String(p.id))) {
         list.push(p);
       }
@@ -862,31 +854,15 @@ export function identifyDuplicateProductCodes(products: Product[]): Map<string, 
     }
   }
 
-  // Populate duplicateMap when 2 or more products share the ID
+  // Populate duplicateMap when 2 or more products share the ID / Code
   for (const [code, prods] of idTracker.entries()) {
     if (prods.length > 1) {
       for (const p of prods) {
-        const other = prods.find((o) => o !== p);
+        const other = prods.find((o) => String(o.id) !== String(p.id));
         if (other) {
           duplicateMap.set(String(p.id), {
             code,
             type: 'id',
-            duplicateName: other.name,
-          });
-        }
-      }
-    }
-  }
-
-  // Populate duplicateMap ONLY when 2 or more DIFFERENT products share the SKU
-  for (const [code, prods] of skuTracker.entries()) {
-    if (prods.length > 1) {
-      for (const p of prods) {
-        const other = prods.find((o) => String(o.id) !== String(p.id));
-        if (other && !duplicateMap.has(String(p.id))) {
-          duplicateMap.set(String(p.id), {
-            code: p.sku || code,
-            type: 'sku',
             duplicateName: other.name,
           });
         }
@@ -960,9 +936,10 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
     for (const p of products) {
       if (!p || !p.id) continue;
 
-      // 0. ID tracking (strict uniqueness on ID)
-      if (!isPlaceholderProductCode(p.id)) {
-        const idKey = `ID:${String(p.id).trim().toLowerCase()}`;
+      // 0. ID / Code tracking (ID is the product code)
+      const cleanId = String(p.id || p.sku || '').trim().toLowerCase();
+      if (cleanId && !isPlaceholderProductCode(cleanId)) {
+        const idKey = `ID:${cleanId}`;
         if (!codeToProducts.has(idKey)) codeToProducts.set(idKey, []);
         const existing = codeToProducts.get(idKey)!;
         if (!existing.some((x) => String(x.id) === String(p.id))) {
@@ -970,17 +947,7 @@ export async function fetchDuplicateProductsAcrossCatalog(): Promise<{
         }
       }
 
-      // 1. SKU tracking
-      if (!isPlaceholderProductCode(p.sku)) {
-        const sKey = `SKU:${p.sku.trim().toLowerCase()}`;
-        if (!codeToProducts.has(sKey)) codeToProducts.set(sKey, []);
-        const existing = codeToProducts.get(sKey)!;
-        if (!existing.some((x) => String(x.id) === String(p.id))) {
-          existing.push(p);
-        }
-      }
-
-      // 2. Barcode tracking (primary + array)
+      // 1. Barcode tracking (primary + array)
       const allBarcodes = new Set<string>();
       if (!isPlaceholderProductCode(p.barcode)) {
         allBarcodes.add(p.barcode.trim().toLowerCase());

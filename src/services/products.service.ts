@@ -461,12 +461,24 @@ export async function createProduct(product: Partial<Product>): Promise<{ succes
     }
   }
 
+  const primaryBarcode = product.barcode ? String(product.barcode).trim() : '';
+  const prodId = String(product.id || product.sku || '').trim();
+
+  // Sanitize extra barcodes: strip primary barcode, id, sku, and empty values
+  if (Array.isArray(product.barcodes)) {
+    product.barcodes = Array.from(
+      new Set(
+        product.barcodes
+          .map((b) => (b ? String(b).trim() : ''))
+          .filter((b) => Boolean(b) && b !== primaryBarcode && b !== prodId && b !== 'null' && b !== 'undefined')
+      )
+    );
+  }
+
   // Enforce uniqueness on Barcodes (primary + barcodes array)
   const allBarcodes = Array.from(
     new Set(
-      [product.barcode, ...(Array.isArray(product.barcodes) ? product.barcodes : [])]
-        .map((b) => (b ? String(b).trim() : ''))
-        .filter(Boolean)
+      [primaryBarcode, ...(Array.isArray(product.barcodes) ? product.barcodes : [])].filter(Boolean)
     )
   );
 
@@ -492,12 +504,24 @@ export async function createProduct(product: Partial<Product>): Promise<{ succes
 }
 
 export async function updateProduct(id: string, product: Partial<Product>): Promise<{ success: boolean; data?: Product; error?: any }> {
+  const primaryBarcode = product.barcode ? String(product.barcode).trim() : '';
+  const prodId = String(id || product.id || product.sku || '').trim();
+
+  // Sanitize extra barcodes: strip primary barcode, id, sku, and empty values
+  if (Array.isArray(product.barcodes)) {
+    product.barcodes = Array.from(
+      new Set(
+        product.barcodes
+          .map((b) => (b ? String(b).trim() : ''))
+          .filter((b) => Boolean(b) && b !== primaryBarcode && b !== prodId && b !== 'null' && b !== 'undefined')
+      )
+    );
+  }
+
   // Enforce uniqueness on Barcodes (primary + barcodes array) against other products
   const allBarcodes = Array.from(
     new Set(
-      [product.barcode, ...(Array.isArray(product.barcodes) ? product.barcodes : [])]
-        .map((b) => (b ? String(b).trim() : ''))
-        .filter(Boolean)
+      [primaryBarcode, ...(Array.isArray(product.barcodes) ? product.barcodes : [])].filter(Boolean)
     )
   );
 

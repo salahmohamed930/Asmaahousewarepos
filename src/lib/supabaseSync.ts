@@ -369,12 +369,17 @@ export function mapDbProductToProduct(p: any): Product {
       ? p.barcodes.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [];
 
-  const allBarcodes: string[] = Array.from(new Set(rawBarcodes));
+  // Filter out any ID, null or empty strings that might have leaked into barcodes array historically
+  const cleanBarcodes = rawBarcodes.filter((b) => b !== safeId && b !== 'null' && b !== 'undefined');
+  const allBarcodes: string[] = Array.from(new Set(cleanBarcodes));
 
   // Primary barcode: direct barcode column -> first item in barcodes array -> empty string
   const primaryBarcode = (p.barcode ? String(p.barcode).trim() : null)
     || (allBarcodes.length > 0 ? allBarcodes[0] : '')
     || '';
+
+  // Extra barcodes should only contain alternative barcodes (excluding the primary barcode and the id)
+  const extraBarcodes = allBarcodes.filter((b) => b !== primaryBarcode && b !== safeId);
 
   // The id from the database is strictly the sku / item code. No random generation or fake fallback.
   return {
@@ -390,19 +395,23 @@ export function mapDbProductToProduct(p: any): Product {
     stock: Number(p.stock_quantity ?? p.quantity ?? p.stock ?? 0),
     image: p.image_url || p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300',
     description: p.description || '',
-    barcodes: allBarcodes.length > 0 ? allBarcodes : (primaryBarcode ? [primaryBarcode] : []),
+    barcodes: extraBarcodes,
   };
 }
 
 export function mapProductToDbPayload(product: Product): any {
+  const prodId = String(product.id || product.sku || '').trim();
+  const primaryBarcode = product.barcode ? String(product.barcode).trim() : '';
+
+  // Ensure barcodes column in DB contains clean deduplicated barcodes (excluding empty, ID, or invalid tokens)
   const allBarcodes: string[] = Array.from(
     new Set(
       [
-        product.barcode,
+        primaryBarcode,
         ...(Array.isArray(product.barcodes) ? product.barcodes : []),
       ]
         .map((b) => (b ? String(b).trim() : ''))
-        .filter(Boolean)
+        .filter((b) => Boolean(b) && b !== 'null' && b !== 'undefined' && b !== prodId)
     )
   );
 
@@ -421,15 +430,11 @@ export function mapProductToDbPayload(product: Product): any {
 
   delete payload.alternative_barcodes;
 
-  const candidateId = (product.id && String(product.id).trim() !== '')
-    ? String(product.id).trim()
-    : (product.sku && String(product.sku).trim() !== '' ? String(product.sku).trim() : null);
-
-  if (candidateId) {
-    if (!isNaN(Number(candidateId))) {
-      payload.id = Number(candidateId);
+  if (prodId) {
+    if (!isNaN(Number(prodId))) {
+      payload.id = Number(prodId);
     } else {
-      payload.id = candidateId;
+      payload.id = prodId;
     }
   }
 

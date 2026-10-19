@@ -43,7 +43,9 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
     splitAssociates,
     taxRate,
     globalPriceTier,
+    getItemUnitPrice,
     updateCartQuantity,
+    updateCartItemPriceTier,
     updateCartItemDiscount,
     updateCartItemAssociate,
     removeFromCart,
@@ -118,14 +120,7 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
   let itemsDiscountTotal = 0;
 
   cart.forEach((item) => {
-    // Determine active unit price based on global price tier
-    const unitPrice =
-      globalPriceTier === 'cash'
-        ? item.product.priceCash
-        : globalPriceTier === 'installment'
-        ? item.product.priceInstallment
-        : item.product.priceWholesale;
-
+    const unitPrice = getItemUnitPrice(item);
     const originalLinePrice = unitPrice * item.quantity;
     const itemDiscount = getCartItemDiscountAmount(item);
     subtotal += originalLinePrice;
@@ -792,19 +787,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                 </thead>
                 <tbody className="divide-y divide-stone-800/60">
                   {cart.map((item, idx) => {
+                    const itemTier = item.selectedPriceTier || globalPriceTier;
                     const canViewItemPrice =
-                      globalPriceTier === 'cash'
+                      itemTier === 'cash'
                         ? canViewCash
-                        : globalPriceTier === 'installment'
+                        : itemTier === 'installment'
                         ? canViewInstallment
                         : canViewWholesale;
 
-                    const unitPrice =
-                      globalPriceTier === 'cash'
-                        ? item.product.priceCash
-                        : globalPriceTier === 'installment'
-                        ? item.product.priceInstallment
-                        : item.product.priceWholesale;
+                    const unitPrice = getItemUnitPrice(item);
 
                     const lineDiscount = getCartItemDiscountAmount(item);
                     const lineTotal = Math.max(0, unitPrice * item.quantity - lineDiscount);
@@ -835,9 +826,18 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({ onOpenCheckout }) => {
                               <span className="font-bold text-stone-100 block truncate text-[11px]">
                                 {item.product.name}
                               </span>
-                              <span className="text-[9px] font-mono text-stone-500 block">
-                                {item.product.sku}
-                              </span>
+                              <div className="flex items-center gap-1.5 text-[9px] font-mono text-stone-500">
+                                <span>{item.product.sku}</span>
+                                <span className={`px-1 py-0.2 rounded text-[8px] font-sans font-bold ${
+                                  itemTier === 'installment'
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    : itemTier === 'wholesale'
+                                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                }`}>
+                                  {itemTier === 'installment' ? 'تقسيط' : itemTier === 'wholesale' ? 'جملة' : 'كاش'}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </td>

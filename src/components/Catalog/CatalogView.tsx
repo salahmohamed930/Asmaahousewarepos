@@ -95,8 +95,8 @@ export const CatalogView: React.FC = () => {
     const existing = formData.barcodes || [];
 
     for (const code of newCodes) {
-      if (existing.includes(code) || formData.barcode === code) {
-        alert(`الباركود "${code}" موجود بالفعل في بيانات هذا الصنف.`);
+      if (existing.includes(code) || formData.barcode === code || formData.sku === code || (editingProduct && String(editingProduct.id) === code)) {
+        alert(`الباركود "${code}" مطابق لكود الصنف (ID) أو الباركود الأساسي. لا داعي لتكراره.`);
         return;
       }
       const conflict = await checkProductCodeConflict(code, editingProduct?.id);
@@ -531,7 +531,7 @@ export const CatalogView: React.FC = () => {
         stock: Number(row.stock),
         image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=500&q=80',
         description: 'صنف مضاف من خلال الإضافة المتعددة',
-        barcodes: rowBarcode ? [rowBarcode] : [],
+        barcodes: [],
       });
       if (!res.success) {
         alert(`خطأ عند إضافة الصنف "${row.name}": ${res.error?.message || 'التشابه في الباركود أو المعرف ممنوع'}`);
@@ -568,10 +568,13 @@ export const CatalogView: React.FC = () => {
 
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
+    const cleanExtraBarcodes = (p.barcodes || [])
+      .filter((b) => b && b !== p.barcode && b !== String(p.id));
+
     setFormData({
       name: p.name,
       sku: p.sku,
-      barcode: p.barcode,
+      barcode: p.barcode || '',
       category: p.category,
       priceCash: p.priceCash,
       priceInstallment: p.priceInstallment,
@@ -580,7 +583,7 @@ export const CatalogView: React.FC = () => {
       stock: p.stock,
       image: p.image,
       description: p.description || '',
-      barcodes: p.barcodes || (p.barcode ? [p.barcode] : []),
+      barcodes: cleanExtraBarcodes,
     });
     setSkuConflict(null);
     setBarcodeConflict(null);
@@ -650,9 +653,9 @@ export const CatalogView: React.FC = () => {
       stock: Number(formData.stock),
       image: formData.image,
       description: formData.description,
-      barcodes: formData.barcodes?.length
-        ? formData.barcodes.filter(Boolean)
-        : (formData.barcode?.trim() ? [formData.barcode.trim()] : []),
+      barcodes: (formData.barcodes || [])
+        .map((b) => b?.trim())
+        .filter((b) => Boolean(b) && b !== formData.barcode?.trim() && b !== formData.sku?.trim() && b !== String(editingProduct?.id || '').trim()),
     };
 
     if (editingProduct) {

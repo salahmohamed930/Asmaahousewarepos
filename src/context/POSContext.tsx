@@ -79,6 +79,7 @@ interface POSContextType {
   updateCartItemAssociate: (productId: string, associateId?: string) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
+  getItemUnitPrice: (item: CartItem) => number;
   invoiceDiscount: InvoiceDiscount | null;
   setInvoiceDiscount: (discount: InvoiceDiscount | null) => void;
   getInvoiceDiscountAmount: (subtotalAfterItems?: number, discount?: InvoiceDiscount | null) => number;
@@ -580,7 +581,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setGlobalPriceTier = (tier: PriceTier) => {
     setGlobalPriceTierState(tier);
-    setCart((prevCart) => prevCart.map((item) => ({ ...item, selectedPriceTier: tier })));
+    setCart((prevCart) => prevCart.map((item) => ({
+      ...item,
+      selectedPriceTier: tier,
+      overridePrice: undefined, // Clear any locked override price so the new tier takes full effect immediately
+    })));
   };
 
   const quickSwitchByPin = (pin: string): boolean => {
@@ -636,7 +641,11 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCartItemPriceTier = (productId: string, priceTier: PriceTier) => {
-    setCart((prev) => prev.map((item) => (item.product.id === productId ? { ...item, selectedPriceTier: priceTier } : item)));
+    setCart((prev) => prev.map((item) => (
+      item.product.id === productId
+        ? { ...item, selectedPriceTier: priceTier, overridePrice: undefined }
+        : item
+    )));
   };
 
   const updateCartItemDiscount = (productId: string, discountPercent: number) => {
@@ -1247,8 +1256,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setEditingTransaction(tx);
 
+    const initialTier: PriceTier = (tx.items && tx.items[0]?.priceTier)
+      ? tx.items[0].priceTier
+      : (tx.paymentMethod === 'تقسيط شهري' ? 'installment' : 'cash');
+    setGlobalPriceTierState(initialTier);
+
     const reconstructedCart: CartItem[] = (tx.items || []).map((item) => {
-      const foundProd = products.find((p) => p.id === item.productId);
+      const foundProd = products.find(
+        (p) => String(p.id) === String(item.productId) || (item.sku && String(p.sku) === String(item.sku))
+      );
       const prod: Product = foundProd || {
         id: item.productId,
         name: item.productName,
@@ -1262,13 +1278,24 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stock: 999,
         image: '',
       };
+
+      const itemTier: PriceTier = item.priceTier || initialTier;
+      const expectedTierPrice = itemTier === 'installment'
+        ? (prod.priceInstallment || 0)
+        : itemTier === 'wholesale'
+        ? (prod.priceWholesale || 0)
+        : (prod.priceCash || 0);
+
+      // Only preserve overridePrice if the price in the invoice was genuinely different from the expected price in that tier
+      const hasCustomPrice = foundProd ? (item.unitPrice !== expectedTierPrice) : false;
+
       return {
         product: prod,
         quantity: item.quantity,
-        selectedPriceTier: item.priceTier || 'cash',
+        selectedPriceTier: itemTier,
         discountPercent: item.discountPercent || 0,
         assignedAssociateId: item.assignedAssociateId,
-        overridePrice: item.unitPrice,
+        overridePrice: hasCustomPrice ? item.unitPrice : undefined,
       };
     });
 
@@ -1389,11 +1416,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 2. Adjust customer debt and metrics if applicable
+    // 2. Adjust customer debt and metrics based on NEW grandTotal
+    const finalPaid = amountPaid !== undefined ? amountPaid : grandTotal;
+    const finalDeferred = amountDeferred !== undefined ? amountDeferred : Math.max(0, grandTotal - finalPaid);
+
     if (selectedCustomer) {
       const oldDeferred = editingTransaction.amountDeferred || 0;
-      const finalPaid = amountPaid !== undefined ? amountPaid : (editingTransaction.amountPaid !== undefined ? editingTransaction.amountPaid : grandTotal);
-      const finalDeferred = amountDeferred !== undefined ? amountDeferred : (editingTransaction.amountDeferred !== undefined ? editingTransaction.amountDeferred : 0);
       const debtDelta = finalDeferred - oldDeferred;
       const spentDelta = grandTotal - (editingTransaction.grandTotal || 0);
 
@@ -1433,8 +1461,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       primaryAssociateName: primaryAssocName,
       splitAssociates: splitAssociates.length > 0 ? splitAssociates : undefined,
       notes: notes || editingTransaction.notes || 'تم تعديل الفاتورة بنجاح',
-      amountPaid: amountPaid !== undefined ? amountPaid : (editingTransaction.amountPaid !== undefined ? editingTransaction.amountPaid : grandTotal),
-      amountDeferred: amountDeferred !== undefined ? amountDeferred : (editingTransaction.amountDeferred !== undefined ? editingTransaction.amountDeferred : 0),
+      amountPaid: finalPaid,
+      amountDeferred: finalDeferred,
       splitPayments: splitPayments && splitPayments.length > 0 ? splitPayments : editingTransaction.splitPayments,
       updated_at: new Date().toISOString(),
     };
@@ -2153,6 +2181,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCartItemAssociate,
         removeFromCart,
         clearCart,
+        getItemUnitPrice,
         invoiceDiscount,
         setInvoiceDiscount,
         getInvoiceDiscountAmount,

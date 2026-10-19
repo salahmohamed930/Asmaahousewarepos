@@ -35,6 +35,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     saveEditedTransaction,
     editingTransaction,
     getCartItemDiscountAmount,
+    getItemUnitPrice,
     invoiceDiscount,
     setInvoiceDiscount,
     getInvoiceDiscountAmount,
@@ -70,11 +71,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     if (isOpen) {
       setPaymentError('');
       if (editingTransaction) {
-        setPaymentMethod(editingTransaction.paymentMethod || 'كاش');
-        const defaultCash = editingTransaction.amountPaid !== undefined 
-          ? editingTransaction.amountPaid 
-          : (editingTransaction.grandTotal || 0);
-        setCashTendered(defaultCash > 0 ? defaultCash.toString() : '');
+        const initialMethod = (editingTransaction.paymentMethod && editingTransaction.paymentMethod !== 'كاش')
+          ? editingTransaction.paymentMethod
+          : (globalPriceTier === 'installment' ? 'تقسيط شهري' : (editingTransaction.paymentMethod || 'كاش'));
+        setPaymentMethod(initialMethod);
+        
         if (editingTransaction.amountDeferred && editingTransaction.amountDeferred > 0) {
           setIsPartialPayment(true);
           setPartialPaidAmount((editingTransaction.amountPaid || 0).toString());
@@ -82,26 +83,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
           setIsPartialPayment(false);
           setPartialPaidAmount('');
         }
+        setCashTendered('');
       } else {
-        setPaymentMethod('كاش');
+        setPaymentMethod(globalPriceTier === 'installment' ? 'تقسيط شهري' : 'كاش');
         setCashTendered('');
         setIsPartialPayment(false);
         setPartialPaidAmount('');
       }
     }
-  }, [isOpen, editingTransaction]);
+  }, [isOpen, editingTransaction, globalPriceTier]);
 
   if (!isOpen || !currentAssociate) return null;
-
-  // Helper to determine the unit price of a cart item based on current settings
-  const getItemUnitPrice = (item: any): number => {
-    if (item.overridePrice !== undefined && item.overridePrice > 0) return item.overridePrice;
-    const tier = item.selectedPriceTier || globalPriceTier;
-    if (tier === 'cash') return item.product.priceCash || 0;
-    if (tier === 'installment') return item.product.priceInstallment || 0;
-    if (tier === 'wholesale') return item.product.priceWholesale || 0;
-    return item.product.priceCash || 0;
-  };
 
   // Calculate Cart Totals
   let subtotal = 0;
@@ -835,6 +827,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                   { id: 'كاش', label: 'كاش / نقدي', icon: Banknote },
                   { id: 'فيزا / كارت', label: 'فيزا / كارت', icon: CreditCard },
                   { id: 'محفظة إلكترونية', label: 'محفظة ذكية', icon: Smartphone },
+                  { id: 'تقسيط شهري', label: 'تقسيط شهري', icon: Receipt },
                   { id: 'آجل / حساب جملة', label: 'حساب آجل', icon: Gift },
                   { id: 'نقاط ولاء', label: 'نقاط ولاء', icon: Sparkles, disabled: !selectedCustomer || (selectedCustomer.loyaltyPoints || 0) <= 0 },
                 ].map((m) => {

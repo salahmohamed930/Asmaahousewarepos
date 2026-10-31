@@ -49,73 +49,53 @@ export async function printInvoiceReceipt(
   const receiptHtml = buildReceiptHtml(transaction, options);
 
   const customStyles = `
-    @page {
-      size: ${isThermal ? '80mm auto' : 'A4 portrait'} !important;
-      margin: ${isThermal ? '0 !important' : '4mm 6mm !important'};
-    }
     *, *::before, *::after {
       box-sizing: border-box !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
     }
-    html, body {
+    body {
       margin: 0 !important;
       padding: 0 !important;
       background: #ffffff !important;
       color: #000000 !important;
       font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      font-size: ${isThermal ? '10px' : '11px'} !important;
+      font-size: ${isThermal ? '10px' : '11.5px'} !important;
       font-weight: 800 !important;
       direction: rtl !important;
-      ${!isThermal ? 'height: 100% !important; max-height: 297mm !important; overflow: hidden !important;' : ''}
     }
     #printable-receipt {
-      padding: ${isThermal ? '2mm 3mm' : '6mm 8mm'} !important;
+      padding: ${isThermal ? '2mm 3mm' : '12mm 15mm'} !important;
       margin: 0 auto !important;
       max-width: ${isThermal ? '80mm' : '100%'} !important;
       width: 100% !important;
       background: #ffffff !important;
       color: #000000 !important;
       font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      font-size: ${isThermal ? '10px' : '11px'} !important;
+      font-size: ${isThermal ? '10px' : '11.5px'} !important;
       font-weight: 800 !important;
-      line-height: 1.3 !important;
+      line-height: 1.35 !important;
       border: none !important;
       box-shadow: none !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      page-break-before: avoid !important;
-      page-break-after: avoid !important;
-      ${!isThermal ? 'max-height: 100% !important;' : ''}
     }
     table.receipt-items-table {
       width: 100% !important;
       border-collapse: collapse !important;
-      margin: 4px 0 !important;
+      margin: 6px 0 !important;
       font-weight: 800 !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
     }
     table.receipt-items-table thead tr {
       background-color: #d1d5db !important;
       border-top: 1.5px solid #000000 !important;
       border-bottom: 1.5px solid #000000 !important;
       font-weight: 900 !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    table.receipt-items-table tr {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
     }
     table.receipt-items-table th, table.receipt-items-table td {
-      padding: 2.5px 2px !important;
+      padding: 3px 2px !important;
       color: #000000 !important;
-      font-size: ${isThermal ? '9.5px' : '10.5px'} !important;
+      font-size: ${isThermal ? '9.5px' : '11px'} !important;
       font-weight: 800 !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
     }
     .no-print {
       display: none !important;

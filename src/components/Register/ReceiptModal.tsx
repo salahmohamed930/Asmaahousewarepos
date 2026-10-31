@@ -127,45 +127,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
           </div>
         </div>
 
-        {/* Print Styles for Direct Modal Printing */}
-        <style>{`
-          @media print {
-            body * {
-              visibility: hidden !important;
-            }
-            #printable-receipt-wrap, #printable-receipt, #printable-receipt * {
-              visibility: visible !important;
-            }
-            #printable-receipt-wrap {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 100% !important;
-              max-height: none !important;
-              overflow: visible !important;
-              margin: 0 !important;
-              padding: 0 !important;
-            }
-            #printable-receipt {
-              width: 100% !important;
-              box-shadow: none !important;
-              border: none !important;
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-              page-break-before: avoid !important;
-              page-break-after: avoid !important;
-            }
-            table, tr, td, th {
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-            }
-            @page {
-              size: ${receiptType === 'a4' ? 'A4 portrait' : '80mm auto'} !important;
-              margin: ${receiptType === 'a4' ? '4mm 6mm' : '0'} !important;
-            }
-          }
-        `}</style>
-
         {/* Printable Thermal / A4 Receipt Card */}
         <div id="printable-receipt-wrap" className="w-full max-h-[70vh] overflow-y-auto pr-1">
           <ReceiptContent

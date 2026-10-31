@@ -131,50 +131,13 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
     ? customer.currentDebt || 0
     : transaction.amountDeferred ?? 0;
 
-  const itemsCount = (transaction.items || []).length;
-  const isLongInvoice = itemsCount > 6;
-  const isVeryLongInvoice = itemsCount > 13;
-  const isUltraLongInvoice = itemsCount > 22;
-
-  const cellPadding = isUltraLongInvoice
-    ? '1px 1.5px'
-    : isVeryLongInvoice
-    ? '1.5px 2px'
-    : isLongInvoice
-    ? '2px 2px'
-    : '3px 2px';
-
-  const cellFontSize = isUltraLongInvoice
-    ? '8px'
-    : isVeryLongInvoice
-    ? '8.5px'
-    : isLongInvoice
-    ? '9px'
-    : '9.5px';
-
   return (
     <div
       id={elementId}
-      className={`bg-white text-black rounded-2xl font-sans shadow-2xl mx-auto ${
+      className={`bg-white text-black rounded-2xl p-5 font-sans shadow-2xl mx-auto space-y-2.5 ${
         receiptType === 'a4'
-          ? `w-full max-w-3xl border-2 border-stone-300 font-extrabold ${
-              isUltraLongInvoice
-                ? 'p-2 space-y-0.5 text-[9px]'
-                : isVeryLongInvoice
-                ? 'p-3 space-y-1 text-[10px]'
-                : isLongInvoice
-                ? 'p-4 space-y-1.5 text-[10.5px]'
-                : 'p-5 space-y-2 text-[11px]'
-            }`
-          : `max-w-md w-full border border-stone-200 font-extrabold ${
-              isUltraLongInvoice
-                ? 'p-1.5 space-y-0.5 text-[8.5px]'
-                : isVeryLongInvoice
-                ? 'p-2 space-y-1 text-[9px]'
-                : isLongInvoice
-                ? 'p-2.5 space-y-1.5 text-[9.5px]'
-                : 'p-4 space-y-2 text-[10px]'
-            }`
+          ? 'w-full max-w-3xl min-h-[600px] border-2 border-stone-300 text-[11.5px] font-extrabold'
+          : 'max-w-md w-full border border-stone-200 text-[10px] font-extrabold'
       }`}
       style={{
         direction: 'rtl',
@@ -182,62 +145,27 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
         backgroundColor: '#ffffff',
         color: '#000000',
         fontFamily: "'Cairo', system-ui, -apple-system, sans-serif",
-        pageBreakInside: 'avoid',
-        breakInside: 'avoid',
-        pageBreakBefore: 'avoid',
-        pageBreakAfter: 'avoid',
       }}
     >
       {/* 1. Header */}
-      <div className="text-center pb-0.5 border-b border-transparent" style={{ textAlign: 'center' }}>
-        <h1
-          className="font-black tracking-tight text-black leading-tight"
-          style={{
-            fontWeight: 900,
-            fontSize: isUltraLongInvoice ? '12px' : isVeryLongInvoice ? '13px' : isLongInvoice ? '14px' : '16px',
-            margin: '1px 0',
-          }}
-        >
+      <div className="text-center space-y-0.5 pb-1 border-b border-transparent" style={{ textAlign: 'center' }}>
+        <h1 className="text-base sm:text-lg font-black tracking-tight text-black leading-tight" style={{ fontWeight: 900, margin: '2px 0' }}>
           {defaultPrintSettings.headerText || 'أسماء للأدوات المنزليه'}
         </h1>
         {defaultPrintSettings.address && (
-          <p
-            className="text-black font-extrabold leading-tight"
-            style={{
-              margin: '1px 0',
-              fontSize: isLongInvoice ? '9px' : '10px',
-              fontWeight: 800,
-            }}
-          >
+          <p className="text-[10px] text-black font-extrabold leading-tight" style={{ margin: '1px 0', fontSize: '10px', fontWeight: 800 }}>
             {defaultPrintSettings.address}
           </p>
         )}
         {defaultPrintSettings.phoneNumbers && (
-          <p
-            className="text-black font-mono font-black leading-tight"
-            dir="ltr"
-            style={{
-              margin: '1px 0',
-              fontSize: isLongInvoice ? '9.5px' : '10.5px',
-              fontWeight: 900,
-            }}
-          >
+          <p className="text-[10.5px] text-black font-mono font-black leading-tight" dir="ltr" style={{ margin: '1px 0', fontSize: '10.5px', fontWeight: 900 }}>
             {defaultPrintSettings.phoneNumbers}
           </p>
         )}
       </div>
 
-      {/* 2. Metadata Section - In A4, renders as 3 columns to save vertical space; In thermal, compact stack */}
-      <div
-        className={`font-black text-black text-right pt-0.5 ${
-          receiptType === 'a4'
-            ? 'grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5 text-[9.5px] leading-tight'
-            : isVeryLongInvoice
-            ? 'space-y-0.5 text-[9px] leading-tight'
-            : 'space-y-0.5 text-[9.5px] leading-tight'
-        }`}
-        style={{ lineHeight: 1.25 }}
-      >
+      {/* 2. Metadata Section */}
+      <div className="text-[10.5px] leading-relaxed space-y-1 font-black text-black text-right pt-1" style={{ fontSize: '10.5px', lineHeight: 1.4 }}>
         <div>
           <span className="font-extrabold">رقم الفاتوره : </span>
           <span className="font-mono font-black text-black">{transaction.receiptNumber}</span>
@@ -259,7 +187,7 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
           <span className="font-mono font-black text-black">{formatReceiptTime(transaction.timestamp)}</span>
         </div>
         <div>
-          <span className="font-extrabold">اسم البائع : </span>
+          <span className="font-extrabold">اسم البائع / الكاشير : </span>
           <span className="font-black text-black">{sellerName}</span>
         </div>
         {primaryAssoc?.pin && defaultPrintSettings.showSellerCode !== false && (
@@ -277,73 +205,15 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
       </div>
 
       {/* 3. Items Section */}
-      <div className="w-full my-0.5" style={{ margin: isUltraLongInvoice ? '1.5px 0' : isLongInvoice ? '3px 0' : '5px 0' }}>
-        <table
-          className="receipt-items-table w-full border-collapse text-black font-black"
-          style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: cellFontSize,
-            pageBreakInside: 'avoid',
-            breakInside: 'avoid',
-          }}
-        >
+      <div className="w-full my-1" style={{ margin: '6px 0' }}>
+        <table className="receipt-items-table w-full border-collapse text-[10px] text-black font-black" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5px' }}>
           <thead>
-            <tr
-              className="bg-stone-200/90 font-black border-y-2 border-black text-black"
-              style={{
-                backgroundColor: '#d1d5db',
-                borderTop: '1.5px solid #000000',
-                borderBottom: '1.5px solid #000000',
-                pageBreakInside: 'avoid',
-                breakInside: 'avoid',
-              }}
-            >
-              <th
-                className="text-right w-[38%] font-black"
-                style={{
-                  padding: cellPadding,
-                  textAlign: 'right',
-                }}
-              >
-                الصنف
-              </th>
-              <th
-                className="text-center w-[16%] font-black"
-                style={{
-                  padding: cellPadding,
-                  textAlign: 'center',
-                }}
-              >
-                السعر
-              </th>
-              <th
-                className="text-center w-[14%] font-black"
-                style={{
-                  padding: cellPadding,
-                  textAlign: 'center',
-                }}
-              >
-                الكميه
-              </th>
-              <th
-                className="text-center w-[14%] font-black"
-                style={{
-                  padding: cellPadding,
-                  textAlign: 'center',
-                }}
-              >
-                الخصم
-              </th>
-              <th
-                className="text-left w-[18%] font-black"
-                style={{
-                  padding: cellPadding,
-                  textAlign: 'left',
-                }}
-              >
-                الاجمالي
-              </th>
+            <tr className="bg-stone-200/90 font-black border-y-2 border-black text-black" style={{ backgroundColor: '#d1d5db', borderTop: '1.5px solid #000000', borderBottom: '1.5px solid #000000' }}>
+              <th className="py-1 px-1 text-right w-[38%] font-black" style={{ padding: '3px 2px', textAlign: 'right' }}>الصنف</th>
+              <th className="py-1 px-1 text-center w-[16%] font-black" style={{ padding: '3px 2px', textAlign: 'center' }}>السعر</th>
+              <th className="py-1 px-1 text-center w-[14%] font-black" style={{ padding: '3px 2px', textAlign: 'center' }}>الكميه</th>
+              <th className="py-1 px-1 text-center w-[14%] font-black" style={{ padding: '3px 2px', textAlign: 'center' }}>الخصم</th>
+              <th className="py-1 px-1 text-left w-[18%] font-black" style={{ padding: '3px 2px', textAlign: 'left' }}>الاجمالي</th>
             </tr>
           </thead>
           <tbody className="font-black">
@@ -354,63 +224,20 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
                   : Math.max(0, item.unitPrice * item.quantity - item.totalPrice);
 
               return (
-                <tr
-                  key={item.productId ? `rcp_item_${item.productId}_${idx}` : `rcp_item_${idx}`}
-                  className="leading-tight"
-                  style={{
-                    borderBottom: '1px dotted #e5e7eb',
-                    pageBreakInside: 'avoid',
-                    breakInside: 'avoid',
-                  }}
-                >
-                  <td
-                    className="text-right align-top font-black text-black"
-                    style={{
-                      padding: cellPadding,
-                      textAlign: 'right',
-                      fontSize: cellFontSize,
-                    }}
-                  >
+                <tr key={item.productId ? `rcp_item_${item.productId}_${idx}` : `rcp_item_${idx}`} className="leading-tight" style={{ borderBottom: '1px dotted #e5e7eb' }}>
+                  <td className="py-1 px-1 text-right align-top font-black text-[10px] text-black" style={{ padding: '3px 2px', textAlign: 'right' }}>
                     {item.productName}
                   </td>
-                  <td
-                    className="text-center align-top font-mono font-black text-black"
-                    style={{
-                      padding: cellPadding,
-                      textAlign: 'center',
-                      fontSize: cellFontSize,
-                    }}
-                  >
+                  <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black" style={{ padding: '3px 2px', textAlign: 'center' }}>
                     {formatReceiptPrice(item.unitPrice)}
                   </td>
-                  <td
-                    className="text-center align-top font-mono font-black text-black"
-                    style={{
-                      padding: cellPadding,
-                      textAlign: 'center',
-                      fontSize: cellFontSize,
-                    }}
-                  >
+                  <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black" style={{ padding: '3px 2px', textAlign: 'center' }}>
                     {formatReceiptPrice(item.quantity)}
                   </td>
-                  <td
-                    className="text-center align-top font-mono font-black text-black"
-                    style={{
-                      padding: cellPadding,
-                      textAlign: 'center',
-                      fontSize: cellFontSize,
-                    }}
-                  >
+                  <td className="py-1 px-1 text-center align-top font-mono font-black text-[10px] text-black" style={{ padding: '3px 2px', textAlign: 'center' }}>
                     {itemDiscount > 0 ? formatReceiptPrice(itemDiscount) : '0'}
                   </td>
-                  <td
-                    className="text-left align-top font-mono font-black text-black"
-                    style={{
-                      padding: cellPadding,
-                      textAlign: 'left',
-                      fontSize: cellFontSize,
-                    }}
-                  >
+                  <td className="py-1 px-1 text-left align-top font-mono font-black text-[10px] text-black" style={{ padding: '3px 2px', textAlign: 'left' }}>
                     {formatReceiptPrice(item.totalPrice)}
                   </td>
                 </tr>
@@ -421,24 +248,7 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
       </div>
 
       {/* 4. Totals Summary */}
-      <div
-        className={`font-black text-black text-right ${
-          receiptType === 'a4'
-            ? 'grid grid-cols-2 gap-x-6 gap-y-0.5 pt-1'
-            : isUltraLongInvoice
-            ? 'space-y-0.5 pt-0.5'
-            : isVeryLongInvoice
-            ? 'space-y-0.5 pt-1'
-            : 'space-y-0.5 pt-1.5'
-        }`}
-        style={{
-          paddingTop: isUltraLongInvoice ? '2px' : isVeryLongInvoice ? '3px' : isLongInvoice ? '5px' : '7px',
-          fontSize: isUltraLongInvoice ? '8.5px' : isVeryLongInvoice ? '9px' : isLongInvoice ? '10px' : '10.5px',
-          lineHeight: 1.25,
-          pageBreakInside: 'avoid',
-          breakInside: 'avoid',
-        }}
-      >
+      <div className="pt-2 text-[11.5px] font-black text-black text-right space-y-1" style={{ paddingTop: '8px', fontSize: '11px', lineHeight: 1.4 }}>
         <div>
           <span className="font-extrabold">الإجمالي قبل الخصم : </span>
           <span className="font-mono font-black">{formatReceiptPrice(totalBeforeDiscount)}</span>
@@ -453,7 +263,7 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
             )}
             <div>
               <span className="font-extrabold">
-                خصم الفاتورة ({transaction.invoiceDiscount.type === 'percentage' ? `${transaction.invoiceDiscount.value}%` : 'مبلغ'}) :{' '}
+                خصم إجمالي الفاتورة ({transaction.invoiceDiscount.type === 'percentage' ? `${transaction.invoiceDiscount.value}%` : 'مبلغ مالي'}) :{' '}
               </span>
               <span className="font-mono font-black">
                 {formatReceiptPrice(transaction.invoiceDiscount.amount ?? discountTotal - itemsDiscountTotal)}
@@ -489,43 +299,15 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
       </div>
 
       {/* 5. Footer */}
-      <div
-        className="flex items-end justify-between border-t border-stone-200"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          paddingTop: isUltraLongInvoice ? '2px' : isVeryLongInvoice ? '3px' : isLongInvoice ? '5px' : '8px',
-          marginTop: isUltraLongInvoice ? '2px' : isVeryLongInvoice ? '2px' : '4px',
-          borderTop: '1px dashed #d1d5db',
-          pageBreakInside: 'avoid',
-          breakInside: 'avoid',
-        }}
-      >
+      <div className="pt-3 mt-2 flex items-end justify-between" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '10px' }}>
         {/* Facebook QR Code */}
         {defaultPrintSettings.showQRCode !== false && (
-          <div
-            className="flex flex-col items-start space-y-0.5"
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
-          >
-            <span
-              className="font-black text-black font-sans leading-none"
-              style={{ fontSize: isUltraLongInvoice ? '7.5px' : isLongInvoice ? '8.5px' : '9.5px', fontWeight: 900 }}
-            >
-              FaceBook
-            </span>
-            <div
-              className="bg-white border border-black rounded"
-              style={{
-                padding: '1.5px',
-                border: '1px solid black',
-                borderRadius: '3px',
-                background: '#ffffff',
-              }}
-            >
+          <div className="flex flex-col items-start space-y-1" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <span className="text-[10px] font-black text-black font-sans" style={{ fontSize: '10px', fontWeight: 900 }}>FaceBook</span>
+            <div className="p-0.5 bg-white border border-black rounded" style={{ padding: '2px', border: '1px solid black', borderRadius: '4px', background: '#ffffff' }}>
               <QRCodeSVG
                 value={defaultPrintSettings.facebookUrl || 'https://facebook.com'}
-                size={isUltraLongInvoice ? 36 : isVeryLongInvoice ? 44 : isLongInvoice ? 52 : 62}
+                size={68}
                 level="M"
               />
             </div>
@@ -533,29 +315,11 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
         )}
 
         {/* Thank You Note */}
-        <div
-          className="text-center font-black text-black space-y-0.5 pb-0.5"
-          style={{ textAlign: 'center', flex: 1 }}
-        >
-          <p
-            className="font-black leading-tight"
-            style={{
-              fontSize: isVeryLongInvoice ? '9.5px' : isLongInvoice ? '10px' : '11px',
-              fontWeight: 900,
-              margin: '1px 0',
-            }}
-          >
+        <div className="text-center font-black text-black space-y-0.5 pb-1" style={{ textAlign: 'center', flex: 1 }}>
+          <p className="text-[11.5px] font-black leading-tight" style={{ fontSize: '11px', fontWeight: 900, margin: '2px 0' }}>
             {defaultPrintSettings.footerText || 'شكرا و دائما فى خدمتكم'}
           </p>
-          <p
-            className="font-sans font-black leading-tight"
-            dir="ltr"
-            style={{
-              fontSize: isVeryLongInvoice ? '8.5px' : isLongInvoice ? '9px' : '10px',
-              fontWeight: 900,
-              margin: '1px 0',
-            }}
-          >
+          <p className="text-[10.5px] font-sans font-black leading-tight" dir="ltr" style={{ fontSize: '10px', fontWeight: 900, margin: '2px 0' }}>
             {defaultPrintSettings.footerSubText || 'visit us again'}
           </p>
         </div>
@@ -563,4 +327,3 @@ export const ReceiptContent: React.FC<ReceiptContentProps> = ({
     </div>
   );
 };
-

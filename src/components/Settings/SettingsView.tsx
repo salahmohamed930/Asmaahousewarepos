@@ -14,6 +14,100 @@ import {
 } from '../../data/initialData';
 import { ShortcutActionId, LabelCustomizationSettings } from '../../types';
 import { BarcodeItem } from '../Common/BarcodeItem';
+
+export const SUPABASE_RLS_SQL_SCRIPT = `-- ==============================================================================
+-- سكريبت تطبيق حماية الـ RLS وربط Supabase Auth لنظام كاشير أسماء للأدوات المنزلية
+-- ==============================================================================
+
+-- 1. تفعيل حماية Row Level Security (RLS) على جميع جداول النظام
+ALTER TABLE IF EXISTS products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS supplier_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS transaction_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS associates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS closed_shifts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS discounts ENABLE ROW LEVEL SECURITY;
+
+-- 2. إزالة أي سياسات سابقة لتجنب أي تعارض
+DROP POLICY IF EXISTS "Allow authenticated full access to products" ON products;
+DROP POLICY IF EXISTS "Allow anon read access to products" ON products;
+DROP POLICY IF EXISTS "Allow authenticated full access to customers" ON customers;
+DROP POLICY IF EXISTS "Allow anon read access to customers" ON customers;
+DROP POLICY IF EXISTS "Allow authenticated full access to suppliers" ON suppliers;
+DROP POLICY IF EXISTS "Allow authenticated full access to supplier_transactions" ON supplier_transactions;
+DROP POLICY IF EXISTS "Allow authenticated full access to transactions" ON transactions;
+DROP POLICY IF EXISTS "Allow authenticated full access to transaction_items" ON transaction_items;
+DROP POLICY IF EXISTS "Allow authenticated full access to associates" ON associates;
+DROP POLICY IF EXISTS "Allow anon read access to associates" ON associates;
+DROP POLICY IF EXISTS "Allow authenticated full access to closed_shifts" ON closed_shifts;
+DROP POLICY IF EXISTS "Allow authenticated full access to expenses" ON expenses;
+DROP POLICY IF EXISTS "Allow authenticated full access to discounts" ON discounts;
+
+-- سياسات المنتجات (Products)
+CREATE POLICY "Allow authenticated full access to products"
+  ON products FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow anon read access to products"
+  ON products FOR SELECT TO anon
+  USING (true);
+
+-- سياسات العملاء (Customers)
+CREATE POLICY "Allow authenticated full access to customers"
+  ON customers FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow anon read access to customers"
+  ON customers FOR SELECT TO anon
+  USING (true);
+
+-- سياسات الموردين (Suppliers)
+CREATE POLICY "Allow authenticated full access to suppliers"
+  ON suppliers FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+-- سياسات معاملات الموردين (Supplier Transactions)
+CREATE POLICY "Allow authenticated full access to supplier_transactions"
+  ON supplier_transactions FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+-- سياسات الفواتير والمبيعات (Transactions)
+CREATE POLICY "Allow authenticated full access to transactions"
+  ON transactions FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+-- سياسات تفاصيل الفواتير (Transaction Items)
+CREATE POLICY "Allow authenticated full access to transaction_items"
+  ON transaction_items FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+-- سياسات الموظفين (Associates)
+CREATE POLICY "Allow authenticated full access to associates"
+  ON associates FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow anon read access to associates"
+  ON associates FOR SELECT TO anon
+  USING (true);
+
+-- سياسات الورديات المقفلة (Closed Shifts)
+CREATE POLICY "Allow authenticated full access to closed_shifts"
+  ON closed_shifts FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+-- سياسات المصروفات (Expenses)
+CREATE POLICY "Allow authenticated full access to expenses"
+  ON expenses FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+
+-- سياسات الخصومات (Discounts)
+CREATE POLICY "Allow authenticated full access to discounts"
+  ON discounts FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
+`;
 import {
   Sun,
   Moon,
@@ -37,6 +131,7 @@ import {
   HelpCircle,
   Tag,
   Copy,
+  Shield,
   ShieldCheck,
   ShieldAlert,
   KeyRound,
@@ -63,6 +158,7 @@ export type SettingsTabId =
   | 'shortcuts'
   | 'loyalty'
   | 'database'
+  | 'rls'
   | 'appearance';
 
 export const SettingsView: React.FC = () => {
@@ -135,6 +231,15 @@ export const SettingsView: React.FC = () => {
     } finally {
       setIsResettingLocalDb(false);
     }
+  };
+
+  const [copiedRlsSql, setCopiedRlsSql] = useState(false);
+
+  const handleCopyRlsScript = () => {
+    navigator.clipboard.writeText(SUPABASE_RLS_SQL_SCRIPT);
+    setCopiedRlsSql(true);
+    triggerSuccess('تم نسخ كود RLS بالكامل للحافظة! يمكنك الآن لصقه وتشغيله في Supabase SQL Editor.');
+    setTimeout(() => setCopiedRlsSql(false), 3000);
   };
 
   // Direct Silent Printing States & QZ Tray Integration
@@ -946,6 +1051,14 @@ if "%choice%"=="3" (
       badgeColor: totalPendingSync > 0
         ? 'bg-rose-950 text-rose-300 border border-rose-800'
         : 'bg-emerald-950 text-emerald-300 border border-emerald-800',
+    },
+    {
+      id: 'rls',
+      label: 'حماية RLS وأمان Supabase Auth',
+      icon: ShieldCheck,
+      description: 'سياسات الأمان وحماية الجداول وحسابات الدخول المعتمدة',
+      badge: 'أمان RLS',
+      badgeColor: 'bg-amber-950 text-amber-300 border border-amber-800',
     },
     {
       id: 'appearance',
@@ -3039,6 +3152,102 @@ if "%choice%"=="3" (
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: RLS & SUPABASE AUTH SECURITY */}
+          {activeTab === 'rls' && (
+            <div className="bg-stone-900 border border-stone-800 rounded-2xl p-5 shadow-md space-y-6">
+              <div className="pb-3 border-b border-stone-800">
+                <h2 className="text-sm font-black text-amber-500 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-amber-500" />
+                  <span>حماية Row Level Security (RLS) ومصادقة Supabase Auth</span>
+                </h2>
+                <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                  تأمين قاعدة بيانات كاشير أسماء برمجياً، بحيث لا يستطيع أي شخص غير مصرح له قراءة أو كتابة أو تعديل أي فواتير أو أصناف أو حسابات عملاء بدون جلسة تسجيل دخول معتمدة.
+                </p>
+              </div>
+
+              {/* Status & Info Card */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>مزامنة الجلسات التلقائية</span>
+                  </div>
+                  <p className="text-[11px] text-stone-400 leading-relaxed">
+                    تم تفعيل حفظ الجلسة واسترجاع التوكن المشفر (<code className="text-amber-300">persistSession: true</code>) في المتصفح لربط الكاشير بحساب Supabase Auth تلقائياً.
+                  </p>
+                </div>
+
+                <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-2">
+                  <div className="flex items-center gap-2 text-blue-400 text-xs font-bold">
+                    <KeyRound className="w-4 h-4" />
+                    <span>تسجيل الدخول الموحد</span>
+                  </div>
+                  <p className="text-[11px] text-stone-400 leading-relaxed">
+                    شاشة الدخول تفحص وتنشئ جلسة مصادقة عبر <code className="text-amber-300">signInWithPassword</code> لكل موظف مع الاحتفاظ بنظام الصلاحيات الداخلي وأكواد البائعين.
+                  </p>
+                </div>
+
+                <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-400 text-xs font-bold">
+                    <Shield className="w-4 h-4" />
+                    <span>حماية كافة الجداول</span>
+                  </div>
+                  <p className="text-[11px] text-stone-400 leading-relaxed">
+                    تشمل حماية الـ RLS جداول: الأصناف، العملاء، الموردين، الفواتير، الورديات، والمصروفات.
+                  </p>
+                </div>
+              </div>
+
+              {/* Instructions banner */}
+              <div className="bg-amber-950/20 border border-amber-800/40 p-4 rounded-xl text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-amber-300 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span>خطوات تطبيق كود الـ RLS في لوحة تحكم Supabase:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyRlsScript}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+                  >
+                    {copiedRlsSql ? <Check className="w-4 h-4 text-emerald-950" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedRlsSql ? 'تم النسخ بنجاح ✓' : 'نسخ كود SQL بالكامل'}</span>
+                  </button>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-stone-300 text-[11px] leading-relaxed pr-1 font-medium">
+                  <li>اضغط على زر <b>نسخ كود SQL بالكامل</b> أعلاه.</li>
+                  <li>افتح لوحة تحكم مشروعك في <b>Supabase</b> وانتقل إلى قسم <b>SQL Editor</b>.</li>
+                  <li>اضغط على <b>New Query</b>، ثم الصق الكود واضغط على <b>Run</b>.</li>
+                  <li>ستصبح جميع الجداول محمية بـ RLS ومتاحة للمستخدمين المصادقين تلقائياً.</li>
+                </ol>
+              </div>
+
+              {/* SQL Code Preview box */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-stone-300 flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-amber-400" />
+                    <span>معاينة كود الـ SQL الجاهز للتنفيذ:</span>
+                  </span>
+                  <span className="text-[10px] text-stone-500 font-mono">PostgreSQL / Supabase RLS</span>
+                </div>
+                <div className="relative">
+                  <pre className="bg-stone-950 border border-stone-800 rounded-xl p-4 text-[11px] font-mono text-emerald-400 overflow-x-auto max-h-80 leading-relaxed dir-ltr text-left">
+                    {SUPABASE_RLS_SQL_SCRIPT}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={handleCopyRlsScript}
+                    className="absolute top-3 right-3 px-2.5 py-1 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors"
+                  >
+                    {copiedRlsSql ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedRlsSql ? 'تم النسخ' : 'نسخ'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

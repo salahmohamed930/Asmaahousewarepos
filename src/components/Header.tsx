@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePOS } from '../context/POSContext';
+import { supabase } from '../lib/supabase';
 import { DEFAULT_SHORTCUT_KEYS } from '../data/initialData';
 import { QuickPinModal } from './QuickPinModal';
 import { SyncStatusIndicator } from './Common/SyncStatusIndicator';
@@ -301,8 +302,13 @@ export const Header: React.FC = () => {
                             </button>
 
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
+                                try {
+                                  await supabase.auth.signOut();
+                                } catch (signOutErr) {
+                                  console.warn('Supabase auth signOut notice:', signOutErr);
+                                }
                                 setCurrentAssociate(null);
                                 setIsAssociateDropdownOpen(false);
                               }}

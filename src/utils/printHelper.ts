@@ -28,6 +28,8 @@ export function buildCompleteHtmlDocument(htmlContent: string, options?: PrintOp
   const pageTitle = options?.pageTitle || 'طباعة مستند';
   const pageCssSize = options?.pageCssSize || 'auto';
   const customStyles = options?.customStyles || '';
+  const isThermal = options?.isThermalReceipt === true || (pageCssSize && pageCssSize.includes('80mm'));
+  const isInvoice = options?.docType === 'invoice' || !options?.docType;
 
   return `
     <!DOCTYPE html>
@@ -38,28 +40,39 @@ export function buildCompleteHtmlDocument(htmlContent: string, options?: PrintOp
         <style>
           @page {
             size: ${pageCssSize};
-            margin: ${options?.isThermalReceipt ? '2mm 3mm' : '0'};
+            margin: ${isThermal ? '0' : '4mm 6mm'};
           }
           *, *::before, *::after {
-            box-sizing: border-box;
+            box-sizing: border-box !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
           }
           html, body {
-            margin: 0;
-            padding: 0;
+            margin: 0 !important;
+            padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Cairo', 'Noto Kufi Arabic', sans-serif;
             -webkit-font-smoothing: antialiased;
+            ${!isThermal && isInvoice ? 'height: 100% !important; max-height: 297mm !important; overflow: hidden !important;' : ''}
+          }
+          #printable-receipt {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-before: avoid !important;
+            page-break-after: avoid !important;
+            ${!isThermal && isInvoice ? 'max-height: 100% !important;' : ''}
           }
           table {
             width: 100%;
             border-collapse: collapse;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
-          th, td {
-            text-align: right;
+          tr, td, th {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           img, svg {
             max-width: 100%;
@@ -80,6 +93,9 @@ export function buildCompleteHtmlDocument(htmlContent: string, options?: PrintOp
 
 /**
  * Standard browser iframe printing fallback.
+ * Enforces fitting on a SINGLE page:
+ * - For Thermal (80mm): measures exact content height and assigns dynamic @page size so Chromium never splits it.
+ * - For A4: renders at 794px width and dynamically scales down if height exceeds the A4 sheet so it fits on 1 page.
  */
 export function printHtmlDirect(htmlContent: string, options?: PrintOptions) {
   // Remove any previously created print iframe
@@ -88,13 +104,17 @@ export function printHtmlDirect(htmlContent: string, options?: PrintOptions) {
     existingFrame.remove();
   }
 
+  const isThermal =
+    options?.isThermalReceipt === true ||
+    (options?.pageCssSize && options.pageCssSize.includes('80mm'));
+
   const iframe = document.createElement('iframe');
   iframe.id = 'pos_direct_print_frame';
   iframe.style.position = 'fixed';
   iframe.style.left = '-9999px';
   iframe.style.top = '-9999px';
-  iframe.style.width = '380px';
-  iframe.style.height = '700px';
+  iframe.style.width = isThermal ? '300px' : '794px';
+  iframe.style.height = isThermal ? '1600px' : '1123px';
   iframe.style.border = '0';
   iframe.style.opacity = '0';
   iframe.style.pointerEvents = 'none';
@@ -119,9 +139,84 @@ export function printHtmlDirect(htmlContent: string, options?: PrintOptions) {
   doc.write(fullHtml);
   doc.close();
 
-  // Wait a moment for fonts/SVGs to complete layout, then trigger print
+  // Wait for fonts/SVGs/layout to settle, measure height, scale if needed, then print
   setTimeout(() => {
     try {
+      const receiptEl = doc.getElementById('printable-receipt');
+      if (receiptEl) {
+        if (isThermal) {
+          // Dynamic calculation of thermal roll height:
+          // 1px = 25.4 / 96 = 0.264583 mm
+          const contentHeightPx =
+            receiptEl.scrollHeight || receiptEl.offsetHeight || receiptEl.getBoundingClientRect().height;
+          const heightMm = Math.max(65, Math.ceil(contentHeightPx * 0.264583) + 6);
+
+          const styleEl = doc.createElement('style');
+          styleEl.innerHTML = `
+            @page {
+              size: 80mm ${heightMm}mm !important;
+              margin: 0 !important;
+            }
+            html, body {
+              width: 80mm !important;
+              height: ${heightMm}mm !important;
+              max-height: ${heightMm}mm !important;
+              overflow: hidden !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            #printable-receipt {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-before: avoid !important;
+              page-break-after: avoid !important;
+            }
+            table, tr, td, th {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+          `;
+          doc.head.appendChild(styleEl);
+        } else if (options?.docType === 'invoice' || !options?.docType) {
+          // A4 Invoice - Force single page fitting
+          const maxA4HeightPx = 1060;
+          const contentHeightPx =
+            receiptEl.scrollHeight || receiptEl.offsetHeight || receiptEl.getBoundingClientRect().height;
+          if (contentHeightPx > maxA4HeightPx) {
+            const scale = Math.max(0.45, Math.min(1, (maxA4HeightPx / contentHeightPx) * 0.98));
+            receiptEl.style.transform = `scale(${scale})`;
+            receiptEl.style.transformOrigin = 'top center';
+            receiptEl.style.width = `${(100 / scale).toFixed(2)}%`;
+            receiptEl.style.margin = '0 auto';
+          }
+          const styleEl = doc.createElement('style');
+          styleEl.innerHTML = `
+            @page {
+              size: A4 portrait !important;
+              margin: 4mm 6mm !important;
+            }
+            html, body {
+              height: 100% !important;
+              max-height: 287mm !important;
+              overflow: hidden !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            #printable-receipt {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-before: avoid !important;
+              page-break-after: avoid !important;
+            }
+            table, tr, td, th {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+          `;
+          doc.head.appendChild(styleEl);
+        }
+      }
+
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
     } catch (err) {

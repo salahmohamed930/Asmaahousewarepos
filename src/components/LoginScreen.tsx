@@ -155,8 +155,46 @@ export const LoginScreen: React.FC = () => {
         (trimmedUsername === 'asmaa' && (trimmedPassword === '1234' || trimmedPassword === '1001'));
 
       if (isPasswordCorrect) {
+        // Authenticate with Supabase Auth session if employee email exists or construct virtual auth
+        try {
+          const authEmail = matched.email && matched.email.includes('@')
+            ? matched.email.trim()
+            : `${trimmedUsername}@asmaa-pos.local`;
+
+          // Attempt signInWithPassword on Supabase Auth
+          const { error: authErr } = await supabase.auth.signInWithPassword({
+            email: authEmail,
+            password: trimmedPassword,
+          });
+
+          if (authErr) {
+            console.log('[Supabase Auth Info] signInWithPassword notice:', authErr.message);
+          } else {
+            console.log('[Supabase Auth Success] Authenticated JWT session established for:', authEmail);
+          }
+        } catch (authException) {
+          console.warn('[Supabase Auth Warning]:', authException);
+        }
+
         executeLoginForAssociate(matched);
       } else {
+        // Also check if user entered credentials for direct Supabase Auth email
+        if (trimmedUsername.includes('@')) {
+          try {
+            const { data: authData, error: directAuthErr } = await supabase.auth.signInWithPassword({
+              email: trimmedUsername,
+              password: trimmedPassword,
+            });
+            if (authData?.user && !directAuthErr) {
+              const fallbackAssoc = candidateList[0] || INITIAL_ASSOCIATES[0];
+              executeLoginForAssociate(fallbackAssoc);
+              return;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         handleFailedAttempt('كلمة المرور غير صحيحة');
       }
     } catch (err) {
